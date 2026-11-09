@@ -69,6 +69,10 @@ export async function chooseCompletion(page: Page, name: string, mouse = false) 
   const exactName = new RegExp('^' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
   const option = list.getByRole('option').filter({ has: page.locator('.cm-completionLabel').filter({ hasText: exactName }) });
   await expect(option).toBeVisible();
+  // CodeMirror's default interactionDelay is 75 ms after the menu opens.
+  // Visible/selected options are not yet keyboard-interactive during that
+  // guard; an earlier Enter intentionally falls through to insert a newline.
+  await page.waitForTimeout(100);
   if (mouse) await option.click();
   else {
     for (let index = 0; index < 30; index++) {

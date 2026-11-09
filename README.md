@@ -19,7 +19,7 @@
 
 安装包由 [桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)生成：成功运行中的 Artifacts 提供 macOS Apple Silicon／Intel 的 DMG 和 Windows x64 的安装程序，附源提交、CPU 架构和 SHA-256 清单。这里是 CI 构建产物，不等同于已发布 GitHub Release。
 
-上一阶段的已验证测试包（不含本次离线源码编辑，构建源`17edecd`）：[macOS M系列](https://github.com/ecojust/emulation/actions/runs/42659500335/artifacts/13695290331) · [Windows x64](https://github.com/ecojust/emulation/actions/runs/42659500335/artifacts/13693374410)。两者完成实际安装、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel本轮已通过构建、签名与原生核心检查，但托管Apple Paravirtualized GPU没有可用WebGL2，图形验收未通过。
+已验证测试包（含离线源码编辑，构建源`68063db`）：[macOS M系列](https://github.com/ecojust/emulation/actions/runs/42677239853/artifacts/13701580882) · [Windows x64](https://github.com/ecojust/emulation/actions/runs/42677239853/artifacts/13700793739)。两者完成实际安装、本地语法Worker／编辑器、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel本轮构建、签名、原生核心和源码编辑器检查通过，但托管Apple Paravirtualized GPU没有可用WebGL2，三维图形验收未通过。
 
 - macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
