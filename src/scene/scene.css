@@ -1,0 +1,10 @@
+.robot-scene { position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 48% 24%, #fbfcfd 0%, #f1f4f7 60%, #e9edf3 100%); }
+.robot-scene-canvas { width: 100%; height: 100%; position: absolute; inset: 0; }
+.robot-scene-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.scene-model-status { position: absolute; right: 18px; top: 18px; max-width: calc(100% - 232px); display: flex; align-items: center; flex-wrap: wrap; gap: 9px; padding: 7px 10px; border: 1px solid rgba(209, 216, 225, .65); border-radius: 7px; background: rgba(252, 253, 254, .86); color: #6b7685; font-size: 10px; line-height: 1.5; backdrop-filter: blur(8px); pointer-events: none; }
+.scene-model-status button { pointer-events: auto; padding: 2px 7px; font: inherit; color: #a62d37; background: #fff; border: 1px solid #dfc2c4; border-radius: 4px; cursor: pointer; }
+.scene-graphics-error { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%); width: min(330px, 80%); text-align: center; border: 1px solid #d8dfe8; border-radius: 12px; padding: 22px; background: #ffffffed; color: #566477; font-size: 13px; line-height: 1.7; }
+.scene-graphics-error strong { font-size: 16px; color: #334155; }
+.scene-graphics-error p { margin: 8px 0 0; }
+@media (max-width: 700px) { .scene-model-status { font-size: 9px; padding: 6px 7px; } }
+.scene-model-status.scene-load-error { left: 18px; top: 60px; right: 18px; max-width: none; color: #9c3e43; }
