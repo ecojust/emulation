@@ -237,7 +237,8 @@ fn actual_geometry_reports_part_indices_and_uses_the_selected_variant() {
     let results = check_collisions(&forearm, &idle).unwrap();
     assert!(results[0].colliding_links.is_empty());
     assert_eq!(results[1].colliding_links, vec![4]);
-    let mut wrist = request("irb1100-4-0.58", zone([360., 0., 617.], [1.; 3]));
+    // The flange axis itself is a bore. This point lies in the actual end-face material.
+    let mut wrist = request("irb1100-4-0.58", zone([363.5, 0., 627.], [1.; 3]));
     assert!(check_collisions(&wrist, &idle).unwrap()[0]
         .colliding_links
         .contains(&6));
@@ -250,7 +251,7 @@ fn actual_geometry_reports_part_indices_and_uses_the_selected_variant() {
 #[test]
 fn flange_contact_is_an_interference_warning_and_a_real_gap_is_clear() {
     let idle = AtomicBool::new(false);
-    let mut input = request("irb1100-4-0.58", zone([364.5, 0., 617.], [1.; 3]));
+    let mut input = request("irb1100-4-0.58", zone([364.5, 0., 627.], [1.; 3]));
     assert_eq!(
         check_collisions(&input, &idle).unwrap()[0].colliding_links,
         vec![6]
@@ -353,7 +354,7 @@ fn multiple_zones_keep_hit_identity_request_order_and_a_sorted_link_union() {
         .push(named_zone("base", zone([0., 0., 50.], [10.; 3])));
     input
         .zones
-        .push(named_zone("forearm_again", zone([251., 0., 617.], [5.; 3])));
+        .push(named_zone("forearm_again", zone([250., 0., 617.], [5.; 3])));
     let result = check_collisions(&input, &AtomicBool::new(false))
         .unwrap()
         .remove(0);
@@ -391,6 +392,60 @@ fn multiple_zones_keep_hit_identity_request_order_and_a_sorted_link_union() {
     assert!(result.colliding_links.is_empty());
     assert!(result.zones.is_empty());
     assert_eq!(result.id, "zero");
+}
+
+#[test]
+fn mesh_narrow_phase_rejects_empty_obb_corners_and_flange_bores() {
+    let idle = AtomicBool::new(false);
+    for model_id in ["irb1100-4-0.475", "irb1100-4-0.58"] {
+        let corner = zone([75., 75., 80.], [4.; 3]);
+        assert!(obb_intersects_danger_zone(
+            &link_bounding_boxes(model_id, &[0.; 6]).unwrap()[0],
+            &corner
+        )
+        .unwrap());
+        let result = check_collisions(&request(model_id, corner), &idle).unwrap();
+        assert!(result[0].colliding_links.is_empty());
+        assert!(result[0].uncertain_links.is_empty());
+        assert!(result[0].zones.is_empty());
+    }
+    let result = check_collisions(
+        &request("irb1100-4-0.58", zone([360., 0., 617.], [1.; 3])),
+        &idle,
+    )
+    .unwrap();
+    assert!(
+        result[0].colliding_links.is_empty(),
+        "the flange's central bore must remain empty"
+    );
+    assert!(result[0].uncertain_links.is_empty());
+}
+
+#[test]
+fn uncertain_interiors_are_distinct_from_confirmed_contacts_and_keep_zone_identity() {
+    let mut input = request("irb1100-4-0.58", zone([250., 0., 617.], [5.; 3]));
+    input.zones[0].id = "contact".into();
+    input.zones.push(named_zone(
+        "uncertain-interior",
+        zone([251., 0., 617.], [5.; 3]),
+    ));
+    let result = check_collisions(&input, &AtomicBool::new(false))
+        .unwrap()
+        .remove(0);
+    assert_eq!(result.colliding_links, vec![4]);
+    assert_eq!(
+        result.uncertain_links,
+        vec![4],
+        "different zones may contribute to each independent union"
+    );
+    assert_eq!(result.zones.len(), 2);
+    assert_eq!(result.zones[0].colliding_links, vec![4]);
+    assert!(result.zones[0].uncertain_links.is_empty());
+    assert!(result.zones[1].colliding_links.is_empty());
+    assert_eq!(result.zones[1].uncertain_links, vec![4]);
+    let json = serde_json::to_value(&result).unwrap();
+    assert_eq!(json["uncertainLinks"], serde_json::json!([4]));
+    assert_eq!(json["zones"][1]["uncertainLinks"], serde_json::json!([4]));
 }
 
 #[test]

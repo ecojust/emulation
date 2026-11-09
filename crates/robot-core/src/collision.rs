@@ -1,5 +1,8 @@
-//! Conservative per-link CAD bounding-box interference against a world-aligned box.
-//! These are endpoint OBB checks, not mesh contact, self-collision or path clearance.
+//! Endpoint CAD-mesh interference against world-aligned danger boxes.
+//! OBBs are only a broad filter; cached triangle BVHs determine surface contact
+//! and closed-mesh containment. Invalid interiors remain explicitly uncertain.
+#[path = "collision_mesh.rs"]
+mod mesh;
 use crate::kinematics::{forward_kinematics, joints_within_limits};
 use crate::math::{dot, multiply_matrices, sub, IDENTITY};
 use crate::model::get_robot_model;
@@ -61,9 +64,11 @@ pub struct CollisionRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CollisionResult {
     pub id: String,
-    /// 0=base_link, 1..6=link_1..link_6; overlap is only a conservative warning.
+    /// 0=base_link, 1..6=link_1..link_6; actual mesh contact or closed-mesh containment.
     pub colliding_links: Vec<usize>,
-    /// Only overlapping zones, in the same order as the request.
+    /// Interior classification is undefined or numerically ambiguous for these parts.
+    pub uncertain_links: Vec<usize>,
+    /// Only confirmed or uncertain zones, in the same order as the request.
     pub zones: Vec<ZoneCollisionResult>,
 }
 
@@ -72,6 +77,7 @@ pub struct CollisionResult {
 pub struct ZoneCollisionResult {
     pub zone_id: String,
     pub colliding_links: Vec<usize>,
+    pub uncertain_links: Vec<usize>,
 }
 
 /// Axes are unit world directions; half extents are measured along those axes.
@@ -244,13 +250,16 @@ fn geometry(model_id: &str) -> Result<&'static CachedGeometry, String> {
         .ok_or_else(|| "不支持的机器人型号，无法检查干涉。".into())
 }
 
-fn transformed_boxes(
-    model: &CachedGeometry,
-    joints: &JointAngles,
-) -> Result<[OrientedBox; 7], String> {
+fn link_transforms(model: &CachedGeometry, joints: &JointAngles) -> Result<[Mat4; 7], String> {
     let fk = forward_kinematics(&model.model, joints)?;
     Ok(std::array::from_fn(|index| {
-        let delta = multiply_matrices(&fk.frames[index], &model.zero_inverse[index]);
+        multiply_matrices(&fk.frames[index], &model.zero_inverse[index])
+    }))
+}
+
+fn boxes_for_transforms(model: &CachedGeometry, transforms: &[Mat4; 7]) -> [OrientedBox; 7] {
+    std::array::from_fn(|index| {
+        let delta = transforms[index];
         let source = model.zero_boxes[index];
         OrientedBox {
             center_mm: std::array::from_fn(|row| {
@@ -262,7 +271,7 @@ fn transformed_boxes(
             axes: std::array::from_fn(|axis| [delta[axis], delta[4 + axis], delta[8 + axis]]),
             half_size_mm: source.half_size_mm,
         }
-    }))
+    })
 }
 
 /// Uses the exact visual mapping F_i(q) * inverse(F_i(0)) on shared-zero CAD bounds.
@@ -274,7 +283,10 @@ pub fn link_bounding_boxes(
     if !joints_within_limits(&model.model, joints) {
         return Err("关节角无效或超出关节范围，无法检查干涉。".into());
     }
-    transformed_boxes(model, joints)
+    Ok(boxes_for_transforms(
+        model,
+        &link_transforms(model, joints)?,
+    ))
 }
 
 pub fn validate_danger_zone(zone: &DangerZone) -> Result<(), String> {
@@ -384,27 +396,62 @@ pub fn check_collisions(
             return Err("干涉检查已取消。".into());
         }
         let mut union = [false; 7];
+        let mut uncertain_union = [false; 7];
         let mut zones = Vec::new();
         if !active_zones.is_empty() {
-            let boxes = transformed_boxes(model, &solution.joints)?;
+            let transforms = link_transforms(model, &solution.joints)?;
+            let boxes = boxes_for_transforms(model, &transforms);
             for (zone_id, zone) in &active_zones {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("干涉检查已取消。".into());
                 }
                 let mut colliding_links = Vec::new();
+                let mut uncertain_links = Vec::new();
+                let expanded_zone = DangerZone {
+                    enabled: true,
+                    center_mm: zone.center_mm,
+                    size_mm: zone
+                        .size_mm
+                        .map(|size| size + 2. * mesh::CONTACT_EPSILON_MM),
+                };
                 for (index, box_a) in boxes.iter().enumerate() {
                     if cancel.load(Ordering::Relaxed) {
                         return Err("干涉检查已取消。".into());
                     }
-                    if intersects_valid_zone(box_a, zone) {
-                        colliding_links.push(index);
-                        union[index] = true;
+                    if intersects_valid_zone(box_a, &expanded_zone) {
+                        let inverse = rigid_inverse(&transforms[index]);
+                        let query = mesh::QueryBox {
+                            center: std::array::from_fn(|row| {
+                                inverse[row * 4 + 3]
+                                    + (0..3)
+                                        .map(|axis| inverse[row * 4 + axis] * zone.center_mm[axis])
+                                        .sum::<f64>()
+                            }),
+                            axes: std::array::from_fn(|axis| {
+                                [inverse[axis], inverse[4 + axis], inverse[8 + axis]]
+                            }),
+                            half: zone.size_mm.map(|size| size / 2.),
+                        };
+                        match mesh::pinned_mesh(&request.model_id, index, cancel)?
+                            .query(&query, cancel)?
+                        {
+                            mesh::Contact::Hit => {
+                                colliding_links.push(index);
+                                union[index] = true;
+                            }
+                            mesh::Contact::Uncertain => {
+                                uncertain_links.push(index);
+                                uncertain_union[index] = true;
+                            }
+                            mesh::Contact::Clear => {}
+                        }
                     }
                 }
-                if !colliding_links.is_empty() {
+                if !colliding_links.is_empty() || !uncertain_links.is_empty() {
                     zones.push(ZoneCollisionResult {
                         zone_id: (*zone_id).clone(),
                         colliding_links,
+                        uncertain_links,
                     });
                 }
             }
@@ -412,6 +459,7 @@ pub fn check_collisions(
         results.push(CollisionResult {
             id: solution.id.clone(),
             colliding_links: (0..7).filter(|index| union[*index]).collect(),
+            uncertain_links: (0..7).filter(|index| uncertain_union[*index]).collect(),
             zones,
         });
     }

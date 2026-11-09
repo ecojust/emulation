@@ -1,5 +1,6 @@
 //! One CPU worker with one pending motion/export and one pending inspection.
 //! Background collision inspection must never cancel a user's solve or export.
+//! Foreground work may interrupt inspection, including a cold mesh-index build.
 //! Cancellation never creates an unbounded spawn_blocking queue.
 use emulation_core::{
     collision::{check_collisions, CollisionRequest, CollisionResult},
@@ -136,10 +137,8 @@ impl Engine {
         }
         let is_background = matches!(&work, Work::Collision(_));
         if !is_background {
-            if let Some((_, cancelled, active_background)) = &queue.active {
-                if !*active_background {
-                    cancelled.store(true, Ordering::Release);
-                }
+            if let Some((_, cancelled, _)) = &queue.active {
+                cancelled.store(true, Ordering::Release);
             }
         }
         let slot = if is_background {
@@ -345,10 +344,42 @@ mod tests {
             Reply::Export(_)
         ));
         let Reply::Collision(results) = inspection.blocking_recv().unwrap().unwrap() else {
-            panic!("expected native bounding-box inspection");
+            panic!("expected native mesh inspection");
         };
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].colliding_links, vec![0, 1, 2, 3, 4, 5, 6]);
+        assert!(results[0].uncertain_links.is_empty());
+    }
+
+    #[test]
+    fn foreground_work_interrupts_active_inspection() {
+        // Inspect the scheduler policy without racing a CPU-dependent mesh build.
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("inspection".into(), cancelled.clone(), true)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let _receiver = engine
+            .submit("interactive-motion".into(), Work::Plan(request()))
+            .unwrap();
+        assert!(cancelled.load(Ordering::Acquire));
+        assert_eq!(
+            engine
+                .shared
+                .queue
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .id,
+            "interactive-motion"
+        );
     }
 
     #[test]

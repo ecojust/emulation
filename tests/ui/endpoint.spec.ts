@@ -12,7 +12,7 @@ async function openSolutions(page: Page) {
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '求解 MoveL', exact: true }).click();
   await expect(page.getByRole('heading', { name: '运动学可达', exact: true })).toBeVisible();
-  const details = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: '端点姿态与干涉预检' }) });
+  const details = page.locator('details').filter({ has: page.locator('summary').filter({ hasText: '端点姿态与干涉检测' }) });
   if ((await details.getAttribute('open')) === null) await details.locator('summary').click();
   await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
   return errors;
@@ -110,7 +110,7 @@ test('actual danger-box geometry marks overlaps, clears a distant box, and never
   await expect.poll(() => allStates(page, ['hit'])).toBe(true);
   expect(await rows(page).count()).toBeGreaterThan(1);
   await expectZone(page, [-1250, -1250, -950], [1250, 1250, 1550]);
-  await expect(rows(page).first().getByLabel('可能干涉', { exact: true })).toBeVisible();
+  await expect(rows(page).first().getByLabel('干涉', { exact: true })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: '/tmp/emulation-danger-overlap.png', fullPage: true });
   const observed: { state: string; text: string }[] = [];
@@ -123,15 +123,65 @@ test('actual danger-box geometry marks overlaps, clears a distant box, and never
   await setZone(page, [5000, 5000, 5000], [100, 100, 100]);
   await expect.poll(() => allStates(page, ['clear'])).toBe(true);
   await expectZone(page, [4950, 4950, 4950], [5050, 5050, 5050]);
-  await expect(rows(page).getByLabel('可能干涉', { exact: true })).toHaveCount(0);
+  await expect(rows(page).getByLabel('干涉', { exact: true })).toHaveCount(0);
   expect(observed.some(value => value.state === 'pending')).toBe(true);
-  for (const pending of observed.filter(value => value.state === 'pending')) expect(pending.text).not.toContain('包围盒未重叠');
+  for (const pending of observed.filter(value => value.state === 'pending')) expect(pending.text).not.toContain('未检测到干涉');
   expect((await rows(page).allTextContents()).join(' ')).not.toMatch(/路径安全|安全可执行|无碰撞/);
   await page.getByRole('spinbutton', { name: '危险区尺寸 X', exact: true }).fill('');
   await expect.poll(() => allStates(page, ['error', 'unchecked'])).toBe(true);
   await expect.poll(async () => JSON.parse((await canvas(page).getAttribute('data-danger-zone'))!)).toEqual({ enabled: false });
-  expect((await rows(page).allTextContents()).join(' ')).not.toContain('包围盒未重叠');
+  expect((await rows(page).allTextContents()).join(' ')).not.toContain('未检测到干涉');
   await page.screenshot({ path: '/tmp/emulation-danger-invalid.png', fullPage: true });
+  expect(errors).toEqual([]);
+});
+
+test('actual mesh detection removes an OBB false positive, finds surface and solid interference, and exposes uncertain geometry', async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await openSolutions(page);
+  const selected = rows(page).filter({ has: page.getByText('已验证路径解', { exact: true }) });
+  await expect(selected).toHaveCount(1);
+  await openZoneSettings(page);
+  const zoneId = await page.getByRole('combobox', { name: '当前危险区', exact: true }).inputValue();
+  // Pinned real base mesh: this corner overlaps its OBB, but no triangle and no
+  // closed solid. The selected non-singular pose has no other candidate link.
+  await setZone(page, [75, 75, 80], [4, 4, 4]);
+  await expectRenderedZone(page, zoneId, [73, 73, 78], [77, 77, 82]);
+  await expect(selected).toHaveAttribute('data-collision-state', 'clear');
+  await expect(selected.getByLabel('未检测到干涉', { exact: true })).toBeVisible();
+  await expect(selected).toHaveAttribute('data-collision-zone-ids', '[]');
+  await expect(selected).toHaveAttribute('data-collision-uncertain-zone-ids', '[]');
+  await page.screenshot({ path: '/tmp/emulation-mesh-empty-corner.png' });
+  await setZone(page, [0, 70, 100], [4, 4, 4]);
+  await expectRenderedZone(page, zoneId, [-2, 68, 98], [2, 72, 102]);
+  await expect(selected).toHaveAttribute('data-collision-state', 'hit');
+  await expect(selected.getByLabel('干涉', { exact: true })).toHaveAttribute('title', /基座/);
+  await expect(selected).toHaveAttribute('data-collision-zone-ids', JSON.stringify([zoneId]));
+  await expect(selected).toHaveAttribute('data-collision-uncertain-zone-ids', '[]');
+  // Entirely inside the closed base: no triangle crosses this two-mm box.
+  await setZone(page, [0, 0, 50], [2, 2, 2]);
+  await expectRenderedZone(page, zoneId, [-1, -1, 49], [1, 1, 51]);
+  await expect(selected).toHaveAttribute('data-collision-state', 'hit');
+  await expect(selected.getByLabel('干涉', { exact: true })).toHaveAttribute('title', /基座/);
+  // Source link_1 is non-manifold. No triangle crosses this box, so neither
+  // interference nor separation can be asserted from the enclosing volume.
+  await setZone(page, [0, 85, 180], [4, 4, 4]);
+  await expectRenderedZone(page, zoneId, [-2, 83, 178], [2, 87, 182]);
+  await expect(selected).toHaveAttribute('data-collision-state', 'uncertain');
+  await expect(selected.getByLabel('无法确定', { exact: true })).toBeVisible();
+  await expect(selected).toHaveAttribute('data-collision-zone-ids', '[]');
+  await expect(selected).toHaveAttribute('data-collision-uncertain-zone-ids', JSON.stringify([zoneId]));
+  await expect(selected.getByLabel('未检测到干涉', { exact: true })).toHaveCount(0);
+  await expect(selected.getByLabel('干涉', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/emulation-mesh-uncertain.png' });
+  await page.getByRole('spinbutton', { name: '危险区尺寸 X', exact: true }).fill('');
+  await expect(selected).toHaveAttribute('data-collision-state', 'error');
+  await expect(selected.getByLabel('未检查', { exact: true })).toBeVisible();
+  await expect(selected).toHaveAttribute('data-collision-zone-ids', '[]');
+  await expect(selected).toHaveAttribute('data-collision-uncertain-zone-ids', '[]');
+  await setZone(page, [5000, 5000, 5000], [100, 100, 100]);
+  await expectRenderedZone(page, zoneId, [4950, 4950, 4950], [5050, 5050, 5050]);
+  await expect(selected).toHaveAttribute('data-collision-state', 'clear');
+  await expect(selected.getByLabel('未检测到干涉', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -159,8 +209,8 @@ test('multiple danger zones retain their identities and endpoint preview across 
   await expectZoneInputs(page, [5000, 5000, 5000], [100, 100, 100]);
   await expect.poll(async () => (await hitZoneIds(page)).every(ids => ids.length === 1 && ids[0] === firstId)).toBe(true);
   await expect(rows(page)).toHaveCount(originalCount);
-  await expect(rows(page).first().getByLabel('可能干涉', { exact: true })).toHaveAttribute('title', /Near fixture/);
-  expect(await rows(page).first().getByLabel('可能干涉', { exact: true }).getAttribute('title')).not.toContain('Far fixture');
+  await expect(rows(page).first().getByLabel('干涉', { exact: true })).toHaveAttribute('title', /Near fixture/);
+  expect(await rows(page).first().getByLabel('干涉', { exact: true }).getAttribute('title')).not.toContain('Far fixture');
   await expect.poll(async () => (await sceneZones(page)).map(zone => zone.id).sort()).toEqual([firstId, secondId].sort());
   await expectRenderedZone(page, secondId, [4950, 4950, 4950], [5050, 5050, 5050]);
   const candidate = await differentWrist(page);
@@ -210,7 +260,7 @@ test('multiple danger zones retain their identities and endpoint preview across 
   await page.getByRole('button', { name: '删除危险区', exact: true }).click();
   await expect.poll(async () => sceneZones(page)).toEqual([]);
   await expect.poll(() => allStates(page, ['off'])).toBe(true);
-  expect((await rows(page).allTextContents()).join(' ')).not.toMatch(/包围盒未重叠|路径安全|安全可执行|无碰撞/);
+  expect((await rows(page).allTextContents()).join(' ')).not.toMatch(/未检测到干涉|路径安全|安全可执行|无碰撞/);
   await page.getByRole('button', { name: '添加危险区', exact: true }).click();
   await expect(selector).not.toHaveValue('');
   expect(await selector.inputValue()).not.toBe(firstId);
@@ -219,7 +269,7 @@ test('multiple danger zones retain their identities and endpoint preview across 
   await page.getByRole('checkbox', { name: '显示干涉区域', exact: true }).uncheck();
   await expect.poll(() => allStates(page, ['off'])).toBe(true);
   await expect.poll(async () => sceneZones(page)).toEqual([{ id: disabledId, enabled: false }]);
-  expect((await rows(page).allTextContents()).join(' ')).not.toContain('包围盒未重叠');
+  expect((await rows(page).allTextContents()).join(' ')).not.toContain('未检测到干涉');
   await expectJoints(page, candidate.joints);
   await expect(rows(page)).toHaveCount(originalCount);
   await openProgram(page);

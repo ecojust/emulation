@@ -1480,20 +1480,29 @@ h1 {
 }
 
 .collision-hit {
-  color:#a55332;
-  background:#fff0e4
+  color:#a34740;
+  background:#fff0ed
 }
 
-.collision-hit b {
+.collision-hit b,.collision-uncertain b {
   display:inline-flex;
   justify-content:center;
   align-items:center;
   width:13px;
   height:13px;
   border-radius:50%;
-  background:#b86a42;
+  background:#b95e54;
   color:white;
   font-size:10px
+}
+
+.collision-uncertain {
+  color:#8c6d38;
+  background:#fbf3e4
+}
+
+.collision-uncertain b {
+  background:#a98a52
 }
 
 .collision-error {

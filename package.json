@@ -21,7 +21,8 @@
     "@tauri-apps/api": "2.12.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "three": "0.187.0"
+    "three": "0.187.0",
+    "three-mesh-bvh": "0.9.18"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",

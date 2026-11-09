@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { nativeDesktop, solveMotion } from './client';
 import type { PlanRequest, PlanResult } from './types';
+import type { CollisionResult } from './collision-geometry';
 import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel } from '../catalog/client';
 
 let started = false;
@@ -57,11 +58,27 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     show(result);
     const file = await invoke<{ fileName: string; content: string }>('preview_program', { requestId: crypto.randomUUID(), request: { programName: 'UiSmoke', controller: 'abb_rapid', motion: request } });
     if (!file.fileName.endsWith('.mod') || !file.content.includes('MODULE UiSmoke') || !file.content.includes('CJointT') || !file.content.includes('MoveL')) throw new Error('Native module IPC returned an invalid module');
-    const interference = await invoke<{ id: string; collidingLinks: number[]; zones: { zoneId: string; collidingLinks: number[] }[] }[]>('check_collisions', {
+    const interference = await invoke<CollisionResult[]>('check_collisions', {
       requestId: crypto.randomUUID(),
       request: { modelId: request.modelId, zones: [{ id: 'smoke-zone', enabled: true, centerMm: [0, 0, 400], sizeMm: [4000, 4000, 4000] }], solutions: [{ id: 'ui-smoke', joints: request.startJoints }] },
     });
-    if (interference.length !== 1 || interference[0].id !== 'ui-smoke' || interference[0].collidingLinks.length !== 7 || interference[0].zones[0]?.zoneId !== 'smoke-zone') throw new Error('Native bounding-box inspection IPC returned an invalid result');
+    if (interference.length !== 1 || interference[0].id !== 'ui-smoke' || interference[0].collidingLinks.length !== 7 || interference[0].uncertainLinks.length || interference[0].zones[0]?.zoneId !== 'smoke-zone') throw new Error('Native mesh inspection IPC returned an invalid result');
+    const meshCases = await invoke<CollisionResult[]>('check_collisions', {
+      requestId: crypto.randomUUID(),
+      request: {
+        modelId: request.modelId,
+        solutions: [{ id: 'base-mesh', joints: [0, 0, 0, 0, 0, 0] }],
+        zones: [
+          { id: 'empty-corner', enabled: true, centerMm: [75, 75, 80], sizeMm: [4, 4, 4] },
+          { id: 'surface', enabled: true, centerMm: [0, 70, 100], sizeMm: [4, 4, 4] },
+          { id: 'contained', enabled: true, centerMm: [0, 0, 50], sizeMm: [2, 2, 2] },
+        ],
+      },
+    });
+    const meshResult = meshCases[0];
+    if (meshCases.length !== 1 || meshResult?.id !== 'base-mesh' || meshResult.uncertainLinks.length
+      || meshResult.zones.length !== 2 || meshResult.zones[0].zoneId !== 'surface' || meshResult.zones[1].zoneId !== 'contained'
+      || meshResult.zones.some(zone => zone.collidingLinks.length !== 1 || zone.collidingLinks[0] !== 0 || zone.uncertainLinks.length)) throw new Error('Native triangle/containment inspection IPC failed real STL cases');
     // Check packaged files independently from rendering, so a missing GPU cannot
     // be misreported as a missing STL. Preserve each response in failure evidence.
     await Promise.all(['irb1100-4-0.58', 'irb1100-4-0.475'].flatMap(model => ['base_link', 'link_1', 'link_2', 'link_3', 'link_4', 'link_5', 'link_6'].map(async name => {
