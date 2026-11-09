@@ -13,7 +13,8 @@ function notices() {
         ["third-party/work-r-labs/SOURCE.json", "vendor/work-r-labs/SOURCE.json"],
       ]) this.emitFile({ type: "asset", fileName, source: read(sourcePath) });
       const packages = ["react", "react-dom", "scheduler", "three"];
-      const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n");
+      const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n")
+        + `\n\n@tauri-apps/api (MIT option)\n${"=".repeat(60)}\n${read("node_modules/@tauri-apps/api/LICENSE-MIT")}`;
       this.emitFile({ type: "asset", fileName: "THIRD_PARTY_NOTICES.txt", source });
     },
   };

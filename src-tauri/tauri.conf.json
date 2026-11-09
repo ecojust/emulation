@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Emulation",
+  "version": "0.2.0",
+  "identifier": "com.ecojust.emulation",
+  "build": {
+    "beforeDevCommand": "npm run dev -- --host 127.0.0.1",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:5173; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "机器人运动求解与指令模块工作台",
+    "longDescription": "使用本机 Rust 引擎求解机器人姿态、验证直线运动并生成品牌运动程序模块。",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "macOS": { "minimumSystemVersion": "13.0", "signingIdentity": "-", "hardenedRuntime": false },
+    "windows": {
+      "nsis": { "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] },
+      "webviewInstallMode": { "type": "embedBootstrapper", "silent": true }
+    },
+    "resources": { "../LICENSE": "LICENSE", "../vendor/work-r-labs/LICENSE": "licenses/work-r-labs/LICENSE", "../vendor/work-r-labs/SOURCE.json": "licenses/work-r-labs/SOURCE.json" }
+  }
+}

@@ -1,0 +1,32 @@
+[package]
+name = "emulation-desktop"
+version = "0.2.0"
+description = "Native robot motion workspace"
+authors = ["ecojust"]
+edition = "2021"
+default-run = "emulation"
+
+[lib]
+name = "emulation_desktop"
+path = "src/lib.rs"
+
+[[bin]]
+name = "emulation"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[features]
+default = ["desktop"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-dialog", "dep:tauri-plugin-clipboard-manager"]
+
+[build-dependencies]
+tauri-build = { version = "2", optional = true }
+
+[dependencies]
+emulation-core = { path = "../crates/robot-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync"] }
+tauri = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-clipboard-manager = { version = "2", optional = true }

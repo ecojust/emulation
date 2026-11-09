@@ -1,0 +1,229 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use emulation_core::{
+    program::ProgramExportRequest,
+    types::{PlanRequest, PlanResult},
+};
+use emulation_desktop::engine::{Engine, Reply, Work};
+use std::sync::Arc;
+use tauri::{State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_dialog::DialogExt;
+
+struct UiSmoke {
+    enabled: bool,
+}
+
+#[tauri::command]
+async fn preview_program(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: ProgramExportRequest,
+) -> Result<emulation_core::program::ProgramFile, String> {
+    match engine
+        .submit(request_id, Work::Export(request))?
+        .await
+        .map_err(|_| "模块生成未完成")??
+    {
+        Reply::Export(file) => Ok(file),
+        _ => Err("原生模块返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
+fn ui_smoke_report(
+    app: tauri::AppHandle,
+    state: State<'_, UiSmoke>,
+    success: bool,
+    detail: String,
+) -> Result<(), String> {
+    if !state.enabled {
+        return Err("UI smoke mode is not enabled".into());
+    }
+    println!(
+        "Native UI smoke: {} — {}",
+        if success { "passed" } else { "failed" },
+        detail.chars().take(2000).collect::<String>()
+    );
+    app.exit(if success { 0 } else { 1 });
+    Ok(())
+}
+
+#[tauri::command]
+async fn solve_motion(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: PlanRequest,
+) -> Result<PlanResult, String> {
+    let reply = engine
+        .submit(request_id, Work::Plan(request))?
+        .await
+        .map_err(|_| "原生运动计算未完成")??;
+    match reply {
+        Reply::Plan(result) => Ok(result),
+        _ => Err("原生计算返回了错误的结果类型".into()),
+    }
+}
+
+#[tauri::command]
+fn cancel_motion(engine: State<'_, Arc<Engine>>, request_id: String) {
+    engine.cancel(&request_id);
+}
+
+#[tauri::command]
+fn copy_rapid(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    if text.len() > 1_000_000 {
+        return Err("复制内容过长".into());
+    }
+    app.clipboard()
+        .write_text(text)
+        .map_err(|_| "无法写入剪贴板，请选中指令手动复制".into())
+}
+
+#[tauri::command]
+async fn save_program(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: ProgramExportRequest,
+) -> Result<Option<String>, String> {
+    let reply = engine
+        .submit(request_id.clone(), Work::Export(request))?
+        .await
+        .map_err(|_| "模块生成未完成")??;
+    let file = match reply {
+        Reply::Export(file) => file,
+        _ => return Err("模块生成返回了错误的结果类型".into()),
+    };
+    if engine.is_cancelled(&request_id) {
+        return Err("模块导出已取消".into());
+    }
+    let engine = engine.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let selected = app
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("保存 ABB RAPID 模块")
+            .set_file_name(&file.file_name)
+            .add_filter("ABB RAPID 模块", &["mod"])
+            .blocking_save_file();
+        let Some(selected) = selected else {
+            return Ok(None);
+        };
+        if engine.is_cancelled(&request_id) {
+            return Err("参数已变化，模块导出已取消".into());
+        }
+        let mut path = selected.into_path().map_err(|_| "请选择本机文件路径")?;
+        if path.extension().is_none() {
+            path.set_extension("mod");
+        }
+        if !path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("mod"))
+        {
+            return Err("ABB RAPID 模块必须保存为 .mod 文件".into());
+        }
+        std::fs::write(&path, file.content.as_bytes())
+            .map_err(|_| "无法保存模块，请检查目标目录权限和可用空间")?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|_| "无法完成模块保存")?
+}
+
+fn smoke_test() -> Result<(), String> {
+    use emulation_core::{
+        kinematics::forward_kinematics, model::get_robot_model, planner::plan_move_l,
+        program::export_program, types::Target,
+    };
+    for id in ["irb1100-4-0.58", "irb1100-4-0.475"] {
+        let model = get_robot_model(id).ok_or("missing robot model")?;
+        let start = forward_kinematics(&model, &model.ready_joints)?;
+        let request = PlanRequest {
+            model_id: id.into(),
+            start_joints: model.ready_joints,
+            target: Target {
+                position: [start.pose.position[0], 30.0, start.pose.position[2]],
+                orientation: Some(start.pose.orientation),
+            },
+            speed_mm_per_second: 100.0,
+        };
+        let PlanResult::Success(plan) = plan_move_l(&request) else {
+            return Err("native planner rejected smoke target".into());
+        };
+        if plan.path.len() < 7 || (plan.selected.pose.position[1] - 30.0).abs() > 0.001 {
+            return Err("native planner returned an invalid smoke path".into());
+        }
+        let export_request: ProgramExportRequest = serde_json::from_value(serde_json::json!({ "programName": "EmulationSmoke", "controller": "abb_rapid", "motion": request })).map_err(|e| e.to_string())?;
+        let file = export_program(&export_request).map_err(|e| e.to_string())?;
+        if !file.content.contains("MODULE EmulationSmoke")
+            || !file.content.contains("ENDMODULE")
+            || !file.content.contains("MoveL")
+            || !file.content.contains("CJointT")
+        {
+            return Err("native module export smoke failed".into());
+        }
+    }
+    println!(
+        "Emulation {} native solver and ABB module smoke passed ({})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::ARCH
+    );
+    Ok(())
+}
+
+fn main() {
+    if std::env::args().any(|arg| arg == "--smoke-test") {
+        match smoke_test() {
+            Ok(()) => return,
+            Err(error) => {
+                eprintln!("Native smoke failed: {error}");
+                std::process::exit(1);
+            }
+        }
+    }
+    let ui_smoke = std::env::args().any(|arg| arg == "--ui-smoke-test");
+    if ui_smoke {
+        std::thread::spawn(|| {
+            std::thread::sleep(std::time::Duration::from_secs(40));
+            eprintln!("Native UI smoke timed out");
+            std::process::exit(1);
+        });
+    }
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(Arc::new(Engine::new()))
+        .manage(UiSmoke { enabled: ui_smoke })
+        .invoke_handler(tauri::generate_handler![
+            solve_motion,
+            cancel_motion,
+            save_program,
+            copy_rapid,
+            preview_program,
+            ui_smoke_report
+        ])
+        .setup(move |app| {
+            let mut window =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("Emulation · 机器人运动工作台")
+                    .inner_size(1440.0, 1000.0)
+                    .min_inner_size(1000.0, 720.0)
+                    .on_navigation(|url| {
+                        matches!(
+                            url.host_str(),
+                            Some("tauri.localhost") | Some("localhost") | Some("127.0.0.1")
+                        )
+                    })
+                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
+            if ui_smoke {
+                window = window.initialization_script("window.__EMULATION_UI_SMOKE__ = true;");
+            }
+            window.build()?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("Unable to initialize Emulation desktop");
+}

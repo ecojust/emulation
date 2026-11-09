@@ -1,6 +1,6 @@
 {
   "name": "emulation",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,20 +9,29 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "test:rust": "cargo test --workspace --no-default-features --locked",
+    "test:native": "cargo build -p emulation-core --bin core-cli --locked && vitest run tests/native-parity.test.ts",
+    "bench:native": "node scripts/benchmark-native.mjs"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.12.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "three": "0.187.0"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",
+    "@tauri-apps/cli": "2.12.4",
     "@types/node": "24.10.1",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@types/three": "0.187.0",
     "@vitejs/plugin-react": "5.0.4",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3",
     "vite": "7.3.7",
     "vitest": "3.2.4"

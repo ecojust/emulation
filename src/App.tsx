@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import RobotScene from './scene/RobotScene';
-import { solveMotion } from './robot/client';
+import { copyRapid, nativeDesktop, saveProgram, solveMotion } from './robot/client';
+import { isNativeUiSmoke, runNativeUiSmoke } from './robot/ui-smoke';
 import { forwardKinematics } from './robot/kinematics';
 import { getRobotModel, ROBOT_MODELS } from './robot/model';
 import { eulerZYXToQuaternion, formatMoveL, normalizeOrientation, parseRobtarget } from './robot/rapid';
-import type { JointAngles, PlanResult, Pose, Quaternion, RobotId, Vec3 } from './robot/types';
+import type { JointAngles, PlanRequest, PlanResult, Pose, Quaternion, RobotId, Vec3 } from './robot/types';
 import './styles.css';
 
 type Mode = 'auto' | 'orientation' | 'robtarget';
@@ -61,6 +62,11 @@ export default function App() {
   const [viewRevision, setViewRevision] = useState(0);
   const [showFrames, setShowFrames] = useState(false);
   const [copyState, setCopyState] = useState('');
+  const [moduleName, setModuleName] = useState('EmulationMotion');
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [validatedRequest, setValidatedRequest] = useState<PlanRequest | null>(null);
+  const exportRequest = useRef<AbortController | null>(null);
   const currentRequest = useRef<AbortController | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const success = result?.status === 'success' ? result : null;
@@ -87,6 +93,8 @@ export default function App() {
   function invalidate() {
     currentRequest.current?.abort();
     currentRequest.current = null;
+    exportRequest.current?.abort(); exportRequest.current = null;
+    setExporting(false); setExportMessage(''); setValidatedRequest(null);
     setBusy(false); setPlaying(false); setProgress(0); setResult(null); setError(''); setCopyState('');
   }
   function updateArray(setter: (values: string[]) => void, values: string[], index: number, value: string) {
@@ -131,9 +139,10 @@ export default function App() {
     const controller = new AbortController();
     currentRequest.current = controller; setBusy(true);
     try {
-      const response = await solveMotion({ modelId, startJoints: joints, target, speedMmPerSecond: speed }, controller.signal);
+      const request: PlanRequest = { modelId, startJoints: joints, target, speedMmPerSecond: speed };
+      const response = await solveMotion(request, controller.signal);
       if (currentRequest.current !== controller) return;
-      setResult(response); setProgress(response.status === 'success' ? 1 : 0);
+      setResult(response); setValidatedRequest(response.status === 'success' ? request : null); setProgress(response.status === 'success' ? 1 : 0);
     } catch (cause) {
       if (currentRequest.current === controller && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : '运动学计算未完成。');
     } finally {
@@ -143,12 +152,30 @@ export default function App() {
   async function copy() {
     if (!code || busy) return;
     try {
-      await navigator.clipboard.writeText(code); setCopyState('已复制');
+      await copyRapid(code); setCopyState('已复制');
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopyState(''), 2000);
     } catch { setCopyState('请选中代码手动复制'); }
   }
-  useEffect(() => () => { currentRequest.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+  async function exportModule() {
+    if (!validatedRequest || !success || exporting) return;
+    const controller = new AbortController();
+    exportRequest.current = controller; setExporting(true); setExportMessage('');
+    try {
+      const path = await saveProgram({ programName: moduleName, controller: 'abb_rapid', motion: validatedRequest }, controller.signal);
+      if (exportRequest.current === controller) setExportMessage(path ? `已保存：${path}` : '已取消保存');
+    } catch (cause) {
+      if (exportRequest.current === controller && !controller.signal.aborted) setExportMessage(cause instanceof Error ? cause.message : '模块导出失败');
+    } finally { if (exportRequest.current === controller) { exportRequest.current = null; setExporting(false); } }
+  }
+  useEffect(() => {
+    if (!isNativeUiSmoke()) return;
+    const start = forwardKinematics(model, model.readyJoints).pose;
+    const request: PlanRequest = { modelId, startJoints: model.readyJoints, target: { position: [start.position[0], 30, start.position[2]], orientation: start.orientation }, speedMmPerSecond: 100 };
+    void runNativeUiSmoke(request, result => { setJointDraft(strings(model.readyJoints)); setResult(result); setValidatedRequest(request); setProgress(1); });
+    // This runs only for the installed-app CI smoke flag, once per WebView.
+  }, []);
+  useEffect(() => () => { exportRequest.current?.abort(); currentRequest.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
   useEffect(() => {
     if (!playing || !success) return;
     const started = performance.now();
@@ -176,7 +203,7 @@ export default function App() {
     <header className="topbar">
       <a className="brand" href="./" aria-label="Emulation 首页"><span className="brand-symbol"><Icon name="cube" size={25} /></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
       <div className="header-divider"/><div className="project-label">运动工作台<span>/</span><strong>IRB 1100</strong></div>
-      <div className="header-right"><span className="local-badge"><i/>本地计算</span><span className="version">v0.1.0</span></div>
+      <div className="header-right"><span className="local-badge"><i/>{nativeDesktop ? 'Rust 原生引擎' : '浏览器参考引擎'}</span><span className="version">v0.2.0</span></div>
     </header>
     <main className="workspace">
       <section className="scene-panel" aria-label="机器人视口">
@@ -191,7 +218,7 @@ export default function App() {
         <div className="pose-strip"><section className="tcp-readout" aria-label="当前 TCP"><span className="strip-title">当前 TCP <small>mm</small></span><div>{axes.map((axis, i) => <span key={axis} data-axis={axis}><i className={`axis-${axis.toLowerCase()}`}>{axis}</i><strong>{currentPose.position[i].toFixed(2)}</strong></span>)}</div></section><div className="joint-readout" aria-label="当前关节姿态"><span className="strip-title">关节姿态 <small>deg</small></span><div>{displayJoints.map((value, i) => <span key={i}><small>J{i + 1}</small><strong>{value.toFixed(1)}°</strong></span>)}</div></div></div>
       </section>
 
-      <aside className="control-panel"><form onSubmit={solve} noValidate>
+      <aside className="control-panel"><form onSubmit={solve} noValidate><fieldset disabled={exporting} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="panel-title"><div className="section-number">01</div><h2>机器人与起点</h2></div>
         <label className="field-label" htmlFor="robot-model">机器人型号</label>
         <select id="robot-model" aria-label="机器人型号" value={modelId} onChange={e => changeModel(e.target.value as RobotId)}>{Object.values(ROBOT_MODELS).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
@@ -213,9 +240,9 @@ export default function App() {
         {success && <div className="result-success" aria-live="polite"><div className="success-heading"><span><Icon name="check" size={16}/></span><div><h3>运动学可达</h3><p>采样路径通过 · {success.automaticOrientation ? '自动选择方向' : '保持指定方向'}</p></div></div><div className="configuration"><span>robconf</span><code>[{success.selected.configuration.join(', ')}]</code></div><dl className="metrics"><div><dt>位置误差</dt><dd>{numberText(success.selected.positionErrorMm, 4)}<small> mm</small></dd></div><div><dt>姿态误差</dt><dd>{numberText(success.selected.orientationErrorDeg, 4)}<small> °</small></dd></div><div><dt>路径长度</dt><dd>{numberText(success.lengthMm)}<small> mm</small></dd></div><div><dt>检查采样</dt><dd>{success.path.length}<small> 点</small></dd></div></dl><div className="result-orientation"><span>目标四元数 [w, x, y, z]</span><code>{success.selected.pose.orientation.map(v => v.toFixed(5)).join(' · ')}</code></div>{success.warnings.map((warning, i) => <p className="result-warning" key={i}>{warning}</p>)}</div>}
         {success && success.solutions.length > 1 && <details className="details-panel"><summary>其他端点解 <span>{success.solutions.length - 1}</span></summary><p className="field-hint">仅为端点逆解参考，未作为本次直线路径验证。</p>{success.solutions.filter(item => item.id !== success.selected.id).slice(0, 12).map(item => <div className="endpoint-solution" key={item.id}><code>[{item.configuration.join(', ')}]</code><span>{item.joints.map(n => numberText(n, 1)).join(' / ')}°</span></div>)}</details>}
         <details className="details-panel dh-details"><summary>DH 参数与关节范围<Icon name="info" size={14}/></summary><p className="field-hint">标准 DH · 长度 mm · 角度 deg</p><div className="table-scroll"><table><thead><tr><th>轴</th><th>a</th><th>d</th><th>α</th><th>θ 偏置</th></tr></thead><tbody>{model.dh.map((row, i) => <tr key={i}><th>J{i + 1}</th><td>{row.aMm}</td><td>{row.dMm}</td><td>{row.alphaDeg}°</td><td>{row.thetaOffsetDeg}°</td></tr>)}</tbody></table></div><div className="joint-limits">{model.limits.map((limit, i) => <span key={i}>J{i + 1} <strong>{limit.minDeg}° ~ {limit.maxDeg}°</strong></span>)}</div></details>
-      </form></aside>
+      </fieldset></form></aside>
 
-      <section className="code-panel" aria-label="RAPID 输出"><div className="code-heading"><div><Icon name="code" size={18}/><h2>RAPID 指令</h2><span className="code-language">MoveL</span></div><button className="copy-button" disabled={!code || busy} onClick={copy}><Icon name={copyState === '已复制' ? 'check' : 'copy'} size={14}/>{copyState || '复制 MoveL'}</button></div>{code ? <textarea className="rapid-code" aria-label="RAPID MoveL 指令" spellCheck={false} readOnly value={code}/> : <div className="code-empty"><span className="line-number">01</span><code><span>//</span> 设置起始姿态与目标，求解后在这里查看 MoveL 指令。</code></div>}<div className="code-footer"><span><span className={`result-dot ${success ? 'ready' : ''}`}/>{success ? '已生成当前目标的运动指令' : busy ? '正在检查可达性与路径连续性' : '等待目标求解'}</span><span>ABB RAPID · tool0 · wobj0</span></div></section>
+      <section className="code-panel" aria-label="RAPID 输出"><div className="code-heading"><div><Icon name="code" size={18}/><h2>RAPID 指令</h2><span className="code-language">MoveL</span></div><button className="copy-button" disabled={!code || busy} onClick={copy}><Icon name={copyState === '已复制' ? 'check' : 'copy'} size={14}/>{copyState || '复制 MoveL'}</button></div>{code ? <textarea className="rapid-code" aria-label="RAPID MoveL 指令" spellCheck={false} readOnly value={code}/> : <div className="code-empty"><span className="line-number">01</span><code><span>//</span> 设置起始姿态与目标，求解后在这里查看 MoveL 指令。</code></div>}<div className="module-export-controls" style={{ padding: '12px 18px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid #eceef1' }}><label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>模块名称<input aria-label="程序模块名称" value={moduleName} maxLength={32} disabled={exporting} onChange={event => { setModuleName(event.target.value); setExportMessage(''); }} style={{ width: 155, height: 30, border: '1px solid #e2e5e9', borderRadius: 5, padding: '0 8px' }}/></label><select aria-label="程序控制器" defaultValue="abb_rapid" style={{ width: 180, height: 30 }} disabled={exporting}><option value="abb_rapid">ABB · RAPID (.mod)</option><option disabled>FANUC · LS（待适配）</option><option disabled>KUKA · KRL（待适配）</option><option disabled>安川 · INFORM（待适配）</option></select><button className="copy-button" onClick={exportModule} disabled={!nativeDesktop || !success || busy || exporting}>{exporting ? '正在导出…' : '导出 .mod 模块'}</button><span style={{ width: '100%', fontSize: 10, color: '#7c8592', overflowWrap: 'anywhere' }} role="status">{exportMessage || (nativeDesktop ? '模块会检查实际起始关节；不匹配时停止，不自动移动到起点。' : '浏览器版用于参考与回归比较；完整模块请使用桌面客户端导出。')}</span></div><div className="code-footer"><span><span className={`result-dot ${success ? 'ready' : ''}`}/>{success ? '已生成当前目标的运动指令' : busy ? '正在检查可达性与路径连续性' : '等待目标求解'}</span><span>ABB RAPID · tool0 · wobj0</span></div></section>
     </main>
     <footer className="app-footer"><span><Icon name="info" size={13}/>标称参数仿真，未做碰撞与控制器动态验证。</span><span>世界坐标 Z 向上 · 长度 mm · 角度 deg</span></footer>
   </div>;
