@@ -3,11 +3,17 @@ import RobotScene from './scene/RobotScene';
 import RobotCatalogDialog from './catalog/RobotCatalogDialog';
 import RobotInspector from './workspace/RobotInspector';
 import TargetInspector from './workspace/TargetInspector';
-import ProgramPanel from './workspace/ProgramPanel';
+import ProgramPanel, { type ProgramCodeWorkspace } from './workspace/ProgramPanel';
 import { useProgram } from './workspace/useProgram';
 import { useWorkspace, type DangerZoneDraft, type WorkspaceSelection, type WorkspaceView } from './workspace/useWorkspace';
 import type { ProgramPoint, ProgramSnapshot } from './workspace/program';
-import { getProgramProfile } from './workspace/program-templates';
+import { getProgramProfile, renderProgramTemplate } from './workspace/program-templates';
+import { useDocuments } from './programming/useDocuments';
+import { useSourceAnalysis } from './programming/useSourceAnalysis';
+import { loadLanguageDefinition } from './programming/registry';
+import { PROGRAM_DIALECTS, PROGRAMMING_MODEL_IDS, getModelProgrammingProfile, getProgramDialect } from './programming/profiles';
+import type { RobotLanguageDefinition } from './programming/types';
+import type { SourceInsertion } from './programming/RobotCodeEditor';
 import { planProgramRun, sampleProgramRun, sampleJointPositioning, ProgramRunError } from './workspace/program-runner';
 import { buildGenericChain } from './robot/generic-motion-chain';
 import { solveGenericMotion } from './robot/generic-motion';
@@ -25,6 +31,7 @@ import { getRobotModel } from './robot/model';
 import { formatMoveL, normalizeOrientation } from './robot/rapid';
 import type { IKSolution, JointAngles, MotionSample, PlanRequest, PlanSuccess, Pose, Quaternion, RobotId, Vec3 } from './robot/types';
 import './styles.css';
+import './App.css';
 
 type View = 'iso' | 'front' | 'top';
 type CollisionStatus = 'pending' | 'hit' | 'uncertain' | 'clear' | 'error' | 'off';
@@ -35,6 +42,14 @@ type Segment = { pointId: string; pointRevision: number; modelId: string } & (
 interface ExecutionStatus { phase: 'idle' | 'planning' | 'running' | 'positioning' | 'error' | 'complete'; message: string; pointId: string | null; line: number; cycle: number }
 const axes = ['X', 'Y', 'Z'] as const;
 const EMPTY_PATH: MotionSample[] = [];
+const PROGRAM_MODE_KEY = 'emulation:program-modes:v1';
+function readProgramModes(): Record<string, 'teach' | 'code'> {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(PROGRAM_MODE_KEY) ?? '{}');
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+    return Object.fromEntries(Object.entries(stored).filter(([key, value]) => PROGRAMMING_MODEL_IDS.includes(key) && (value === 'teach' || value === 'code')));
+  } catch { return {}; }
+}
 const numberText = (value: number, digits = 6) => Number(value.toFixed(digits)).toString();
 const strings = (values: readonly number[]) => values.map(value => numberText(value));
 function finite(values: readonly string[]): number[] {
@@ -76,6 +91,23 @@ export default function App() {
   const [catalogDraft, setCatalogDraft] = useState<string[]>([]);
   const [speed, setSpeed] = useState(100);
   const program = useProgram(activeModelId);
+  const documents = useDocuments(activeModelId);
+  const documentsRef = useRef(documents); documentsRef.current = documents;
+  const activeModelRef = useRef(activeModelId); activeModelRef.current = activeModelId;
+  const [programModes, setProgramModes] = useState(readProgramModes);
+  const programMode = programModes[activeModelId] ?? 'teach';
+  const [languageState, setLanguageState] = useState<{ key: string; loadedKey: string; definition: RobotLanguageDefinition | null; error: string }>({ key: '', loadedKey: '', definition: null, error: '' });
+  const [languageRetry, setLanguageRetry] = useState(0);
+  const languageKey = activeModelId + ':' + documents.project.dialectId;
+  const sourceLanguage = languageState.loadedKey.startsWith(activeModelId + ':') ? languageState.definition : null;
+  const sourceLanguagePending = languageState.loadedKey !== languageKey;
+  const [sourceBusy, setSourceBusy] = useState(false), [sourceMessage, setSourceMessage] = useState('');
+  const sourceOperation = useRef<{ modelId: string } | null>(null);
+  const [analysisPaused, setAnalysisPaused] = useState(false);
+  const [closeState, setCloseState] = useState<'saving' | 'error' | null>(null);
+  const [closeError, setCloseError] = useState('');
+  const closeAttempt = useRef({ busy: false, allow: false });
+  const alive = useRef(true);
   const profile = getProgramProfile(activeModelId);
   const genericChain = useMemo(() => {
     try { return genericModel ? { chain: buildGenericChain(genericModel), error: '' } : null; }
@@ -83,6 +115,7 @@ export default function App() {
   }, [genericModel]);
   const workspace = useWorkspace({ modelKey: activeModelId, pathIds: program.paths.map(path => path.id), targetIds: program.points.map(point => point.id) });
   const { activeView, leftCollapsed, selection, zones, selectedZone, selectedZoneId, zoneConfiguration } = workspace;
+  const sourceAnalysis = useSourceAnalysis(documents.project, programMode === 'code' && activeView === 'program' && documents.ready && !analysisPaused);
   const selectedPoint = selection.kind === 'target' ? program.points.find(point => point.id === selection.id) ?? null : null;
   const selectedPath = selection.kind === 'path' ? program.paths.find(path => path.id === selection.id) ?? null : null;
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
@@ -157,6 +190,147 @@ export default function App() {
   const collisionKey = collisionRequest ? JSON.stringify(collisionRequest) : '';
   const collisionById = useMemo(() => new Map(collisionView.items.map(item => [item.id, item])), [collisionView.items]);
   const code = activeSegment?.kind === 'abb' ? formatMoveL(activeSegment.result.selected.pose, activeSegment.result.selected.configuration, activeSegment.request.speedMmPerSecond) : '';
+  const sourceReadOnly = sourceBusy || executing || closeState !== null || !documents.ready || sourceLanguagePending;
+  const draftStatusText = documents.draftStatus === 'saved' ? '草稿已保存' : documents.draftStatus === 'saving' ? '正在保存草稿…' : documents.draftStatus === 'pending' ? '草稿等待保存…' : documents.draftStatus === 'loading' ? '正在恢复草稿…' : '草稿保存失败';
+  const sourceStatus = [...new Set([languageState.key === languageKey && languageState.error ? '语言版本加载失败：' + languageState.error : sourceLanguagePending ? '正在加载本地语言版本…' : '', sourceMessage, documents.error, draftStatusText, documents.dirty ? '源码已修改' : ''].filter(Boolean))].join(' · ');
+
+  function changeProgramMode(next: 'teach' | 'code') {
+    if (sourceOperation.current || closeAttempt.current.busy) return;
+    if (next === 'code') { stopExecution(); clearSegment(); stopJog(); setJogEnabled(false); cancelInspections(); }
+    setProgramModes(current => ({ ...current, [activeModelId]: next }));
+  }
+  function sourceWritable() { return documents.ready && !sourceLanguagePending && !sourceOperation.current && !executionRun.current && !closeAttempt.current.busy; }
+  function beginSourceOperation(message: string) {
+    if (!sourceWritable()) return null;
+    const operation = { modelId: activeModelId }; sourceOperation.current = operation;
+    setSourceBusy(true); setSourceMessage(message); return operation;
+  }
+  function currentSourceOperation(operation: { modelId: string }) { return alive.current && sourceOperation.current === operation && activeModelRef.current === operation.modelId; }
+  function finishSourceOperation(operation: { modelId: string }) {
+    if (sourceOperation.current === operation) { sourceOperation.current = null; if (alive.current) setSourceBusy(false); }
+  }
+  async function importSources() {
+    const operation = beginSourceOperation('正在选择源文件…'); if (!operation) return;
+    const owner = documents, sourceRevision = documents.project.sourceRevision, languageId = documents.project.languageId;
+    try {
+      const files = await (await import('./programming/source-io')).openSourceFiles(languageId);
+      if (!currentSourceOperation(operation)) return;
+      if (documentsRef.current.project.sourceRevision !== sourceRevision) { setSourceMessage('源码工程已改变，请重新导入。'); return; }
+      if (!files?.length) { setSourceMessage('已取消导入'); return; }
+      if (owner.importFiles(files)) setSourceMessage('已导入 ' + files.length + ' 个源文件。');
+    } catch (error) { if (currentSourceOperation(operation)) { owner.reportError(error); setSourceMessage('源文件导入失败'); } }
+    finally { finishSourceOperation(operation); }
+  }
+  async function exportSource() {
+    const file = documents.activeFile; if (!file) return;
+    const operation = beginSourceOperation('正在导出源文件…'); if (!operation) return;
+    const owner = documents, fileId = file.id, snapshot = { name: file.name, text: file.text }, languageId = documents.project.languageId;
+    try {
+      const result = await (await import('./programming/source-io')).saveSourceFile(languageId, snapshot);
+      if (!currentSourceOperation(operation)) return;
+      if (!result) { setSourceMessage('已取消导出'); return; }
+      if (result.outcome === 'saved') {
+        owner.markFileSaved(fileId, { name: result.name, text: snapshot.text });
+        setSourceMessage('源文件已保存：' + (result.path ?? result.name));
+      } else setSourceMessage('已请求下载 ' + result.name + '；浏览器未确认文件保存，源码修改标记保持原状。');
+    } catch (error) { if (currentSourceOperation(operation)) { owner.reportError(error); setSourceMessage('源文件导出失败'); } }
+    finally { finishSourceOperation(operation); }
+  }
+  async function saveSourceDraft() {
+    const operation = beginSourceOperation('正在保存草稿…'); if (!operation) return;
+    const owner = documents;
+    try { const saved = await owner.save(); if (currentSourceOperation(operation)) setSourceMessage(saved ? '草稿已保存' : '草稿保存失败；正文仍保留在当前窗口。'); }
+    catch (error) { if (currentSourceOperation(operation)) owner.reportError(error); }
+    finally { finishSourceOperation(operation); }
+  }
+  function generateSourceFromTeach(): boolean {
+    if (!sourceWritable() || !documents.activeFile) return false;
+    try {
+      const file = documents.activeFile, separator = /\r\n|\n|\r/.exec(file.text)?.[0] ?? '\n';
+      const text = (file.text.startsWith('\ufeff') ? '\ufeff' : '') + renderProgramTemplate(activeModelId, program.points).code.replace(/\n/g, separator);
+      if (text === file.text) { setSourceMessage('当前文件已与示教模板一致。'); return false; }
+      const saved = documents.updateText(file.id, text); if (saved) setSourceMessage('已用示教点生成 ' + file.name + '；可在编辑器中撤销。'); return saved;
+    } catch (error) { documents.reportError(error); return false; }
+  }
+  async function insertSourcePose(input: { fileId: string; source: string; from: number; to: number }): Promise<SourceInsertion> {
+    if (!sourceWritable() || captureDisabledReason || !currentPose) throw new Error(captureDisabledReason || '当前不能插入机器人姿态。');
+    const modelKey = activeModelId, owner = documents, file = owner.files.find(item => item.id === input.fileId), revision = owner.project.sourceRevision;
+    if (!file || file.text !== input.source) throw new Error('源码文件已改变，请重试。');
+    const captured: ProgramSnapshot = { pose: { position: [...currentPose.position], orientation: [...currentPose.orientation] }, joints: [...visibleJoints], configuration: genericModel ? null : [...configuration!.configuration!] as ProgramSnapshot['configuration'], speedMmPerSecond: speed };
+    const module = await import('./programming/source-insertion');
+    if (!alive.current || activeModelRef.current !== modelKey || documentsRef.current.project.sourceRevision !== revision || sourceOperation.current || executionRun.current || closeAttempt.current.busy) throw new Error('工程或机器人状态已改变，请重新插入姿态。');
+    return module.insertCurrentSourcePose(modelKey, input.source, input.from, input.to, captured);
+  }
+  function retrySourceAnalysis() { setAnalysisPaused(true); }
+  async function finishNativeClose(discard = false) {
+    if (!nativeDesktop || closeAttempt.current.busy) return;
+    closeAttempt.current.busy = true; setCloseState('saving'); setCloseError('');
+    try {
+      if (!discard && (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts())) {
+        setCloseError('部分型号的草稿未能保存。正文仍在当前窗口，可重试保存，或继续编辑并导出源文件。'); setCloseState('error'); return;
+      }
+      const window = (await import('@tauri-apps/api/window')).getCurrentWindow();
+      closeAttempt.current.allow = true;
+      await window.close();
+    } catch (error) {
+      closeAttempt.current.allow = false; setCloseError(error instanceof Error ? error.message : '关闭窗口失败'); setCloseState('error');
+    } finally { closeAttempt.current.busy = false; }
+  }
+  const codeWorkspace: ProgramCodeWorkspace | undefined = sourceLanguage && documents.ready ? {
+    language: sourceLanguage, files: documents.files, activeFileId: documents.project.activeFileId,
+    onActiveFileChange: id => documents.selectFile(id),
+    onTextChange: (id, text) => sourceWritable() && documents.updateText(id, text),
+    analysisByFile: sourceAnalysis.result.byFile, pendingFileIds: sourceAnalysis.pending || analysisPaused ? documents.files.map(file => file.id) : [],
+    analysisError: sourceAnalysis.error, onRetryAnalysis: retrySourceAnalysis,
+    readOnly: sourceReadOnly, status: sourceStatus, dirty: documents.dirty,
+    onNewFile: name => { if (sourceWritable()) documents.addFile(name); },
+    onRenameFile: (id, name) => { if (sourceWritable()) documents.renameFile(id, name); },
+    onRemoveFile: id => { if (sourceWritable()) documents.removeFile(id); },
+    onImportFiles: () => void importSources(), onExport: () => void exportSource(), onSave: () => void saveSourceDraft(),
+    onGenerateFromTeach: generateSourceFromTeach, onInsertCurrent: insertSourcePose,
+    captureDisabledReason: sourceReadOnly ? '请等待当前文件操作完成。' : captureDisabledReason,
+    runDisabledReason: '当前语言尚无源码执行器；示教模式可运行已记录轨迹。',
+    runStatus: sourceAnalysis.error ? '源码检查失败：' + sourceAnalysis.error : undefined,
+    toolbar: <><label className="source-language-select">语言版本<select aria-label="控制器语言版本" value={documents.project.dialectId} disabled={sourceBusy || executing || closeState !== null || !documents.ready} onChange={event => { if (!sourceOperation.current && !executionRun.current && !closeAttempt.current.busy) documents.setDialect(event.target.value); }}>{PROGRAM_DIALECTS.filter(dialect => getModelProgrammingProfile(activeModelId).dialectIds.includes(dialect.id)).map(dialect => <option key={dialect.id} value={dialect.id}>{dialect.name} · {dialect.referenceVersion}</option>)}</select></label>{documents.draftStatus === 'error' && <button type="button" disabled={sourceBusy} onClick={() => void saveSourceDraft()}>重试保存草稿</button>}{languageState.key === languageKey && languageState.error && <button type="button" onClick={() => setLanguageRetry(value => value + 1)}>重试语言加载</button>}</>,
+  } : undefined;
+
+  useEffect(() => {
+    try { localStorage.setItem(PROGRAM_MODE_KEY, JSON.stringify(programModes)); } catch { /* A UI preference must not block source editing. */ }
+  }, [programModes]);
+  useEffect(() => {
+    if (programMode !== 'code' || activeView !== 'program' || !documents.ready || documents.project.revision !== 0 || documents.files.length) return;
+    try { documents.addFile('EMULATE.' + getProgramDialect(documents.project.dialectId).extensions[0], renderProgramTemplate(activeModelId, program.points).code); }
+    catch (error) { documents.reportError(error); }
+  }, [programMode, activeView, documents.ready, documents.project.revision, documents.files.length, activeModelId, program.points]);
+  useEffect(() => {
+    if (programMode !== 'code' || activeView !== 'program' || !documents.ready) return;
+    if (languageState.loadedKey === languageKey && languageState.definition) return;
+    let cancelled = false;
+    setLanguageState(current => ({ key: languageKey, loadedKey: current.loadedKey, definition: current.definition, error: '' }));
+    void loadLanguageDefinition(documents.project.dialectId).then(definition => {
+      if (!cancelled) setLanguageState({ key: languageKey, loadedKey: languageKey, definition, error: '' });
+    }, error => { if (!cancelled) setLanguageState(current => ({ ...current, key: languageKey, error: error instanceof Error ? error.message : '本地语言支持加载失败' })); });
+    return () => { cancelled = true; };
+  }, [programMode, activeView, documents.ready, languageKey, languageRetry]);
+  useEffect(() => {
+    if (!analysisPaused) return;
+    const timer = window.setTimeout(() => setAnalysisPaused(false), 0); return () => window.clearTimeout(timer);
+  }, [analysisPaused]);
+  useEffect(() => {
+    if (!nativeDesktop) return;
+    let cancelled = false, unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/window').then(async module => {
+      const detach = await module.getCurrentWindow().onCloseRequested(async event => {
+        if (closeAttempt.current.allow) { closeAttempt.current.allow = false; return; }
+        if (!documentsRef.current.hasPendingDrafts()) return;
+        event.preventDefault();
+        if (!closeAttempt.current.busy) await finishNativeClose();
+      });
+      if (cancelled) detach(); else unlisten = detach;
+    }).catch(error => { if (!cancelled) setSourceMessage('未能启用关闭前草稿保存：' + (error instanceof Error ? error.message : String(error))); });
+    return () => { cancelled = true; unlisten?.(); };
+  }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; sourceOperation.current = null; }; }, []);
 
   function writeBodyPose(joints: JointAngles) {
     if (genericModel) { setCatalogJoints([...joints]); setCatalogDraft(strings(joints)); }
@@ -210,6 +384,8 @@ export default function App() {
     else { const joints = kind === 'ready' ? model.readyJoints : model.homeJoints; setNativeJoints([...joints]); setJointDraft(strings(joints)); }
   }
   function selectCatalogModel(loaded: LoadedCatalogModel) {
+    if (sourceOperation.current || closeState !== null) { if (loaded.kind === 'urdf') loaded.dispose(); return; }
+    activeModelRef.current = loaded.entry.id; setSourceMessage('');
     stopExecution(false); setPointMenu(null);
     stopJog(); clearSegment(false); cancelInspections(); setJogEnabled(false); setSelectedRows([]); setMessage('');
     if (loaded.kind === 'bundled') {
@@ -283,7 +459,7 @@ export default function App() {
     else if (!report) setExecution({ phase: 'idle', message: '', pointId: null, line: 0, cycle: 0 });
   }
   async function runProgram() {
-    if (runDisabledReason || executionRun.current) return;
+    if (programMode === 'code' || runDisabledReason || executionRun.current) return;
     const start = [...displayJoints] as JointAngles;
     clearSegment(); stopJog(); cancelInspections(); setPointMenu(null); setZoneDragging(false);
     workspace.setActiveView('scene');
@@ -432,13 +608,13 @@ export default function App() {
     return collisionById.get(id)?.zones.filter(zone => (uncertain ? zone.uncertainLinks : zone.collidingLinks).length).map(zone => zone.zoneId) ?? [];
   }
   return <div className="app-shell">
-    <header className="topbar">
+    <header className="topbar" inert={closeState !== null}>
       <a className="brand" href="./" aria-label="Emulation 首页"><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
-      <div className="header-divider"/><div className="project-label"><span className="project-context">运动工作台</span><span className="project-separator">/</span><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={exporting || executing} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span></button></div>
+      <div className="header-divider"/><div className="project-label"><span className="project-context">运动工作台</span><span className="project-separator">/</span><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={exporting || executing || sourceBusy} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span></button></div>
       <div className="workspace-view-switch" aria-label="工作区视图">{(['scene', 'program'] as const).map(item => <button key={item} type="button" aria-pressed={activeView === item} className={activeView === item ? 'selected' : ''} onClick={() => changeWorkspaceView(item)}>{item === 'scene' ? '场景' : '程序'}</button>)}</div>
       <div className="header-right"><span className="version">v0.2.0</span></div>
     </header>
-    <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed}>
+    <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={closeState !== null}>
       <aside className="object-panel" aria-label="场景对象">
         <div className="object-panel-header"><h2>场景对象</h2><button type="button" className="icon-button" aria-label={leftCollapsed ? '展开左侧面板' : '折叠左侧面板'} onClick={() => workspace.setLeftCollapsed(value => !value)}>{leftCollapsed ? '›' : '‹'}</button></div>
         <div className="object-panel-content" aria-hidden={leftCollapsed} inert={leftCollapsed}>
@@ -524,11 +700,18 @@ export default function App() {
           captureDisabledReason={captureDisabledReason} onInsertCurrent={captureCurrent} onSelectionChange={setSelectedRows}
           onSelectTarget={id => chooseObject({ kind: 'target', id })} onConvertToPath={convertToPath} onRemovePoints={removePoints}
           running={executing} runDisabledReason={runDisabledReason} runStatus={execution.message} onRun={() => void runProgram()} onStop={() => stopExecution()}
-          loop={loop} onLoopChange={setLoop} executingPointId={execution.phase === 'running' ? execution.pointId : null}/>
+          loop={loop} onLoopChange={setLoop} executingPointId={execution.phase === 'running' ? execution.pointId : null}
+          mode={programMode} onModeChange={changeProgramMode} codeWorkspace={codeWorkspace}
+          codeLoadingError={!documents.ready && documents.error ? documents.error : languageState.key === languageKey ? languageState.error : ''}
+          onRetryCodeLoading={() => { if (!documents.ready) void documents.retry(); else setLanguageRetry(value => value + 1); }}/>
       </section>
     </main>
     {pointMenu && <div className="point-action-menu" role="menu" aria-label="目标点右键菜单" style={{ left: pointMenu.x, top: pointMenu.y }} onPointerDown={event => event.stopPropagation()}><button autoFocus type="button" role="menuitem" disabled={executing || busy || exporting || jogStatus.pending || jogDragging} title="定位到记录姿态" onClick={() => moveToPoint(pointMenu.id)}>移动至此</button><small>仿真定位 · 不验证移动路径</small></div>}
     {catalogOpen && <RobotCatalogDialog currentModelId={activeModelId} onSelect={selectCatalogModel} onClose={() => setCatalogOpen(false)}/>}
+    {closeState && <div className="source-close-backdrop"><section className="source-close-dialog" role="dialog" aria-modal="true" aria-label="关闭前保存草稿" onKeyDown={event => {
+      if (event.key === 'Escape' && closeState === 'error') { event.preventDefault(); setCloseState(null); }
+      if (event.key === 'Tab') { const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')], first = buttons[0], last = buttons.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
+    }}><h2>{closeState === 'saving' ? '正在保存草稿' : '草稿尚未保存'}</h2><p role="status">{closeState === 'saving' ? '正在保存各型号的本地草稿，完成后关闭窗口。' : closeError}</p>{closeState === 'error' && <div className="source-close-actions"><button autoFocus type="button" onClick={() => setCloseState(null)}>继续编辑</button><button type="button" onClick={() => void finishNativeClose()}>重试保存并关闭</button><button type="button" className="source-discard" onClick={() => void finishNativeClose(true)}>放弃未保存草稿并关闭</button></div>}</section></div>}
     <footer className="app-footer"><span><Icon name="info" size={13}/>{genericModel ? '基于源 URDF 的直线运动仿真；品牌模板未完成控制器验证。' : '程序运行前检查全部运动段；尚未检查整段碰撞。'}</span><span>世界坐标 Z 向上 · 长度 mm · 角度 deg</span></footer>
   </div>;
 }

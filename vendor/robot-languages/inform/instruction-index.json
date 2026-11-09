@@ -1,0 +1,596 @@
+{
+  "schemaVersion": 1,
+  "title": "YRC1000 INFORM LANGUAGE",
+  "manual": "178649-1CD / RE-CKI-A466 revision 10",
+  "source": "https://knowledge.motoman.com/hc/en-us/articles/4407425435927-YRC1000-INFORM-LANGUAGE",
+  "pdfUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD",
+  "reviewed": "2026-11-09",
+  "pdfSha256": "514a236c5a0f7c768e1873560bd02b4a80af75925b29e632b6ef148b1c02b7b1",
+  "entries": [
+    {
+      "name": "DOUT",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=46"
+    },
+    {
+      "name": "DIN",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=50"
+    },
+    {
+      "name": "WAIT",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=54"
+    },
+    {
+      "name": "PULSE",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=59"
+    },
+    {
+      "name": "AOUT",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=64"
+    },
+    {
+      "name": "ARATION",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=65"
+    },
+    {
+      "name": "ARATIOF",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=69"
+    },
+    {
+      "name": "ANTOUT",
+      "category": "2.1 I/O Instructions",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=70"
+    },
+    {
+      "name": "JUMP",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=75"
+    },
+    {
+      "name": "CALL",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=79"
+    },
+    {
+      "name": "TIMER",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=94"
+    },
+    {
+      "name": "*(LABEL)",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=95"
+    },
+    {
+      "name": "’(COMMENT)",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=96"
+    },
+    {
+      "name": "RET",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=97"
+    },
+    {
+      "name": "NOP",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=98"
+    },
+    {
+      "name": "PAUSE",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=101"
+    },
+    {
+      "name": "CWAIT",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=102"
+    },
+    {
+      "name": "MSG",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=103"
+    },
+    {
+      "name": "INPUT",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=104"
+    },
+    {
+      "name": "ADVINIT",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=106"
+    },
+    {
+      "name": "ADVSTOP",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=107"
+    },
+    {
+      "name": "PRINT",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=108"
+    },
+    {
+      "name": "CLS",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=112"
+    },
+    {
+      "name": "ABORT",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=113"
+    },
+    {
+      "name": "SETUALM",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=114"
+    },
+    {
+      "name": "DIALOG",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=116"
+    },
+    {
+      "name": "SWITCH",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=120"
+    },
+    {
+      "name": "CASE",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=120"
+    },
+    {
+      "name": "DEFAULT",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=120"
+    },
+    {
+      "name": "WHILE",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=125"
+    },
+    {
+      "name": "FOR",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=125"
+    },
+    {
+      "name": "IFTHEN",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=127"
+    },
+    {
+      "name": "ELSEIF",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=127"
+    },
+    {
+      "name": "ELSE",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=127"
+    },
+    {
+      "name": "SETTM",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=132"
+    },
+    {
+      "name": "LATESTJOB",
+      "category": "2.2 Control Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=134"
+    },
+    {
+      "name": "CLEAR",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=135"
+    },
+    {
+      "name": "INC",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=139"
+    },
+    {
+      "name": "DEC",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=141"
+    },
+    {
+      "name": "SET",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=141"
+    },
+    {
+      "name": "ADD",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=152"
+    },
+    {
+      "name": "SUB",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=152"
+    },
+    {
+      "name": "MUL",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=166"
+    },
+    {
+      "name": "DIV",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=173"
+    },
+    {
+      "name": "CNVRT",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=180"
+    },
+    {
+      "name": "AND",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=180"
+    },
+    {
+      "name": "OR",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=180"
+    },
+    {
+      "name": "NOT",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=187"
+    },
+    {
+      "name": "XOR",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=189"
+    },
+    {
+      "name": "MFRAME",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=191"
+    },
+    {
+      "name": "SETE",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=195"
+    },
+    {
+      "name": "GETE",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=198"
+    },
+    {
+      "name": "GETS",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=200"
+    },
+    {
+      "name": "SQRT",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=207"
+    },
+    {
+      "name": "SIN",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=209"
+    },
+    {
+      "name": "COS",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=211"
+    },
+    {
+      "name": "ATAN",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=213"
+    },
+    {
+      "name": "MULMAT",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=215"
+    },
+    {
+      "name": "INVMAT",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=216"
+    },
+    {
+      "name": "GETPOS",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=218"
+    },
+    {
+      "name": "VAL",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=220"
+    },
+    {
+      "name": "VAL2STR",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=223"
+    },
+    {
+      "name": "ASC",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=225"
+    },
+    {
+      "name": "CHR$",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=227"
+    },
+    {
+      "name": "MID$",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=229"
+    },
+    {
+      "name": "LEN",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=232"
+    },
+    {
+      "name": "CAT$",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=234"
+    },
+    {
+      "name": "STRSTR",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=236"
+    },
+    {
+      "name": "GETARG",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=238"
+    },
+    {
+      "name": "GETNAME",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=240"
+    },
+    {
+      "name": "SETFILE",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=242"
+    },
+    {
+      "name": "GETFILE",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=245"
+    },
+    {
+      "name": "SETREG",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=247"
+    },
+    {
+      "name": "GETREG",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=249"
+    },
+    {
+      "name": "GETPRM",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=252"
+    },
+    {
+      "name": "SETPRM",
+      "category": "2.3 Operating Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=254"
+    },
+    {
+      "name": "MOVJ",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=256"
+    },
+    {
+      "name": "MOVL",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=257"
+    },
+    {
+      "name": "MOVC",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=257"
+    },
+    {
+      "name": "MOVS",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=257"
+    },
+    {
+      "name": "IMOV",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=300"
+    },
+    {
+      "name": "SPEED",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=308"
+    },
+    {
+      "name": "REFP",
+      "category": "2.4 Move Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=311"
+    },
+    {
+      "name": "SFTON",
+      "category": "2.5 Shift Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=318"
+    },
+    {
+      "name": "SFTOF",
+      "category": "2.5 Shift Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=321"
+    },
+    {
+      "name": "MSHIFT",
+      "category": "2.5 Shift Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=324"
+    },
+    {
+      "name": "SFTON3D",
+      "category": "2.5 Shift Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=327"
+    },
+    {
+      "name": "SFTOF3D",
+      "category": "2.5 Shift Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=328"
+    },
+    {
+      "name": "IF",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=332"
+    },
+    {
+      "name": "UNTIL",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=344"
+    },
+    {
+      "name": "ENWAIT",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=347"
+    },
+    {
+      "name": "DIALSB",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=349"
+    },
+    {
+      "name": "IFEXPRESS",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=352"
+    },
+    {
+      "name": "FOREXPRESS",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=353"
+    },
+    {
+      "name": "LOGICEXP",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=354"
+    },
+    {
+      "name": "RELEXPR",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=354"
+    },
+    {
+      "name": "TRAP",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=368"
+    },
+    {
+      "name": "+SFTON3D",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=370"
+    },
+    {
+      "name": "+SFT",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=370"
+    },
+    {
+      "name": "CAPTURE",
+      "category": "2.6 Instruction Which Adheres to an Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=376"
+    },
+    {
+      "name": "ARCON",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=377"
+    },
+    {
+      "name": "ARCOF",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=381"
+    },
+    {
+      "name": "VWELD",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=386"
+    },
+    {
+      "name": "AWELD",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=388"
+    },
+    {
+      "name": "ARCSET",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=390"
+    },
+    {
+      "name": "WVON",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=394"
+    },
+    {
+      "name": "WVOF",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=398"
+    },
+    {
+      "name": "ARCCTS",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=401"
+    },
+    {
+      "name": "ARCCTE",
+      "category": "2.7 Arc Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=403"
+    },
+    {
+      "name": "HAND",
+      "category": "2.8 Handling Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=409"
+    },
+    {
+      "name": "HSEN",
+      "category": "2.8 Handling Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=411"
+    },
+    {
+      "name": "TOOLON",
+      "category": "2.9 General-purpose Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=413"
+    },
+    {
+      "name": "TOOLOF",
+      "category": "2.9 General-purpose Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=414"
+    },
+    {
+      "name": "GUNCL",
+      "category": "2.10 Spot Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=415"
+    },
+    {
+      "name": "SPOT",
+      "category": "2.10 Spot Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=417"
+    },
+    {
+      "name": "STROKE",
+      "category": "2.10 Spot Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=420"
+    },
+    {
+      "name": "STRWAIT",
+      "category": "2.10 Spot Welding Instruction",
+      "url": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=421"
+    }
+  ]
+}

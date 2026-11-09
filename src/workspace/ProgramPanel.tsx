@@ -1,8 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import type { ProgramPath, ProgramPoint } from './program';
-import { formatProgramPoint, getProgramProfile, renderProgramTemplate } from './program-templates';
+import { formatProgramPoint, getProgramProfile } from './program-templates';
+import type { RobotCodeEditorProps } from '../programming/RobotCodeEditor';
 import './program-panel.css';
 
+const RobotCodeEditor = lazy(() => import('../programming/RobotCodeEditor'));
+export interface ProgramCodeWorkspace extends Omit<RobotCodeEditorProps, 'modelKey' | 'active'> {
+  runDisabledReason?: string | null;
+  runStatus?: string;
+  onRun?: () => void;
+}
 export interface ProgramPanelProps {
   /** Changing model resets row anchors and any open menu. */
   modelKey: string;
@@ -24,6 +31,11 @@ export interface ProgramPanelProps {
   loop?: boolean;
   onLoopChange?: (loop: boolean) => void;
   executingPointId?: string | null;
+  mode?: 'teach' | 'code';
+  onModeChange?: (mode: 'teach' | 'code') => void;
+  codeWorkspace?: ProgramCodeWorkspace;
+  codeLoadingError?: string;
+  onRetryCodeLoading?: () => void;
 }
 
 interface MenuPosition { x: number; y: number; afterPointId: string | null; sequence: number }
@@ -36,7 +48,8 @@ export default function ProgramPanel(props: ProgramPanelProps) {
 
 function ProgramPanelBody({ modelKey, active = true, points, paths, selectedPointIds, captureDisabledReason,
   onInsertCurrent, onSelectionChange, onSelectTarget, onConvertToPath, onRemovePoints,
-  running = false, runDisabledReason, runStatus, onRun, onStop, loop = false, onLoopChange, executingPointId }: ProgramPanelProps) {
+  running = false, runDisabledReason, runStatus, onRun, onStop, loop = false, onLoopChange, executingPointId,
+  mode, onModeChange, codeWorkspace, codeLoadingError, onRetryCodeLoading }: ProgramPanelProps) {
   const list = useRef<HTMLDivElement>(null);
   const menuElement = useRef<HTMLDivElement>(null);
   const rowElements = useRef(new Map<string, HTMLButtonElement>());
@@ -45,9 +58,13 @@ function ProgramPanelBody({ modelKey, active = true, points, paths, selectedPoin
   const returnFocus = useRef<HTMLElement | null>(null);
   const sequence = useRef(0);
   const [menu, setMenu] = useState<MenuPosition | null>(null);
+  const [localMode, setLocalMode] = useState<'teach' | 'code'>('teach');
+  const selectedMode = mode ?? localMode;
+  const codeMode = selectedMode === 'code';
+  const [codeOpened, setCodeOpened] = useState(codeMode);
   const profile = getProgramProfile(modelKey);
   const formattedPoints = useMemo(() => points.map(point => formatProgramPoint(modelKey, point)), [modelKey, points]);
-  const template = useMemo(() => renderProgramTemplate(modelKey, points), [modelKey, points]);
+  const codeRunReason = !codeWorkspace ? codeLoadingError || '正在加载本地语言支持…' : codeWorkspace.runDisabledReason || (!codeWorkspace.onRun ? '此语言的源码执行尚未覆盖；示教模式可运行已记录轨迹。' : null);
   const insertDisabledReason = running ? '仿真运行中，请停止后编辑程序。' : captureDisabledReason;
   const pathNames = useMemo(() => new Map(paths.map(path => [path.id, path.name])), [paths]);
   const requestedSelection = new Set(selectedPointIds);
@@ -76,6 +93,8 @@ function ProgramPanelBody({ modelKey, active = true, points, paths, selectedPoin
   }, [points, menu?.afterPointId]);
 
   useEffect(() => { if (!active) setMenu(null); }, [active]);
+  useEffect(() => { setMenu(null); if (codeMode) setCodeOpened(true); }, [codeMode]);
+  function changeMode(next: 'teach' | 'code') { setLocalMode(next); onModeChange?.(next); if (next === 'code') setCodeOpened(true); }
 
   useLayoutEffect(() => {
     if (!menu || !menuElement.current) return;
@@ -195,17 +214,18 @@ function ProgramPanelBody({ modelKey, active = true, points, paths, selectedPoin
   }
 
   return <section className="program-editor" aria-label={profile.brand === 'ABB' ? 'MoveL 程序编辑区' : `${profile.brand} ${profile.language} 程序编辑区`}
-    data-program-brand={profile.brand} data-program-language={profile.language}>
-    <header className="program-editor-header"><div><h2>运动程序</h2><span>{profile.brand} · {profile.language} · {points.length} 条 {profile.linearInstruction}</span></div><div className="program-editor-actions">
+    data-program-brand={profile.brand} data-program-language={profile.language} data-program-mode={selectedMode}>
+    <header className="program-editor-header"><div><h2>运动程序</h2><span>{codeMode ? codeWorkspace?.language.dialect ?? profile.language : profile.brand + ' · ' + profile.language + ' · ' + points.length + ' 条 ' + profile.linearInstruction}</span></div><div className="program-mode-switch" role="tablist" aria-label="程序编辑模式"><button type="button" role="tab" aria-selected={!codeMode} onClick={() => changeMode('teach')}>示教</button><button type="button" role="tab" aria-selected={codeMode} onClick={() => changeMode('code')}>代码</button></div>{!codeMode && <div className="program-editor-actions">
       <button type="button" onClick={() => onInsertCurrent(insertionPoint)} disabled={Boolean(insertDisabledReason)} title={insertDisabledReason ?? undefined}>＋ 插入当前姿态</button>
       <button type="button" onClick={() => onConvertToPath(selection)} disabled={running || !selection.length}>转为 Path</button>
-    </div></header>
-    {onRun && <div className="program-run-controls">
-      <button type="button" className="program-run-button" disabled={running || Boolean(runDisabledReason) || !points.length} title={runDisabledReason ?? undefined} onClick={onRun}>运行程序</button>
+    </div>}</header>
+    {(onRun || codeMode) && <div className="program-run-controls">
+      {codeMode ? <button type="button" className="program-run-button" disabled={running || Boolean(codeRunReason) || !codeWorkspace?.files.length || !codeWorkspace?.onRun} title={codeRunReason ?? undefined} onClick={codeWorkspace?.onRun}>运行源码</button> : <button type="button" className="program-run-button" disabled={running || Boolean(runDisabledReason) || !points.length} title={runDisabledReason ?? undefined} onClick={onRun}>运行程序</button>}
       <button type="button" className="program-stop-button" disabled={!running || !onStop} onClick={onStop}>停止运行</button>
-      {onLoopChange && <label><input type="checkbox" checked={loop} disabled={running} onChange={event => onLoopChange(event.target.checked)}/>循环运行</label>}
-      <span role="status" aria-label="程序运行状态">{runStatus || runDisabledReason || (running ? '正在运行仿真…' : '尚未运行')}</span>
+      {!codeMode && onLoopChange && <label><input type="checkbox" checked={loop} disabled={running} onChange={event => onLoopChange(event.target.checked)}/>循环运行</label>}
+      <span role="status" aria-label={codeMode ? '源码运行状态' : '程序运行状态'}>{codeMode ? codeWorkspace?.runStatus || codeRunReason || '源码尚未运行' : runStatus || runDisabledReason || (running ? '正在运行仿真…' : '尚未运行')}</span>
     </div>}
+    <div className="program-teach-view" hidden={codeMode} aria-hidden={codeMode} inert={codeMode}>
     <p className={`program-editor-hint${insertDisabledReason ? ' program-capture-unavailable' : ''}`} role={insertDisabledReason ? 'status' : undefined}>
       {insertDisabledReason || '右键插入当前姿态；按 Ctrl / ⌘ 多选，按 Shift 连选，再转为 Path。'}
     </p>
@@ -229,11 +249,6 @@ function ProgramPanelBody({ modelKey, active = true, points, paths, selectedPoin
         <span className={`program-path-tag${point.pathId ? '' : ' ungrouped'}`}>{point.pathId ? pathNames.get(point.pathId) ?? 'Path' : '未分组'}</span>
       </button>) : <div className="program-editor-empty"><span aria-hidden="true">＋</span><strong>从当前机器人姿态开始</strong><p>在这里右键，选择“插入当前姿态（{profile.linearInstruction}）”。</p></div>}
     </div>
-    <details className="program-template" data-program-template-language={profile.language}>
-      <summary>{profile.brand} {profile.language} 程序模板 <span>仿真预览</span></summary>
-      <p className="program-template-notice">{template.notice}</p>
-      <textarea className="program-template-code" aria-label={`${profile.brand} ${profile.language} 程序模板`} readOnly spellCheck={false} value={template.code}/>
-    </details>
     <footer className="program-editor-footer"><span>{selection.length ? `已选择 ${selection.length} 条 ${profile.linearInstruction}` : '未选择指令'}</span><span>Path 分组保留程序顺序</span></footer>
     {menu && active && <div ref={menuElement} className="program-action-menu" role="menu" aria-label="程序右键菜单" tabIndex={-1}
       style={{ left: menu.x, top: menu.y }} onKeyDown={menuKeyDown} onContextMenu={event => event.preventDefault()}>
@@ -244,5 +259,8 @@ function ProgramPanelBody({ modelKey, active = true, points, paths, selectedPoin
       {onRemovePoints && <><div className="program-menu-divider" role="separator"/><button type="button" role="menuitem" className="program-menu-delete" disabled={running || !selection.length}
         onClick={() => { closeMenu(); onRemovePoints(selection); }}>删除所选指令</button></>}
     </div>}
+    </div>
+    {codeOpened && codeWorkspace && <div className="program-code-view" hidden={!codeMode} aria-hidden={!codeMode} inert={!codeMode}><Suspense fallback={<p className="program-editor-hint" role="status">正在打开本地代码编辑器…</p>}><RobotCodeEditor {...codeWorkspace} modelKey={modelKey} active={active && codeMode} readOnly={running || codeWorkspace.readOnly}/></Suspense></div>}
+    {codeMode && !codeWorkspace && <div className="program-code-view"><p className="program-editor-hint" role={codeLoadingError ? 'alert' : 'status'}>{codeLoadingError || '正在加载本地语言支持…'}</p>{codeLoadingError && onRetryCodeLoading && <button type="button" className="copy-button" onClick={onRetryCodeLoading}>重试语言加载</button>}</div>}
   </section>;
 }

@@ -1,0 +1,995 @@
+{
+  "schemaVersion": 1,
+  "dialect": "YRC1000 expanded external JBI; 178649-1CD revision 10",
+  "scope": "117 main-manual instruction and attached-production entries; this matrix describes parsed forms, not all application options or controller execution.",
+  "examplesLicense": "MIT; independently written examples",
+  "entries": [
+    {
+      "name": "DOUT",
+      "production": "output-ref value; OT needs ON/OFF/INVERT/B, groups need B or D",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=46",
+      "legal": "DOUT OGU#(3) 321",
+      "illegal": "DOUT OT#(3) 321",
+      "remaining": []
+    },
+    {
+      "name": "DIN",
+      "production": "B/LB io-ref; D/LD user-group-ref",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=50",
+      "legal": "DIN D003 IGU#(3)",
+      "illegal": "DIN I003 IN#(3)",
+      "remaining": []
+    },
+    {
+      "name": "WAIT",
+      "production": "comparison or FOREXPRESS conditions [T=constant/I]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=54",
+      "legal": "WAIT FOREXPRESS IN#(3)=ON ANDEXP B003=2 T=1.5",
+      "illegal": "WAIT IN#(3)",
+      "remaining": []
+    },
+    {
+      "name": "PULSE",
+      "production": "OT# or group-ref group-value [T=value] [IFEXPRESS condition]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=59",
+      "legal": "PULSE OGH#(3) 5 T=0.2 IFEXPRESS B003=2",
+      "illegal": "PULSE OG#(3)",
+      "remaining": []
+    },
+    {
+      "name": "AOUT",
+      "production": "AO#(port) constant/I/LI",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=64",
+      "legal": "AOUT AO#(3) -1.2",
+      "illegal": "AOUT AO#(3) S003",
+      "remaining": []
+    },
+    {
+      "name": "ARATION",
+      "production": "AO# [BV=] [V=] [OFV=] [FINE DELAY=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=65",
+      "legal": "ARATION AO#(3) FINE DELAY=0.2",
+      "illegal": "ARATION AO#(3) FINE",
+      "remaining": []
+    },
+    {
+      "name": "ARATIOF",
+      "production": "AO#(port)",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=69",
+      "legal": "ARATIOF AO#(3)",
+      "illegal": "ARATIOF",
+      "remaining": []
+    },
+    {
+      "name": "ANTOUT",
+      "production": "AT# ON/OFF or AG# byte [ANT=/ANTDIS=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=70",
+      "legal": "ANTOUT AG#(3) B003 ANTDIS=5",
+      "illegal": "ANTOUT AT#(3) B003",
+      "remaining": []
+    },
+    {
+      "name": "JUMP",
+      "production": "local/indirect label or job target; label-search or JET entry/UF; optional condition",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=75",
+      "legal": "JUMP LABEL:LS003 LBLST=0 LBLDF=1 IF B003=2",
+      "illegal": "JUMP JET#(1)",
+      "remaining": []
+    },
+    {
+      "name": "CALL",
+      "production": "JOB/indirect/JET/QUE target [ENTRY=] [UF#] [condition] [(up to eight arguments)]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=79",
+      "legal": "CALL JET#(1) ENTRY=4 UF#(3) IF B003=2",
+      "illegal": "CALL JOB:WORK EXTRA",
+      "remaining": []
+    },
+    {
+      "name": "TIMER",
+      "production": "T=constant/I/LI",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=94",
+      "legal": "TIMER T=1.2",
+      "illegal": "TIMER T=S003",
+      "remaining": []
+    },
+    {
+      "name": "*(LABEL)",
+      "production": "asterisk followed by one label of up to eight characters",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=95",
+      "legal": "*LOCAL3",
+      "illegal": "*TOOLONGLABEL",
+      "remaining": []
+    },
+    {
+      "name": "’(COMMENT)",
+      "production": "apostrophe followed by at most 32 characters",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=96",
+      "legal": "'Original short note",
+      "illegal": "'123456789012345678901234567890123",
+      "remaining": []
+    },
+    {
+      "name": "RET",
+      "production": "optional scalar/string return value and condition",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=97",
+      "legal": "RET LS003 IF B003=2",
+      "illegal": "RET P003",
+      "remaining": []
+    },
+    {
+      "name": "NOP",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=98",
+      "legal": "NOP",
+      "illegal": "NOP B003",
+      "remaining": []
+    },
+    {
+      "name": "PAUSE",
+      "production": "optional IF/IFEXPRESS condition",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=101",
+      "legal": "PAUSE IFEXPRESS B003=2",
+      "illegal": "PAUSE B003",
+      "remaining": []
+    },
+    {
+      "name": "CWAIT",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=102",
+      "legal": "CWAIT",
+      "illegal": "CWAIT B003",
+      "remaining": []
+    },
+    {
+      "name": "MSG",
+      "production": "string literal or S/LS variable/array",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=103",
+      "legal": "MSG LS[3]",
+      "illegal": "MSG I003",
+      "remaining": []
+    },
+    {
+      "name": "INPUT",
+      "production": "global B/I/D/R destination",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=104",
+      "legal": "INPUT R003",
+      "illegal": "INPUT LR003",
+      "remaining": []
+    },
+    {
+      "name": "ADVINIT",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=106",
+      "legal": "ADVINIT",
+      "illegal": "ADVINIT B003",
+      "remaining": []
+    },
+    {
+      "name": "ADVSTOP",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=107",
+      "legal": "ADVSTOP",
+      "illegal": "ADVSTOP B003",
+      "remaining": []
+    },
+    {
+      "name": "PRINT",
+      "production": "optional literal format followed by optional B/I/D/R/S variable",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=108",
+      "legal": "PRINT \"value=%d\" LI003",
+      "illegal": "PRINT \"value=%d\" P003",
+      "remaining": []
+    },
+    {
+      "name": "CLS",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=112",
+      "legal": "CLS",
+      "illegal": "CLS B003",
+      "remaining": []
+    },
+    {
+      "name": "ABORT",
+      "production": "optional IF/IFEXPRESS condition",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=113",
+      "legal": "ABORT IF B003=2",
+      "illegal": "ABORT B003",
+      "remaining": []
+    },
+    {
+      "name": "SETUALM",
+      "production": "alarm-number [string-name] subcode [SMODE=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=114",
+      "legal": "SETUALM 8003 \"Check\" 3 SMODE=1",
+      "illegal": "SETUALM 8003 \"Check\"",
+      "remaining": []
+    },
+    {
+      "name": "DIALOG",
+      "production": "B destination and one to five DIALSB records; first includes button",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=116",
+      "legal": "DIALOG B003 DIALSB B004 B005 S003 B006 B007 S004",
+      "illegal": "DIALOG B003 DIALSB B004 B005 S003",
+      "remaining": []
+    },
+    {
+      "name": "SWITCH",
+      "production": "SWITCH I/LI variable CASE value ... ENDSWITCH",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=120",
+      "legal": "SWITCH LI003 CASE 2\nENDSWITCH",
+      "illegal": "SWITCH LI003\nENDSWITCH",
+      "remaining": []
+    },
+    {
+      "name": "CASE",
+      "production": "subsequent CASE value inside SWITCH before DEFAULT",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=120",
+      "legal": "SWITCH LI003 CASE 2\nCASE 3\nENDSWITCH",
+      "illegal": "CASE 3",
+      "remaining": []
+    },
+    {
+      "name": "DEFAULT",
+      "production": "single operand-free DEFAULT at end of SWITCH branches",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=120",
+      "legal": "SWITCH LI003 CASE 2\nDEFAULT\nENDSWITCH",
+      "illegal": "SWITCH LI003 CASE 2\nDEFAULT 3\nENDSWITCH",
+      "remaining": []
+    },
+    {
+      "name": "WHILE",
+      "production": "external WHILEEXP condition ... ENDWHILE",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=125",
+      "legal": "WHILEEXP LI003<7\nINC LI003\nENDWHILE",
+      "illegal": "WHILEEXP LI003\nENDWHILE",
+      "remaining": []
+    },
+    {
+      "name": "FOR",
+      "production": "I/LI counter = start or START= start; TO end; optional STEP value; matching NEXT",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=125",
+      "legal": "FOR LI003 START=2 TO 6 STEP 2\nNEXT LI003",
+      "illegal": "FOR LI003=2\nNEXT LI003",
+      "remaining": [
+        "Both counter=start (physical page 126) and counter START=start (physical pages 15 and 260) are documented; both are accepted."
+      ]
+    },
+    {
+      "name": "IFTHEN",
+      "production": "external IFTHENEXP condition ... ENDIF",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=127",
+      "legal": "IFTHENEXP B003=2\nNOP\nENDIF",
+      "illegal": "IFTHENEXP B003\nENDIF",
+      "remaining": []
+    },
+    {
+      "name": "ELSEIF",
+      "production": "external ELSEIFEXP condition inside IFTHENEXP before ELSE",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=127",
+      "legal": "IFTHENEXP B003=2\nELSEIFEXP B003=3\nENDIF",
+      "illegal": "IFTHENEXP B003=2\nELSEIFEXP\nENDIF",
+      "remaining": []
+    },
+    {
+      "name": "ELSE",
+      "production": "single operand-free ELSE in IF block",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=127",
+      "legal": "IFTHENEXP B003=2\nELSE\nENDIF",
+      "illegal": "ELSE",
+      "remaining": []
+    },
+    {
+      "name": "SETTM",
+      "production": "TM timer and TSTART/TSTOP/TRESET/timer/numeric value",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=132",
+      "legal": "SETTM TM003 TRESET",
+      "illegal": "SETTM I003 TRESET",
+      "remaining": []
+    },
+    {
+      "name": "LATESTJOB",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=134",
+      "legal": "LATESTJOB",
+      "illegal": "LATESTJOB B003",
+      "remaining": []
+    },
+    {
+      "name": "CLEAR",
+      "production": "numeric variable count/ALL; STACK/QUE/MPF/system variable/error",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=135",
+      "legal": "CLEAR D003 ALL",
+      "illegal": "CLEAR P003 ALL",
+      "remaining": []
+    },
+    {
+      "name": "INC",
+      "production": "B/I/D writable integer variable",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=139",
+      "legal": "INC LD003",
+      "illegal": "INC LR003",
+      "remaining": []
+    },
+    {
+      "name": "DEC",
+      "production": "B/I/D writable integer variable",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=141",
+      "legal": "DEC LI003",
+      "illegal": "DEC LS003",
+      "remaining": []
+    },
+    {
+      "name": "SET",
+      "production": "numeric expression; same-family position; string; OT#/FL LOGICEXP",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=141",
+      "legal": "SET FL0003 LOGICEXP IN#(3)=ON OREXP B003=2",
+      "illegal": "SET P003 BP003",
+      "remaining": []
+    },
+    {
+      "name": "ADD",
+      "production": "numeric destination and numeric scalar; matching position families",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=152",
+      "legal": "ADD P003 LP004",
+      "illegal": "ADD P003 BP004",
+      "remaining": []
+    },
+    {
+      "name": "SUB",
+      "production": "numeric destination and numeric scalar; matching position families",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=152",
+      "legal": "SUB LD003 12",
+      "illegal": "SUB LS003 12",
+      "remaining": []
+    },
+    {
+      "name": "MUL",
+      "production": "numeric values or position [(element)] D/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=166",
+      "legal": "MUL P003 (2) 3",
+      "illegal": "MUL P003 (2)",
+      "remaining": []
+    },
+    {
+      "name": "DIV",
+      "production": "numeric values or position [(element)] D/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=173",
+      "legal": "DIV BP003 (1) D003",
+      "illegal": "DIV BP003 (1) S003",
+      "remaining": []
+    },
+    {
+      "name": "CNVRT",
+      "production": "PX destination/source coordinate [TL# tool]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=180",
+      "legal": "CNVRT PX003 LPX004 MTF TL#(2)",
+      "illegal": "CNVRT P003 P004 BF",
+      "remaining": []
+    },
+    {
+      "name": "AND",
+      "production": "B/LB destination and byte variable/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=180",
+      "legal": "AND LB003 5",
+      "illegal": "AND I003 5",
+      "remaining": []
+    },
+    {
+      "name": "OR",
+      "production": "B/LB destination and byte variable/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=180",
+      "legal": "OR B003 LB004",
+      "illegal": "OR S003 B004",
+      "remaining": []
+    },
+    {
+      "name": "NOT",
+      "production": "B/LB destination and byte variable/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=187",
+      "legal": "NOT LB003 B004",
+      "illegal": "NOT LB003",
+      "remaining": []
+    },
+    {
+      "name": "XOR",
+      "production": "B/LB destination and byte variable/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=189",
+      "legal": "XOR B003 9",
+      "illegal": "XOR R003 9",
+      "remaining": []
+    },
+    {
+      "name": "MFRAME",
+      "production": "UF#/P destination then three PX points or P [BP] BF/UUF#",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=191",
+      "legal": "MFRAME P003 P004 BP004 UUF#(2)",
+      "illegal": "MFRAME UF#(2) P003 P004 P005",
+      "remaining": []
+    },
+    {
+      "name": "SETE",
+      "production": "P/BP/EX (element) D/constant or P TL#",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=195",
+      "legal": "SETE P003 TL#(2)",
+      "illegal": "SETE P003 (2)",
+      "remaining": []
+    },
+    {
+      "name": "GETE",
+      "production": "D/LD destination, position, parenthesized element",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=198",
+      "legal": "GETE LD003 P003 (2)",
+      "illegal": "GETE I003 P003 (2)",
+      "remaining": []
+    },
+    {
+      "name": "GETS",
+      "production": "typed destination and matching system variable or special return/error variable",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=200",
+      "legal": "GETS LS003 $RV",
+      "illegal": "GETS P003 $B003",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "SQRT",
+      "production": "R/LR destination and R/LR/real constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=207",
+      "legal": "SQRT LR003 2.5",
+      "illegal": "SQRT I003 2.5",
+      "remaining": []
+    },
+    {
+      "name": "SIN",
+      "production": "R/LR destination and R/LR/real constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=209",
+      "legal": "SIN R003 32.5",
+      "illegal": "SIN B003 32.5",
+      "remaining": []
+    },
+    {
+      "name": "COS",
+      "production": "R/LR destination and R/LR/real constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=211",
+      "legal": "COS LR003 R004",
+      "illegal": "COS LR003 B004",
+      "remaining": []
+    },
+    {
+      "name": "ATAN",
+      "production": "R/LR destination and R/LR/real constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=213",
+      "legal": "ATAN R003 -0.5",
+      "illegal": "ATAN R003 S004",
+      "remaining": []
+    },
+    {
+      "name": "MULMAT",
+      "production": "three P/LP position variables",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=215",
+      "legal": "MULMAT P003 LP004 P005",
+      "illegal": "MULMAT P003 BP004 P005",
+      "remaining": []
+    },
+    {
+      "name": "INVMAT",
+      "production": "two P/LP position variables",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=216",
+      "legal": "INVMAT LP003 P004",
+      "illegal": "INVMAT P003",
+      "remaining": []
+    },
+    {
+      "name": "GETPOS",
+      "production": "PX/LPX destination STEP# [READCTP D/LD]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=218",
+      "legal": "GETPOS PX003 STEP#(2) READCTP LD003",
+      "illegal": "GETPOS P003 STEP#(2)",
+      "remaining": []
+    },
+    {
+      "name": "VAL",
+      "production": "numeric destination string [RADIX=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=220",
+      "legal": "VAL LR003 \"3.25\"",
+      "illegal": "VAL P003 \"3.25\"",
+      "remaining": []
+    },
+    {
+      "name": "VAL2STR",
+      "production": "S/LS destination numeric variable",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=223",
+      "legal": "VAL2STR LS003 LR003",
+      "illegal": "VAL2STR LS003 3.25",
+      "remaining": []
+    },
+    {
+      "name": "ASC",
+      "production": "B/LB destination string",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=225",
+      "legal": "ASC LB003 \"Z\"",
+      "illegal": "ASC I003 \"Z\"",
+      "remaining": []
+    },
+    {
+      "name": "CHR$",
+      "production": "S/LS destination byte variable/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=227",
+      "legal": "CHR$ LS003 90",
+      "illegal": "CHR$ B003 90",
+      "remaining": []
+    },
+    {
+      "name": "MID$",
+      "production": "S/LS destination string and start/length integers",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=229",
+      "legal": "MID$ LS003 \"abcde\" 2 3",
+      "illegal": "MID$ LS003 \"abcde\" 2",
+      "remaining": []
+    },
+    {
+      "name": "LEN",
+      "production": "B/I/D destination string",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=232",
+      "legal": "LEN LD003 LS004",
+      "illegal": "LEN R003 LS004",
+      "remaining": []
+    },
+    {
+      "name": "CAT$",
+      "production": "S/LS destination and two strings",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=234",
+      "legal": "CAT$ LS003 \"abc\" LS004",
+      "illegal": "CAT$ LS003 \"abc\"",
+      "remaining": []
+    },
+    {
+      "name": "STRSTR",
+      "production": "B/LB destination S/LS source string-pattern [B/LB start]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=236",
+      "legal": "STRSTR LB003 LS004 \"d\" LB005",
+      "illegal": "STRSTR I003 LS004 \"d\"",
+      "remaining": []
+    },
+    {
+      "name": "GETARG",
+      "production": "local destination IARG# argument",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=238",
+      "legal": "GETARG LP003 IARG#(2)",
+      "illegal": "GETARG P003 IARG#(2)",
+      "remaining": []
+    },
+    {
+      "name": "GETNAME",
+      "production": "S/LS destination global-variable/IN#/OT#",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=240",
+      "legal": "GETNAME LS003 IN#(3)",
+      "illegal": "GETNAME LS003 LI003",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "SETFILE",
+      "production": "SPR#/UDC#/WEV#/PDF# (element) D/constant",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=242",
+      "legal": "SETFILE PDF#(3) (2) LD003",
+      "illegal": "SETFILE AMF#(3) (2) LD003",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "GETFILE",
+      "production": "D/LD destination SPR#/UDC#/WEV#/AMF#/PDF# (element)",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=245",
+      "legal": "GETFILE LD003 AMF#(3) (2)",
+      "illegal": "GETFILE I003 AMF#(3) (2)",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "SETREG",
+      "production": "MREG# [LOW/HIGH] I/D/constant [REGNUM=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=247",
+      "legal": "SETREG MREG#(3) HIGH I003 REGNUM=2",
+      "illegal": "SETREG MREG#(3) S003",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "GETREG",
+      "production": "I/D destination MREG# [LOW/HIGH] [REGNUM=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=249",
+      "legal": "GETREG LD003 MREG#(3) HIGH REGNUM=2",
+      "illegal": "GETREG B003 MREG#(3)",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "GETPRM",
+      "production": "D/LD KIND= PRMNO= [MAX/MIN/GRPNO=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=252",
+      "legal": "GETPRM LD003 KIND=2 PRMNO=3 MAX",
+      "illegal": "GETPRM I003 KIND=2 PRMNO=3",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "SETPRM",
+      "production": "KIND= PRMNO= [GRPNO=] D/LD",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=254",
+      "legal": "SETPRM KIND=2 PRMNO=3 GRPNO=1 LD003",
+      "illegal": "SETPRM KIND=2 PRMNO=3 2",
+      "remaining": [
+        "Resource existence, permissions and controller-specific data tables are not statically resolved."
+      ]
+    },
+    {
+      "name": "MOVJ",
+      "production": "C/EC or P/EX target plus per-MOVJ tags and attached productions",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=256",
+      "legal": "MOVJ P003 CHK VJ=20 ACC=50 DEC=50",
+      "illegal": "MOVJ P003 V=20",
+      "remaining": [
+        "Search SRCH and Sensor ASRCH constant forms are implemented from separate option manuals (see option-research.json). HPSRCH, NSRCH, ASRCH variable types and coordinated +MOV*/+IMOV external combinations remain explicitly unverified where applicable; known unavailable parent instructions are rejected.",
+        "Per-control-group applicability, controller option availability, numeric limits depending on units/settings, and motion execution are not verified."
+      ]
+    },
+    {
+      "name": "MOVL",
+      "production": "C or P target plus per-MOVL tags and attached productions",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=257",
+      "legal": "MOVL C00000 V=120 UNTIL IN#(3)=ON ACC=50",
+      "illegal": "MOVL C00000 VJ=20",
+      "remaining": [
+        "Search SRCH and Sensor ASRCH constant forms are implemented from separate option manuals (see option-research.json). HPSRCH, NSRCH, ASRCH variable types and coordinated +MOV*/+IMOV external combinations remain explicitly unverified where applicable; known unavailable parent instructions are rejected.",
+        "Per-control-group applicability, controller option availability, numeric limits depending on units/settings, and motion execution are not verified."
+      ]
+    },
+    {
+      "name": "MOVC",
+      "production": "C or P target plus per-MOVC tags, COORD/FPT and attached productions",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=257",
+      "legal": "MOVC C00000 V=120 COORD=1 FPT",
+      "illegal": "MOVC C00000 V=120 UNTIL IN#(3)=ON",
+      "remaining": [
+        "Search SRCH and Sensor ASRCH constant forms are implemented from separate option manuals (see option-research.json). HPSRCH, NSRCH, ASRCH variable types and coordinated +MOV*/+IMOV external combinations remain explicitly unverified where applicable; known unavailable parent instructions are rejected.",
+        "Per-control-group applicability, controller option availability, numeric limits depending on units/settings, and motion execution are not verified."
+      ]
+    },
+    {
+      "name": "MOVS",
+      "production": "C or P target plus per-MOVS tags and attached productions",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=257",
+      "legal": "MOVS C00000 V=120 PL=1",
+      "illegal": "MOVS C00000 V=120 COORD=1",
+      "remaining": [
+        "Search SRCH and Sensor ASRCH constant forms are implemented from separate option manuals (see option-research.json). HPSRCH, NSRCH, ASRCH variable types and coordinated +MOV*/+IMOV external combinations remain explicitly unverified where applicable; known unavailable parent instructions are rejected.",
+        "Per-control-group applicability, controller option availability, numeric limits depending on units/settings, and motion execution are not verified."
+      ]
+    },
+    {
+      "name": "IMOV",
+      "production": "P/EX increment target with speed, coordinate and supported attachments",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=300",
+      "legal": "IMOV P003 V=100 UF#(2)",
+      "illegal": "IMOV C00000 V=100",
+      "remaining": [
+        "Search SRCH and Sensor ASRCH constant forms are implemented from separate option manuals (see option-research.json). HPSRCH, NSRCH, ASRCH variable types and coordinated +MOV*/+IMOV external combinations remain explicitly unverified where applicable; known unavailable parent instructions are rejected.",
+        "Per-control-group applicability, controller option availability, numeric limits depending on units/settings, and motion execution are not verified."
+      ]
+    },
+    {
+      "name": "SPEED",
+      "production": "optional ordered VJ/V/VR/VE numeric tags",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=308",
+      "legal": "SPEED VJ=20 V=100 VR=15 VE=20",
+      "illegal": "SPEED V=\"slow\"",
+      "remaining": []
+    },
+    {
+      "name": "REFP",
+      "production": "point-number [RBn/STn] record/position with optional base/station targets",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=311",
+      "legal": "REFP 3 RB1 P003 BP003",
+      "illegal": "REFP 3 RB1",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "SFTON",
+      "production": "[RBn] P/BP/EX family variables [BF/RF/TF/UF#]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=318",
+      "legal": "SFTON RB1 P003 BP003 EX003 RF",
+      "illegal": "SFTON P003 P004",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "SFTOF",
+      "production": "optional RBn or ST",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=321",
+      "legal": "SFTOF ST",
+      "illegal": "SFTOF ST RB1",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "MSHIFT",
+      "production": "PX destination coordinate PX-reference PX-actual",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=324",
+      "legal": "MSHIFT PX003 MTF PX004 PX005",
+      "illegal": "MSHIFT P003 BF P004 P005",
+      "remaining": []
+    },
+    {
+      "name": "SFTON3D",
+      "production": "[RBn] P/LP variable",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=327",
+      "legal": "SFTON3D RB1 LP003",
+      "illegal": "SFTON3D LP003 BF",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "SFTOF3D",
+      "production": "optional RBn",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=328",
+      "legal": "SFTOF3D RB1",
+      "illegal": "SFTOF3D ST",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "IF",
+      "production": "single condition attached only to supported parent instructions",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=332",
+      "legal": "PAUSE IF B003=2",
+      "illegal": "NOP IF B003=2",
+      "remaining": []
+    },
+    {
+      "name": "UNTIL",
+      "production": "MOVJ/MOVL/IMOV condition [CAPTURE PX/LPX]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=344",
+      "legal": "MOVL C00000 V=100 UNTIL IN#(3)=ON",
+      "illegal": "UNTIL IN#(3)=ON",
+      "remaining": []
+    },
+    {
+      "name": "ENWAIT",
+      "production": "move attachment T= or DIS=",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=347",
+      "legal": "MOVL C00000 V=100 ENWAIT T=0.2",
+      "illegal": "MOVL C00000 V=100 ENWAIT DIS",
+      "remaining": []
+    },
+    {
+      "name": "DIALSB",
+      "production": "DIALOG record Bx By Smessage [Bx By Sbutton]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=349",
+      "legal": "DIALOG B003 DIALSB B004 B005 S003 B006 B007 S004",
+      "illegal": "DIALSB B004 B005 S003 B006 B007 S004",
+      "remaining": []
+    },
+    {
+      "name": "IFEXPRESS",
+      "production": "compound condition attached to supported parent",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=352",
+      "legal": "PAUSE IFEXPRESS B003=2 ANDEXP I003<5",
+      "illegal": "PAUSE IFEXPRESS B003=2 ANDEXP",
+      "remaining": []
+    },
+    {
+      "name": "FOREXPRESS",
+      "production": "compound condition inside WAIT",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=353",
+      "legal": "WAIT FOREXPRESS B003=2 OREXP I003<5",
+      "illegal": "WAIT FOREXPRESS B003=2 OREXP",
+      "remaining": []
+    },
+    {
+      "name": "LOGICEXP",
+      "production": "conditional value of SET FL/OT#; whole condition grammar",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=354",
+      "legal": "SET OT#(3) LOGICEXP B003=2",
+      "illegal": "SET OT#(3) LOGICEXP B003",
+      "remaining": []
+    },
+    {
+      "name": "RELEXPR",
+      "production": "typed comparison leaf inside compound condition",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=354",
+      "legal": "IFTHENEXP LS003=\"abc\"\nENDIF",
+      "illegal": "IFTHENEXP IN#(3)>ON\nENDIF",
+      "remaining": []
+    },
+    {
+      "name": "TRAP",
+      "production": "move attachment followed by local *label",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=368",
+      "legal": "MOVL C00000 V=100 TRAP *FAIL3\n*FAIL3",
+      "illegal": "MOVL C00000 V=100 TRAP FAIL3",
+      "remaining": []
+    },
+    {
+      "name": "+SFTON3D",
+      "production": "move attachment [RBn] P/LP",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=370",
+      "legal": "MOVL C00000 V=100 +SFTON3D LP003",
+      "illegal": "MOVL C00000 V=100 +SFTON3D BP003",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "+SFT",
+      "production": "move attachment [RBn] P/BP/EX [coordinate]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=370",
+      "legal": "MOVL C00000 V=100 +SFT P003 BP003 RF",
+      "illegal": "MOVL C00000 V=100 +SFT",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "CAPTURE",
+      "production": "UNTIL-only PX/LPX capture destination",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=376",
+      "legal": "MOVL C00000 V=100 UNTIL IN#(3)=ON CAPTURE LPX003",
+      "illegal": "MOVL C00000 V=100 CAPTURE LPX003",
+      "remaining": []
+    },
+    {
+      "name": "ARCON",
+      "production": "[WELDn] ASF# or AC= with AV=/AVP= and optional timing/speed/retry",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=377",
+      "legal": "ARCON WELD2 AC=180 AV=18 T=0.2 RETRY REPLAY",
+      "illegal": "ARCON AC=180 REPLAY",
+      "remaining": []
+    },
+    {
+      "name": "ARCOF",
+      "production": "[WELDn] AEF# or AC= with AV=/AVP= [T=] [ANTSTK]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=381",
+      "legal": "ARCOF WELD2 AEF#(3)",
+      "illegal": "ARCOF AEF#(3) AC=180",
+      "remaining": []
+    },
+    {
+      "name": "VWELD",
+      "production": "[WELDn] voltage command scalar",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=386",
+      "legal": "VWELD WELD2 3.5",
+      "illegal": "VWELD WELD2",
+      "remaining": []
+    },
+    {
+      "name": "AWELD",
+      "production": "[WELDn] current command scalar",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=388",
+      "legal": "AWELD WELD2 3.5",
+      "illegal": "AWELD WELD2",
+      "remaining": []
+    },
+    {
+      "name": "ARCSET",
+      "production": "[WELDn] ordered AC/AV-or-AVP/V/AN3/AN4 or ASF# [ACOND=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=390",
+      "legal": "ARCSET WELD2 ASF#(3) ACOND=1",
+      "illegal": "ARCSET ASF#(3) V=100",
+      "remaining": []
+    },
+    {
+      "name": "WVON",
+      "production": "[RBn] WEV# or AMP= FREQ= [ANGL=], optional DIR=",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=394",
+      "legal": "WVON RB2 AMP=2 FREQ=3 ANGL=30 DIR=1",
+      "illegal": "WVON AMP=2",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "WVOF",
+      "production": "optional RBn",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=398",
+      "legal": "WVOF RB2",
+      "illegal": "WVOF RB2 EXTRA",
+      "remaining": [
+        "Control-group combination and installed-option applicability require actual controller configuration."
+      ]
+    },
+    {
+      "name": "ARCCTS",
+      "production": "[WELDn] ASF# or ordered AC/AV-or-AVP/AN3/AN4/DIS ramp tags",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=401",
+      "legal": "ARCCTS WELD2 AC=180 AV=18 AN3=2 DIS=50",
+      "illegal": "ARCCTS AC=180 AV=18 AVP=100",
+      "remaining": []
+    },
+    {
+      "name": "ARCCTE",
+      "production": "same parameter alternatives, end-section ramp",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=403",
+      "legal": "ARCCTE WELD2 AC=180 AVP=95 DIS=50",
+      "illegal": "ARCCTE DIS",
+      "remaining": []
+    },
+    {
+      "name": "HAND",
+      "production": "hand-number byte/ON/OFF [ALL]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=409",
+      "legal": "HAND 2 ON ALL",
+      "illegal": "HAND 2 R003",
+      "remaining": []
+    },
+    {
+      "name": "HSEN",
+      "production": "sensor-number byte/ON/OFF [T=/FOREVER]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=411",
+      "legal": "HSEN 2 B003 T=0.2",
+      "illegal": "HSEN 2 ON T",
+      "remaining": []
+    },
+    {
+      "name": "TOOLON",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=413",
+      "legal": "TOOLON",
+      "illegal": "TOOLON B003",
+      "remaining": []
+    },
+    {
+      "name": "TOOLOF",
+      "production": "no operands",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=414",
+      "legal": "TOOLOF",
+      "illegal": "TOOLOF B003",
+      "remaining": []
+    },
+    {
+      "name": "GUNCL",
+      "production": "GUN# T= [ATT=]",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=415",
+      "legal": "GUNCL GUN#(2) T=1 ATT=0.2",
+      "illegal": "GUNCL GUN#(2) ATT=0.2",
+      "remaining": []
+    },
+    {
+      "name": "SPOT",
+      "production": "one or two GUN# MODE= WTM= groups then optional ATT=",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=417",
+      "legal": "SPOT GUN#(2) MODE=1 WTM=3 GUN#(3) MODE=2 WTM=4",
+      "illegal": "SPOT GUN#(2) MODE=1",
+      "remaining": []
+    },
+    {
+      "name": "STROKE",
+      "production": "GUN# LONG/SHORT",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=420",
+      "legal": "STROKE GUN#(2) SHORT",
+      "illegal": "STROKE GUN#(2) MIDDLE",
+      "remaining": []
+    },
+    {
+      "name": "STRWAIT",
+      "production": "GUN# LONG/SHORT",
+      "sourceUrl": "https://www.motoman.com/getmedia/346F8450-7888-448E-A145-6BAA3B894B74/178649-1CD#page=421",
+      "legal": "STRWAIT GUN#(2) LONG",
+      "illegal": "STRWAIT GUN#(2)",
+      "remaining": []
+    }
+  ]
+}

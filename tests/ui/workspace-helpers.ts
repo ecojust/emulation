@@ -46,6 +46,7 @@ export async function expectBodyJoints(page: Page, joints: readonly number[], ep
 }
 export async function captureCurrent(page: Page): Promise<CapturedPoint> {
   await openProgram(page);
+  await page.getByRole('tablist', { name: '程序编辑模式', exact: true }).getByRole('tab', { name: '示教', exact: true }).click();
   const rows = programRows(page), before = await rows.count();
   if (before) await rows.last().click({ button: 'right' });
   else await page.getByRole('listbox', { name: /程序指令$/ }).click({ button: 'right' });
@@ -71,6 +72,7 @@ export async function selectPoint(page: Page, point: CapturedPoint) {
 }
 export async function makePath(page: Page, points: CapturedPoint[]) {
   await openProgram(page);
+  await page.getByRole('tablist', { name: '程序编辑模式', exact: true }).getByRole('tab', { name: '示教', exact: true }).click();
   // Deliberately reverse click order: execution order must remain program order.
   for (let i = points.length - 1; i >= 0; i--) {
     await page.locator(`[data-program-point-id="${points[i].id}"]`).click(i === points.length - 1 ? {} : { modifiers: ['ControlOrMeta'] });

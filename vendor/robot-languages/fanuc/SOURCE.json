@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "implementation": "The LS lexer/parser and catalog descriptions in src/programming/languages/fanuc* are independently implemented. The following source code was inspected for cross-checking; no parser/grammar code was copied or mechanically translated. Original notices are retained as reference provenance, not as a claim of vendor approval.",
+  "sources": [
+    {
+      "repository": "https://github.com/L3gume/fanuc-lsp",
+      "revision": "7c4047879409f27261d09dbfe1c38e49cadae46b",
+      "license": "MIT",
+      "licenseFile": "fanuc-lsp-LICENSE.txt",
+      "scope": "TPLangParser/TPLang and Tests/TPLangParser.Tests; actual parser with known omissions, not authoritative complete grammar"
+    },
+    {
+      "repository": "https://github.com/bcoady/tpDev",
+      "revision": "ce719f44b20d34500dac4006911645bc75df03c3",
+      "license": "MIT",
+      "licenseFile": "tpDev-LICENSE.txt",
+      "scope": "syntax/tp.vim lexical cross-check only"
+    }
+  ],
+  "expertReferences": [
+    "https://www.onerobotics.com/posts/2014/writing-tp-programs-by-hand---pros-and-cons/",
+    "https://www.onerobotics.com/posts/2019/how-to-run-fanuc-programs-concurrently-with-the-run-statement/",
+    "https://www.onerobotics.com/posts/2026/fanuc-local-registers-r-pr-and-sr/"
+  ],
+  "officialProductScope": "https://www.fanucamerica.com/products/robots/robot-simulation-software-FANUC-ROBOGUIDE",
+  "selectedProfile": {
+    "controllerFamily": "R-30iB (including variants listed on manual covers)",
+    "basicManual": "B-83284EN/09",
+    "optionalManual": "B-83284EN-2/09",
+    "firmware": "Not inferred from document revision",
+    "grammarComplete": false,
+    "coverageFile": "COVERAGE.md",
+    "chapterInventories": [
+      "BASIC-INVENTORY.md",
+      "OPTIONAL-INVENTORY.md"
+    ],
+    "unverifiedAsciiEvidence": [
+      "Nonempty POINT_LOGIC child-program serialization",
+      "E/EX all-point arrangement enum and auxiliary BOTTOM key",
+      "STORAGE container and enum spellings (Optional 29.3.3)",
+      "Extra left/right placement in CONFIG string",
+      "Conflicting PL-vs-R comparison example vs formal diagram"
+    ]
+  },
+  "manualReferences": [
+    {
+      "publisher": "FANUC CORPORATION",
+      "repositoryMirror": "https://github.com/zhaomengkang/FANUC-Robot-Manual",
+      "revision": "9e9998c2744b94794414a372063410fa20507fc6",
+      "url": "https://raw.githubusercontent.com/zhaomengkang/FANUC-Robot-Manual/9e9998c2744b94794414a372063410fa20507fc6/Manual/eDoc/R-30iB%20Plus/content/B-83284EN_REV_09/book.pdf",
+      "bytes": 25039661,
+      "sha256": "f67c446d836b847486f1f6f8d3c6de124cb713bc4861ddfc63041ad14b1576ae",
+      "rights": "Copyright FANUC CORPORATION. Reference only; manual, extracted text and copied descriptions are not redistributed. Mirror is not an official FANUC host.",
+      "access": "Full public PDF retrieved without authentication or access bypass on 2026-11-09"
+    },
+    {
+      "publisher": "FANUC CORPORATION",
+      "repositoryMirror": "https://github.com/zhaomengkang/FANUC-Robot-Manual",
+      "revision": "9e9998c2744b94794414a372063410fa20507fc6",
+      "url": "https://raw.githubusercontent.com/zhaomengkang/FANUC-Robot-Manual/9e9998c2744b94794414a372063410fa20507fc6/Manual/eDoc/R-30iB%20Plus/content/B-83284EN-2_REV_09/book.pdf",
+      "bytes": 13827683,
+      "sha256": "9eaa2ec5572370b1ff406e960ecdb3b257f71e1a0d5befb950a9da2971db4913",
+      "rights": "Copyright FANUC CORPORATION. Reference only; manual, extracted text and copied descriptions are not redistributed. Mirror is not an official FANUC host.",
+      "access": "Full public PDF retrieved without authentication or access bypass on 2026-11-09"
+    }
+  ],
+  "readOnlyAsciiReferences": [
+    {
+      "repository": "https://github.com/depjr1985/RoboticsProgramming",
+      "revision": "76f3971e6dda1b3bcd23ce0c1c13dce14b872ed7",
+      "path": "Material Handling and Palletizing/DEP_PALLET.LS",
+      "url": "https://raw.githubusercontent.com/depjr1985/RoboticsProgramming/76f3971e6dda1b3bcd23ce0c1c13dce14b872ed7/Material%20Handling%20and%20Palletizing/DEP_PALLET.LS",
+      "sha256": "cad6bf67c8c9bf09ba0433e3b08d06e0699606738abc96433f47e60b53f7e9a9",
+      "scope": "Read-only corroboration of actual B-mode CONFIG/BOTTOM/ROUTE serialization; original file not redistributed; no complete grammar or controller conformance claim."
+    },
+    {
+      "repository": "https://github.com/onerobotics/tp.rb",
+      "revision": "000a80b0553bbec62453991d5a336e3a216bd42c",
+      "path": "test/fixtures/test.ls",
+      "scope": "Read-only Point Logic investigation: fixture contains POINT_LOGIC marker but no nonempty child payload; it does not establish the missing ASCII child grammar."
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "reviewedOn": "2026-11-09",
+  "method": "Official product-documentation index and Knowledge Center links, downloaded PDFs checked by SHA-256, text extraction plus visual inspection of the parameter diagrams. Original implementations and original test fixtures only; no manufacturer PDF, diagram or manual prose is redistributed.",
+  "officialIndex": "https://www.motoman.com/en-us/service-training/product-documentation",
+  "manuals": [
+    {
+      "id": "HW1483392",
+      "part": "178657-1CD",
+      "revision": 1,
+      "title": "YRC1000 Search Function",
+      "url": "https://www.motoman.com/getmedia/365C2AD3-133A-4E72-9630-BB1E9F28537D/178657-1CD",
+      "bytes": 3652676,
+      "sha256": "44fc4b4daecd731901277bf449dd72f1fe5653ed97ed3893726b468984bc3cc1",
+      "pages": 33,
+      "verifiedSections": ["3.1.2 Construction and 3.1.3 Explanation, physical pages 15–16 / printed 3-1–3-2"],
+      "implemented": ["SRCH attached to MOVL/IMOV: RIN# index, ON/OFF or byte variable, optional T, mandatory DIS, types, order and literal ranges"],
+      "remaining": ["The SMOVL parent is part of the coordinated language whose external serialization remains unverified."]
+    },
+    {
+      "id": "HW1483394",
+      "part": "179329-1CD",
+      "revision": 3,
+      "title": "YRC1000 Sensor Function",
+      "url": "https://www.motoman.com/getmedia/18535E76-FAAA-4921-833C-0C5C4EA7D397/179329-1CD",
+      "bytes": 4525577,
+      "sha256": "01054f965a029f654cc241fb755f94800c978ecd0d89aec139ce5f87c5721d83",
+      "pages": 53,
+      "verifiedSections": [
+        "3.3.1 sensor monitor condition file numbers, physical page 21",
+        "3.4.1–3.4.3 ACOR/SACOR instruction diagrams, physical pages 24, 27, 28",
+        "4.2 AOVRON/AOVROF, physical pages 33, 36",
+        "5.3 GETSFT, physical page 38",
+        "6 Search Function and 6.3 ASRCH Instruction, physical pages 41–43 / printed 6-1–6-3",
+        "7.1 SCALIB, physical page 46"
+      ],
+      "implemented": [
+        "ASRCH attached to MOVL: constant SCH#, TV, RISE/FALL, optional T, mandatory DIS, ranges and ordering",
+        "ACORON/ACOROF/ACORCH and SACOR variants: required coordinates, optional SCF, optional paired TCH/TV, alternative SCF versus TCH/TV change branches",
+        "AOVRON/AOVROF, GETSFT with independently optional TCH/TV pair and P/LP destination, SCALIB optional TCH",
+        "All instruction constant ranges, known parameter ordering, malformed trailing parameters, and explicit warnings for undocumented scalar variable forms"
+      ],
+      "remaining": [
+        "No HPSRCH entry, construction, example or operand definition appears in this entire public revision, despite the main INFORM rev10 referring both ASRCH and HPSRCH here.",
+        "Sensor scalar parameter diagrams list constant ranges but do not specify variable families. Variable forms receive an explicit unverified warning; the explicitly specified GETSFT P/LP destination is supported.",
+        "SMOVL external coordinated parent serialization is unverified."
+      ]
+    },
+    {
+      "id": "HW1483380",
+      "title": "YRC1000 Search Function in Continuous Motion",
+      "retrieved": false,
+      "attempts": [
+        "Official Product Documentation index: no literal HW1483380; four Continuous Motion entries cover DX200 165555/HW1481815, DX100 158179/HW1480027, YRC1000micro 183445/HW1484520 and FS100 159661/HW1480770, not the required YRC1000 version.",
+        "https://knowledge.motoman.com/api/v2/help_center/articles/search.json?locale=en-us&query=%22HW1483380%22 returned count 0. Quoted continuous motion and non-stop search queries also returned 0. NSRCH returned article 15074132472215 about AccuFast usage, without the required PDF.",
+        "Official article 4410111372055 points to Search/SRCH manual 178657, not the Continuous Motion manual.",
+        "Yaskawa Europe /search?q=HW1483380 and /search?q=continuous%20motion returned unrelated product results, not the target manual.",
+        "The retrieved https://www.e-mechatronics.com/sitemap.xml had no HW1483380, NSRCH or continuous-motion manual entry; YRC1000 references were product pages. Sitemap coverage is not proof that a document does not exist.",
+        "Downloaded and compared the listed YRC1000micro manual, which is a different controller document and cannot establish the YRC1000 NSRCH production."
+      ],
+      "remaining": ["Exact YRC1000 NSRCH parameter diagram, variable types, order, external JBI serialization and version applicability are missing. These search results establish only that no verifiable public copy was obtained in this review, not that the manual does not exist."]
+    },
+    {
+      "id": "HW1484520",
+      "part": "183445-1CD",
+      "title": "YRC1000micro Search Function in Continuous Motion — comparison only",
+      "url": "https://www.motoman.com/getmedia/5F86839D-35F7-4201-9863-47074E7ECA30/183445-1cd",
+      "bytes": 2490158,
+      "sha256": "18615e1dacd2d4281d6a7b1a80f680888df1864b3344679550f2845cc81c284b",
+      "implemented": [],
+      "remaining": ["This manual describes standalone NSRCHON/NSRCHOF, not the attached NSRCH production listed by the YRC1000 main manual. It was not used to silently substitute the active language dialect."]
+    }
+  ],
+  "coordinatedResearch": "coordinated-research.md"
+}

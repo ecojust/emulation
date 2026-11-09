@@ -5,7 +5,7 @@
 
 桌面客户端使用 **Tauri 2 + Rust + Three.js**：系统 WebView 与 GPU 负责界面和三维显示，Rust 后台负责正逆运动学、配置判断、路径规划和程序生成。安装后无需用户安装 Node.js、Rust、Python 或启动本地服务。
 
-在场景中调整机器人姿态，到程序页右键记录当前点，再按指令顺序运行仿真。支持六款 ABB、FANUC、Yaskawa 型号，程序和目标点自动采用对应品牌的格式；可多选指令编成 Path，循环运行或随时停止。ABB 支持已验证单段的 RAPID `.mod` 导出，其余品牌目前提供仿真模板。长期方向是同一仿真轨迹导出为不同品牌程序，现阶段不做厂商程序导入解析。
+在场景中调整机器人姿态，到程序页右键记录当前点，再按指令顺序运行仿真。支持六款 ABB、FANUC、Yaskawa 型号，程序和目标点自动采用对应品牌的格式；可多选指令编成 Path，循环运行或随时停止。ABB 支持已验证单段的 RAPID `.mod` 导出，其余品牌目前提供仿真模板。程序页另提供各型号独立的离线源码编辑、高亮、补全、指令说明和语法诊断，可导入与保存明文源文件；具体语言覆盖见[离线编程](docs/offline-programming.md)。
 
 机器人基座固定在世界原点。项目复用现成的 IRB 1100 分段 CAD 网格，尺寸、机械零位、关节正向与运动范围按 ABB 官方资料校验。
 
@@ -19,7 +19,7 @@
 
 安装包由 [桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)生成：成功运行中的 Artifacts 提供 macOS Apple Silicon／Intel 的 DMG 和 Windows x64 的安装程序，附源提交、CPU 架构和 SHA-256 清单。这里是 CI 构建产物，不等同于已发布 GitHub Release。
 
-已验证的测试包（构建源`17edecd`）：[macOS M系列](https://github.com/ecojust/emulation/actions/runs/42659500335/artifacts/13695290331) · [Windows x64](https://github.com/ecojust/emulation/actions/runs/42659500335/artifacts/13693374410)。两者完成实际安装、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel本轮已通过构建、签名与原生核心检查，但托管Apple Paravirtualized GPU没有可用WebGL2，图形验收未通过。
+上一阶段的已验证测试包（不含本次离线源码编辑，构建源`17edecd`）：[macOS M系列](https://github.com/ecojust/emulation/actions/runs/42659500335/artifacts/13695290331) · [Windows x64](https://github.com/ecojust/emulation/actions/runs/42659500335/artifacts/13693374410)。两者完成实际安装、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel本轮已通过构建、签名与原生核心检查，但托管Apple Paravirtualized GPU没有可用WebGL2，图形验收未通过。
 
 - macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
@@ -67,9 +67,11 @@ npm run preview
 3. 切到“程序”，右键“插入当前姿态”，记录直线运动指令。ABB 显示 `MoveL`／`robtarget`，FANUC 显示 `L`／`P[n]`，安川显示 `MOVL`／`Cxxxxx`；点保存当前姿态和速度，随后移动机器人不会改变这些快照。
 4. Ctrl／Cmd 或 Shift 多选指令，右键转为 Path。左侧可展开查看点，右侧显示其位置、姿态和品牌数据；ABB 点面板集成配置、多解与网格干涉检查。Path 点右键“移动至此”可查看该点的机器人姿态，这是一项单独的仿真定位操作。
 5. 点击“运行”，自动切到场景。全部运动段通过规划后，机器人按程序顺序运动；开启“循环运行”还会检查末点回首点的路径。失败时标出指令并保留原姿态；停止会保留当前显示姿态。
-6. 点面板也可单独检查“从当前位置到此点”的直线运动；ABB 通过后可导出这一段，Rust 会重新验证并生成带起点关节检查的模块。整程序显示品牌模板，尚未提供整程序控制器文件导出。程序和对象目前保留于本次会话，尚无项目保存／恢复。
+6. 点面板也可单独检查“从当前位置到此点”的直线运动；ABB 通过后可导出这一段，Rust 会重新验证并生成带起点关节检查的模块。整程序显示品牌模板，尚未提供整程序控制器文件导出。示教点和场景对象目前保留于本次会话；代码页另有按型号保存的本地源码草稿。
 
-![程序行、品牌模板与运行控制](docs/images/program-workspace.png)
+切到程序页“代码”，可以编辑对应机器人的多文件源码、插入当前姿态或从示教生成。代码页的运行尚不可用；它不会运行已经与源码不同的旧示教点。源码保存、语法检查与控制器程序验收的边界见[离线编程说明](docs/offline-programming.md)。
+
+![离线源码、当前机器人姿态与内置指令参考](docs/images/offline-programming.png)
 
 ABB四元数使用`[w,x,y,z]`顺序，欧拉角遵循`OrientZYX(Rz,Ry,Rx)`。端点逆解检查直接求当前robtarget的可用关节配置，不借助零距离运动伪装路径可达。
 
@@ -123,17 +125,19 @@ npx playwright install chromium
 npm run test:ui
 ```
 
-已有 Chromium 时可设置 `EMULATION_CHROMIUM` 指向其可执行文件，避免重复下载。此回归检查浏览器参考模式；桌面工作流另外对实际安装的应用运行 `--smoke-test` 与 `--ui-smoke-test`，检查原生算法、真实 WebView→IPC→Rust、WebGL2 和打包模型。
+已有 Chromium 时可设置 `EMULATION_CHROMIUM` 指向其可执行文件，避免重复下载。此回归检查浏览器参考模式；桌面工作流另外对实际安装的应用运行 `--smoke-test` 与 `--ui-smoke-test`，检查原生算法、真实 WebView→IPC→Rust、本地语法 Worker、WebGL2 和打包模型。
 
 | 目录 | 内容 |
 | --- | --- |
 | `crates/robot-core/` | 独立 Rust 模型、正逆解、配置、路径规划、程序 IR 与品牌后处理 |
 | `src-tauri/` | 原生窗口、后台任务／取消、IPC、模块保存与安装配置 |
 | `src/robot/` | 原生调用、渲染所需 FK，以及浏览器 TypeScript 参考算法 |
+| `src/programming/` | 本地源码编辑器、版本语言服务、独立草稿、Worker 与文件 I/O |
 | `src/catalog/` | 固定型号目录、下载／缓存桥接、URDF解析与选择窗口 |
 | `src/scene/` | Three.js 场景、现成机器人模型、姿态与轨迹显示 |
 | `public/models/` | 两款 IRB 1100 的原始分段 STL |
-| `vendor/work-r-labs/` | 上游许可、固定来源和逐文件摘要 |
+| `vendor/work-r-labs/` | 模型上游许可、固定来源和逐文件摘要 |
+| `vendor/robot-languages/` | 语言手册版本、覆盖差异和第三方许可 |
 | `tests/` | 数值与浏览器回归 |
 | `history/` | 用户原话、验证与交接记录 |
 | `scripts/` | 同机性能对照、安装包验证与交付清单 |

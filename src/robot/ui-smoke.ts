@@ -57,6 +57,41 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
   window.addEventListener('error', event => errors.push(event.message));
   window.addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
   try {
+    stage = 'offline-source-worker';
+    // Execute the production inline worker from the installed custom protocol,
+    // not a mocked parser or Vite-only URL. All language data must be bundled.
+    const { analyzeSourceProject } = await import('../programming/analysis-client');
+    const sources = [
+      { modelId: 'irb1100-4-0.58', dialectId: 'rapid-rw7' as const, name: 'SMOKE.modx', text: 'MODULE Smoke\nPROC main()\nTPWrite "你好";\nENDPROC\nENDMODULE' },
+      { modelId: 'fanuc-crx10ia-l', dialectId: 'fanuc-r30ib' as const, name: 'SMOKE.ls', text: '/PROG SMOKE\n/ATTR\nCOMMENT = "Offline";\n/MN\n1:R[1]=2;\n/POS\n/END' },
+      { modelId: 'yaskawa-gp7', dialectId: 'inform-yrc1000' as const, name: 'SMOKE.jbi', text: '/JOB\n//NAME SMOKE\n//POS\n///NPOS 0,0,0,0,0,0\n//INST\n///ATTR SC,RW\n///GROUP1 RB1\nNOP\nSET I000 2\nEND' },
+    ];
+    for (const sample of sources) {
+      const analysis = await analyzeSourceProject({ modelId: sample.modelId, sourceRevision: 1, dialectId: sample.dialectId, files: [{ id: 'smoke', name: sample.name, text: sample.text }] });
+      if (!analysis.byFile.smoke || analysis.byFile.smoke.diagnostics.some(item => item.severity === 'error')) throw new Error(`Installed source worker rejected ${sample.dialectId}: ${JSON.stringify(analysis.byFile.smoke?.diagnostics)}`);
+    }
+    const invalid = await analyzeSourceProject({ modelId: 'irb1100-4-0.58', sourceRevision: 2, dialectId: 'rapid-rw7', files: [{ id: 'bad', name: 'BAD.modx', text: 'MODULE Bad PROC main() VAR num a := ; ENDPROC ENDMODULE' }] });
+    if (!invalid.byFile.bad.diagnostics.some(item => item.severity === 'error')) throw new Error('Installed source worker accepted malformed RAPID');
+    nativeEvidence.sourceWorker = { languages: sources.map(sample => sample.dialectId), invalidSourceRejected: true };
+    stage = 'offline-editor-view';
+    const programButton = [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(button => button.textContent === '程序');
+    if (!programButton) throw new Error('Installed program view is unavailable');
+    programButton.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const codeButton = [...document.querySelectorAll<HTMLButtonElement>('.program-mode-switch button')].find(button => button.textContent === '代码');
+    if (!codeButton) throw new Error('Installed source mode is unavailable');
+    codeButton.click();
+    const editorDeadline = performance.now() + 15_000;
+    while (!document.querySelector('.robot-code-workspace[data-language-id="rapid"] .cm-content')) {
+      if (performance.now() > editorDeadline) throw new Error('Installed local source editor did not mount');
+      if (errors.length) throw new Error(errors.join('; '));
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (!document.querySelector('[aria-label="源码运行状态"]')?.textContent?.includes('示教')) throw new Error('Installed source run state did not separate authored code from teach simulation');
+    nativeEvidence.sourceEditorMounted = true;
+    [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(button => button.textContent === '场景')?.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    stage = 'bundled-model';
     const result = await solveMotion(request);
     if (result.status !== 'success' || result.path.length < 7 || Math.abs(result.selected.pose.position[1] - 30) > 0.001) throw new Error('Native IPC returned an invalid motion path');
     const file = await invoke<{ fileName: string; content: string }>('preview_program', { requestId: crypto.randomUUID(), request: { programName: 'UiSmoke', controller: 'abb_rapid', motion: request } });
@@ -170,7 +205,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
     } finally { clearTimeout(deadline); }
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });
   }

@@ -8,6 +8,12 @@
   background: #fff;
   color: #253044;
 }
+.program-teach-view,.program-code-view { display:flex; flex-direction:column; flex:1 1 0; min-width:0; min-height:0; overflow:hidden }
+.program-teach-view[hidden],.program-code-view[hidden] { display:none }
+.program-mode-switch { display:flex; flex:0 0 auto; gap:2px; padding:3px; border:1px solid #dfe7f1; border-radius:6px; background:#f4f7fb }
+.program-mode-switch button { min-width:45px; border:0; border-radius:3px; padding:5px 9px; background:transparent; color:#8190a4; font-size:11px; cursor:pointer }
+.program-mode-switch button[aria-selected='true'] { background:#fff; color:#416f9e; box-shadow:0 1px 3px #28486812 }
+.program-mode-switch button:disabled { opacity:.45; cursor:not-allowed }
 .program-editor-header {
   display: flex;
   align-items: center;
