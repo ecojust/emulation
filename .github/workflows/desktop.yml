@@ -57,6 +57,7 @@ jobs:
         with:
           workspaces: . -> target
           key: ${{ matrix.target }}
+          cache-on-failure: true
       - run: npm ci --no-audit --no-fund
       - name: Read application version
         id: version
@@ -97,3 +98,11 @@ jobs:
             target/${{ matrix.target }}/release/bundle/artifact-manifest.json
           if-no-files-found: error
           retention-days: 30
+      - name: Upload failed native smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulation-${{ matrix.artifact }}-diagnostics
+          path: target/${{ matrix.target }}/release/bundle/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 14

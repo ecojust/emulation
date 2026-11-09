@@ -43,7 +43,7 @@ fn ui_smoke_report(
     println!(
         "Native UI smoke: {} — {}",
         if success { "passed" } else { "failed" },
-        detail.chars().take(2000).collect::<String>()
+        detail.chars().take(16000).collect::<String>()
     );
     app.exit(if success { 0 } else { 1 });
     Ok(())
@@ -219,7 +219,7 @@ fn main() {
                     })
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
             if ui_smoke {
-                window = window.initialization_script("window.__EMULATION_UI_SMOKE__ = true;");
+                window = window.initialization_script(include_str!("ui-smoke-init.js"));
             }
             window.build()?;
             Ok(())
