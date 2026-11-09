@@ -1,0 +1,324 @@
+{
+  "repository": "https://github.com/work-r-labs/robots",
+  "commit": "ab6aa489855256de07ba46c7b45887fdbc42b607",
+  "license": "MIT",
+  "licenseFile": "LICENSE",
+  "licenseText": "MIT License\n\nCopyright (c) 2025 work_r\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n",
+  "licenseSource": "https://github.com/work-r-labs/robots/blob/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE",
+  "licenseSha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+  "description": "Existing IRB 1100 split CAD meshes distributed by the Workr Robot Asset Library. Community distribution, not an ABB-provided or ABB-certified simulation package.",
+  "modifications": "None. STL file bytes are copied unchanged; renderer converts millimetres to metres and applies link transforms at runtime.",
+  "units": "millimetres",
+  "coordinates": "Every mesh is expressed in the shared world/base coordinate frame at mechanical zero. Do not treat vertices as link-local coordinates.",
+  "animation": "Link i is moved by the nominal ABB DH transform F_i(q) multiplied by inverse F_i(0). base_link remains fixed at identity. Upstream URDF axes, flange approximation and inertial data are not used for motion solving.",
+  "referenceUrdfs": [
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/IRB1100_4kg_580_STD.urdf",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/IRB1100_4kg_580_STD.urdf",
+      "bytes": 6389,
+      "sha256": "da5c9b6ef9a51756f552042653db7cb8ec481176f784b7a38d8e32885a4b9b92"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/IRB1100_4kg_475_STD.urdf",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/IRB1100_4kg_475_STD.urdf",
+      "bytes": 6364,
+      "sha256": "b53adf01232db778a4edb542d9a130cc6d7145c7b544aea843aad113c172097f"
+    }
+  ],
+  "files": [
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/base_link.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/base_link.stl",
+      "bytes": 1174284,
+      "sha256": "52d6fd54aa77591f296fdf27378adfc6f1a706bdede649e1dbb3410c6195cb16",
+      "triangles": 23484,
+      "bounds_mm": [
+        [
+          -149.0,
+          -79.0,
+          0.0
+        ],
+        [
+          79.0,
+          79.0,
+          159.5
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/base_link.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_1.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_1.stl",
+      "bytes": 1198784,
+      "sha256": "05f2ff6948f269f609f8b145955bc2f1017861111c889b64400518f37d8f0f40",
+      "triangles": 23974,
+      "bounds_mm": [
+        [
+          -84.26520538330078,
+          -91.20919036865234,
+          146.0
+        ],
+        [
+          85.9496841430664,
+          91.20919036865234,
+          377.024169921875
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/link_1.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_2.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_2.stl",
+      "bytes": 1516184,
+      "sha256": "520ee923eec95f5bb84cdda52480cc9e7919cb2b2e071e99032d580fc375e5cb",
+      "triangles": 30322,
+      "bounds_mm": [
+        [
+          -51.0,
+          -89.5,
+          276.0081481933594
+        ],
+        [
+          50.991851806640625,
+          89.5,
+          652.32568359375
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/link_2.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_3.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_3.stl",
+      "bytes": 705934,
+      "sha256": "4133a3fa683ca638bc3afc3a469e7824c4d8989000975610d807c61171d39eef",
+      "triangles": 14117,
+      "bounds_mm": [
+        [
+          -72.19999694824219,
+          -63.0,
+          544.0
+        ],
+        [
+          72.5,
+          47.400001525878906,
+          664.0
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/link_3.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_4.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_4.stl",
+      "bytes": 2146984,
+      "sha256": "871811984911ae8c377c7cff3b8193473911dffb5865ed14366e513b88d217bc",
+      "triangles": 42938,
+      "bounds_mm": [
+        [
+          45.5,
+          -51.5,
+          572.1106567382812
+        ],
+        [
+          337.4712219238281,
+          51.5,
+          684.6942749023438
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/link_4.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_5.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_5.stl",
+      "bytes": 623284,
+      "sha256": "f3cf884eeb73c0e5af4d8d33378671066bdc1bce1e20a169be7026594389de41",
+      "triangles": 12464,
+      "bounds_mm": [
+        [
+          262.32733154296875,
+          -35.0,
+          579.018310546875
+        ],
+        [
+          363.3999938964844,
+          35.0,
+          654.9981079101562
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/link_5.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_6.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_6.stl",
+      "bytes": 82884,
+      "sha256": "135c4954e181f5819d7d9545152b03a8dbda2b38c8307c2017ef41649aced3b0",
+      "triangles": 1656,
+      "bounds_mm": [
+        [
+          356.0,
+          -20.0,
+          597.0226440429688
+        ],
+        [
+          364.0,
+          20.0,
+          636.9993286132812
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.58/link_6.stl",
+      "modelId": "irb1100-4-0.58"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/base_link.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/base_link.stl",
+      "bytes": 1180984,
+      "sha256": "15b59765b3dd5d49e07c977cec7e206452d65323a135bd28ff325961aab021de",
+      "triangles": 23618,
+      "bounds_mm": [
+        [
+          -149.0,
+          -79.0,
+          0.0
+        ],
+        [
+          79.0,
+          79.0,
+          159.5
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/base_link.stl",
+      "modelId": "irb1100-4-0.475"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_1.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_1.stl",
+      "bytes": 1198784,
+      "sha256": "05f2ff6948f269f609f8b145955bc2f1017861111c889b64400518f37d8f0f40",
+      "triangles": 23974,
+      "bounds_mm": [
+        [
+          -84.26520538330078,
+          -91.20919036865234,
+          146.0
+        ],
+        [
+          85.9496841430664,
+          91.20919036865234,
+          377.024169921875
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/link_1.stl",
+      "modelId": "irb1100-4-0.475"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_2.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_2.stl",
+      "bytes": 1651184,
+      "sha256": "0b9cc85a17deb705670e0462d96e69b6f4a6546fcbe7cedc241a2a83d9935677",
+      "triangles": 33022,
+      "bounds_mm": [
+        [
+          -52.0,
+          -89.5,
+          276.0126037597656
+        ],
+        [
+          50.987388610839844,
+          89.5,
+          597.3251953125
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/link_2.stl",
+      "modelId": "irb1100-4-0.475"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_3.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_3.stl",
+      "bytes": 674834,
+      "sha256": "e1dda7dd139825dfb94280a876c57f96baa886ee1021e7c5c0bc1b6346529ed4",
+      "triangles": 13495,
+      "bounds_mm": [
+        [
+          -72.19999694824219,
+          -63.0,
+          489.0
+        ],
+        [
+          72.5,
+          47.400001525878906,
+          609.0
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/link_3.stl",
+      "modelId": "irb1100-4-0.475"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_4.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_4.stl",
+      "bytes": 1857884,
+      "sha256": "81c40e7b56461b369377cfdf2f7fd1e5e42c5c83e44d3fad41c0f890274f6bad",
+      "triangles": 37156,
+      "bounds_mm": [
+        [
+          45.5,
+          -51.5,
+          518.1500244140625
+        ],
+        [
+          287.5,
+          51.5,
+          629.7056884765625
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/link_4.stl",
+      "modelId": "irb1100-4-0.475"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_5.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_5.stl",
+      "bytes": 623284,
+      "sha256": "4e2f30968f1d32a384889fcef242d89b9a52e8855480dd8b415c1a9f9ce1ba7b",
+      "triangles": 12464,
+      "bounds_mm": [
+        [
+          212.32733154296875,
+          -35.0,
+          524.018310546875
+        ],
+        [
+          313.3999938964844,
+          35.0,
+          599.9981079101562
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/link_5.stl",
+      "modelId": "irb1100-4-0.475"
+    },
+    {
+      "path": "library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_6.stl",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_6.stl",
+      "bytes": 82884,
+      "sha256": "91ad21d5c3805163b9699c4d2d0fa7a4c1eca30fcd107a24aad0731cf51ae192",
+      "triangles": 1656,
+      "bounds_mm": [
+        [
+          306.0,
+          -20.0,
+          542.0226440429688
+        ],
+        [
+          314.0,
+          20.0,
+          581.9993286132812
+        ]
+      ],
+      "localPath": "public/models/irb1100-4-0.475/link_6.stl",
+      "modelId": "irb1100-4-0.475"
+    }
+  ]
+}
