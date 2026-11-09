@@ -36,6 +36,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Verify collision bounds against original robot meshes
         run: node scripts/generate-collision-bounds.mjs --check
+      - name: Verify generic chains against pinned URDF fixtures
+        run: node scripts/generate-generic-chains.mjs --check
       - name: Check Rust algorithms without desktop system dependencies
         run: cargo test -p emulation-core --release --locked
       - name: Check native job and export policies

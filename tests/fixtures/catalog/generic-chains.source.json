@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/work-r-labs/robots",
+    "revision": "ab6aa489855256de07ba46c7b45887fdbc42b607"
+  },
+  "generator": "scripts/generate-generic-chains.mjs",
+  "coordinates": "Original URDF root-to-tool ancestry; row-major millimetres; no geometry or controller corrections",
+  "sources": [
+    {
+      "id": "fanuc-crx10ia-l",
+      "file": "tests/fixtures/catalog/fanuc-crx10ia-l.urdf",
+      "bytes": 6679,
+      "sha256": "fd6ecfdd3cd1d09161c48a75d1436aa57817c2017bca4a3827395b7bb94ad3ef",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/CRX_10iA_L.urdf"
+    },
+    {
+      "id": "fanuc-r2000ib-165f",
+      "file": "tests/fixtures/catalog/fanuc-r2000ib-165f.urdf",
+      "bytes": 8375,
+      "sha256": "fd9f4d2611dff9d0734d127b1105442cc5d398a977282777a462abc896fa1ebb",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/R_2000iB_165F.urdf"
+    },
+    {
+      "id": "yaskawa-gp7",
+      "file": "tests/fixtures/catalog/yaskawa-gp7.urdf",
+      "bytes": 3989,
+      "sha256": "fc29b984a7f9ed2ae725c081ea1141a8861dd5798c1e7594320473af543061e9",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/GP7.urdf"
+    },
+    {
+      "id": "yaskawa-gp110",
+      "file": "tests/fixtures/catalog/yaskawa-gp110.urdf",
+      "bytes": 3989,
+      "sha256": "a892a6f0ef45f4586738069fe5df6e9aa4a9dd13dac18de476aba38320e5abe5",
+      "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/GP110.urdf"
+    }
+  ]
+}

@@ -85,7 +85,7 @@ export default function RobotCatalogDialog({ currentModelId, onSelect, onClose }
       {brands.map(brand => {
         const entries = MODEL_CATALOG.filter(model => model.brand === brand && (!search || `${model.brand} ${model.name}`.toLocaleLowerCase().includes(search)));
         return <section key={brand} className="robot-catalog-brand" aria-label={`${brand} 机器人`}><h3>{brand === 'Yaskawa' ? 'Yaskawa · 安川' : brand}<span>{entries.length}</span></h3>{entries.map(entry => <article key={entry.id} className={`robot-catalog-entry ${currentModelId === entry.id ? 'catalog-current' : ''}`} data-catalog-model-id={entry.id}>
-          <div className="robot-catalog-entry-main"><h4>{entry.name}</h4><p>{entry.bundledMotionModelId ? '模型 · DH / IK / MoveL · ABB RAPID' : '模型 · URDF 关节调整与正运动学'}</p><span className="robot-catalog-meta">{entry.bundledMotionModelId ? '已内置' : cached[entry.id] ? '已缓存' : cacheChecking ? '检查缓存中' : '首次使用下载'}{!entry.bundledMotionModelId && ` · ${bytesText(entry.downloadBytes)}`} · {entry.licenses.map(license => license.spdx).filter((value, index, all) => all.indexOf(value) === index).join(' / ')}</span></div>
+          <div className="robot-catalog-entry-main"><h4>{entry.name}</h4><p>{entry.bundledMotionModelId ? '模型 · DH / IK / MoveL · ABB RAPID' : '模型 · URDF 正运动学 / 直线仿真'}</p><span className="robot-catalog-meta">{entry.bundledMotionModelId ? '已内置' : cached[entry.id] ? '已缓存' : cacheChecking ? '检查缓存中' : '首次使用下载'}{!entry.bundledMotionModelId && ` · ${bytesText(entry.downloadBytes)}`} · {entry.licenses.map(license => license.spdx).filter((value, index, all) => all.indexOf(value) === index).join(' / ')}</span></div>
           <button type="button" className="copy-button" aria-label={`加载 ${entry.name}`} disabled={Boolean(loadingId) || currentModelId === entry.id} onClick={() => void load(entry.id)}>{currentModelId === entry.id ? '当前型号' : loadingId === entry.id ? '加载中…' : cached[entry.id] || entry.bundledMotionModelId ? '加载模型' : '下载并加载'}</button>
         </article>)}{entries.length === 0 && <p className="robot-catalog-empty">{brand === 'KUKA' ? '当前模型来源中暂无 KUKA 可下载资源。' : '没有匹配的型号。'}</p>}</section>;
       })}
@@ -94,7 +94,7 @@ export default function RobotCatalogDialog({ currentModelId, onSelect, onClose }
       {cacheError && <p className="robot-catalog-message" role="status">缓存状态暂不可用，仍可选择型号加载。<button type="button" className="copy-button" disabled={Boolean(loadingId)} onClick={() => setCacheRevision(value => value + 1)}>重试缓存检查</button></p>}
       {loadingId && <div className="robot-catalog-progress" role="status" aria-label="模型加载进度"><div><strong>{selectedName}</strong><span>{progressLabel}{progress && progress.totalBytes > 0 ? ` · ${bytesText(progress.downloadedBytes)} / ${bytesText(progress.totalBytes)}` : ''}</span></div><progress aria-label="模型下载进度" max={Math.max(1, progress?.totalBytes ?? 1)} value={progress?.phase === 'downloading' ? progress.downloadedBytes : undefined}/><button type="button" className="copy-button" onClick={cancel}>取消加载</button></div>}
       {message && <p className={failedId ? 'robot-catalog-error' : 'robot-catalog-message'} role={failedId ? 'alert' : 'status'}>{message}{failedId && <button type="button" className="copy-button" onClick={() => void load(failedId)}>重试加载</button>}</p>}
-      <p className="robot-catalog-note">目录中的模型能力分别标明。模型可显示不代表已经适配轨迹求解或控制器程序。</p>
+      <p className="robot-catalog-note">ABB 支持原生运动检查与单段模块导出；FANUC、安川支持直线仿真和品牌模板，控制器文件导出尚未适配。</p>
     </footer>
   </dialog>;
 }

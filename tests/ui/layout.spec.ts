@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openProgram, openScene } from './workspace-helpers';
+import { bodyJoints, captureCurrent, openProgram, openScene, programRows, selectRobotObject } from './workspace-helpers';
 
 async function noDocumentScroll(page: Page) {
   await expect.poll(() => page.evaluate(() => {
@@ -17,24 +17,31 @@ async function sceneSized(page: Page) {
   return (await scene.boundingBox())!;
 }
 
-test('resizing the fixed workspace preserves usable local panels, collapsible robot status and program scrolling', async ({ page }) => {
+test('resizing the fixed workspace preserves object-only navigation, local inspectors and program scrolling', async ({ page }) => {
   test.setTimeout(90_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '求解 MoveL', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '运动学可达', exact: true })).toBeVisible();
-  const objects = page.getByRole('complementary', { name: '对象与状态', exact: true });
-  for (const [summary, label] of [['当前位置 position', '当前 TCP'], ['当前姿态', '当前关节姿态']]) {
-    const section = objects.locator('details').filter({ has: page.locator('summary').filter({ hasText: summary }) });
-    await expect(objects.getByLabel(label, { exact: true })).toBeVisible();
-    await section.locator('summary').click();
-    await expect(objects.getByLabel(label, { exact: true })).toBeHidden();
-    await section.locator('summary').click();
-    await expect(objects.getByLabel(label, { exact: true })).toBeVisible();
-  }
+  await selectRobotObject(page);
+  const objects = page.getByRole('complementary', { name: '场景对象', exact: true });
+  const controls = page.getByRole('complementary', { name: '对象属性', exact: true });
+  await expect(objects.getByRole('button', { name: '选择机器人', exact: true })).toBeVisible();
+  await expect(objects.getByRole('button', { name: '选择危险区 危险区 1', exact: true })).toBeVisible();
+  await expect(objects.getByLabel('当前 TCP', { exact: true })).toHaveCount(0);
+  await expect(objects.getByLabel('当前关节姿态', { exact: true })).toHaveCount(0);
+  await expect(objects.getByRole('spinbutton')).toHaveCount(0);
+  await expect(controls.getByLabel('当前 TCP', { exact: true })).toBeVisible();
+  await expect(controls.getByLabel('当前关节姿态', { exact: true })).toBeVisible();
+  await expect(controls.getByRole('spinbutton', { name: /^机器人关节 J/ })).toHaveCount(6);
+  const dh = controls.locator('details').filter({ has: page.locator('summary').filter({ hasText: 'DH 参数与关节范围' }) });
+  await expect(dh.getByRole('table')).toBeHidden();
+  await dh.locator('summary').click();
+  await expect(dh.getByRole('table')).toBeVisible();
+  await expect(dh.locator('tbody tr')).toHaveCount(6);
+  await dh.locator('summary').click();
+  await expect(dh.getByRole('table')).toBeHidden();
   for (const size of [{ width: 1440, height: 1000 }, { width: 1000, height: 720 }, { width: 1000, height: 1000 }]) {
     await page.setViewportSize(size);
     await noDocumentScroll(page);
@@ -55,7 +62,8 @@ test('resizing the fixed workspace preserves usable local panels, collapsible ro
   }
   await page.setViewportSize({ width: 1000, height: 720 });
   await sceneSized(page);
-  const controls = page.locator('.control-panel');
+  await dh.locator('summary').click();
+  await expect(dh.getByRole('table')).toBeVisible();
   const box = (await controls.boundingBox())!;
   await page.mouse.move(box.x + box.width - 20, box.y + box.height / 2);
   await page.mouse.wheel(0, -10000);
@@ -65,18 +73,48 @@ test('resizing the fixed workspace preserves usable local panels, collapsible ro
   await expect.poll(() => controls.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
   await noDocumentScroll(page);
   await page.screenshot({ path: '/tmp/emulation-workspace-1000x720.png' });
-  await openProgram(page);
-  const code = page.getByRole('textbox', { name: 'RAPID MoveL 指令', exact: true });
-  await expect(code).toHaveValue(/MoveL/);
-  expect(await code.evaluate(element => element.scrollWidth - element.clientWidth)).toBeGreaterThan(10);
-  const codeBox = (await code.boundingBox())!;
-  await page.mouse.move(codeBox.x + codeBox.width / 2, codeBox.y + codeBox.height / 2);
-  await page.mouse.wheel(650, 0);
-  await expect.poll(() => code.evaluate(element => element.scrollLeft)).toBeGreaterThan(10);
+  const originalJoints = await bodyJoints(page);
+  await captureCurrent(page);
+  const rows = programRows(page);
+  const insert = page.getByRole('button', { name: '＋ 插入当前姿态', exact: true });
+  // Populate through real capture callbacks so overflow represents actual
+  // saved MoveL objects, not injected DOM or mocked program state.
+  for (let count = 2; count <= 18; count++) {
+    await insert.click();
+    await expect(rows).toHaveCount(count);
+  }
+  const rowIds = await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-program-point-id')));
+  const list = page.getByRole('listbox', { name: 'MoveL 程序指令', exact: true });
+  expect(await list.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(10);
+  const listBox = (await list.boundingBox())!;
+  await page.mouse.move(listBox.x + listBox.width / 2, listBox.y + listBox.height / 2);
+  await page.mouse.wheel(0, -10000);
+  await expect.poll(() => list.evaluate(element => element.scrollTop)).toBe(0);
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
+  await rows.first().click();
+  await list.press('ControlOrMeta+a');
+  await page.getByRole('button', { name: '转为 Path', exact: true }).click();
+  await expect(objects.getByRole('button', { name: '选择路径 Path 1', exact: true })).toHaveClass(/selected/);
+  await expect(objects.locator('[data-object-kind="target"]')).toHaveCount(18);
+  await expect(rows.locator('.program-path-tag')).toHaveText(Array(18).fill('Path 1'));
+  expect(await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-program-point-id')))).toEqual(rowIds);
+  const objectList = objects.locator('.object-panel-content');
+  expect(await objectList.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(10);
+  const objectBox = (await objectList.boundingBox())!;
+  await page.mouse.move(objectBox.x + objectBox.width / 2, objectBox.y + objectBox.height / 2);
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => objectList.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
   await noDocumentScroll(page);
   await page.screenshot({ path: '/tmp/emulation-program-1000x720.png' });
   await openScene(page);
-  await expect(page.getByRole('heading', { name: '运动学可达', exact: true })).toBeVisible();
+  await sceneSized(page);
+  expect(await bodyJoints(page)).toEqual(originalJoints);
+  await expect(objects.getByRole('button', { name: '选择路径 Path 1', exact: true })).toHaveClass(/selected/);
+  await openProgram(page);
+  await expect(rows).toHaveCount(18);
+  await expect(list.locator('[aria-selected="true"]')).toHaveCount(18);
+  expect(await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-program-point-id')))).toEqual(rowIds);
   await noDocumentScroll(page);
   expect(errors).toEqual([]);
 });
