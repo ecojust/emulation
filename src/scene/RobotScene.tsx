@@ -8,9 +8,13 @@ import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { forwardKinematics } from "../robot/kinematics";
 import type { JointAngles, Mat4, MotionSample, Pose, RobotModel } from "../robot/types";
 import type { CollisionZone } from "../robot/collision";
+import type { PreparedUrdfModel, UrdfVisual } from "../catalog/urdf-types";
+import { forwardUrdfKinematics, urdfLinkMatrices, urdfOriginMatrix } from "../catalog/kinematics";
 import "./scene.css";
 
 export interface RobotSceneProps {
+  urdfModel?: PreparedUrdfModel;
+  urdfJoints?: readonly number[];
   model: RobotModel;
   joints: JointAngles;
   targetPose: Pose | null;
@@ -62,6 +66,14 @@ interface SceneState {
   finishJog: () => void;
   draggingPointer: number | null;
   dangerZones: Map<string, DangerVisual>;
+  genericLinks: { mesh: THREE.Mesh; link: string; visual: UrdfVisual }[];
+  genericFocus: THREE.Vector3 | null;
+  genericRadius: number;
+  genericModelId: string | null;
+  genericJoints: readonly number[];
+  grid: THREE.GridHelper;
+  ground: THREE.Mesh;
+  key: THREE.DirectionalLight;
 }
 
 const SCALE = 0.001;
@@ -202,6 +214,20 @@ function updateDangerZones(state: SceneState, zones: RobotSceneProps["dangerZone
 }
 
 function setView(state: SceneState, view: RobotSceneProps["view"]): void {
+  if (state.genericFocus) {
+    const focus = state.genericFocus;
+    const distance = state.genericRadius / Math.sin(THREE.MathUtils.degToRad(state.camera.fov / 2)) * 1.2 / Math.min(1, state.camera.aspect);
+    const direction = view === "top" ? new THREE.Vector3(0, -0.001, 1)
+      : view === "front" ? new THREE.Vector3(0, -1, 0.07) : new THREE.Vector3(1, -1.3, 0.8);
+    state.controls.target.copy(focus);
+    state.camera.up.set(0, 0, 1);
+    state.camera.position.copy(focus).add(direction.normalize().multiplyScalar(distance));
+    state.camera.lookAt(focus);
+    state.controls.update();
+    state.zoomTarget = state.camera.position.distanceTo(focus);
+    state.dirty = true;
+    return;
+  }
   const focus = new THREE.Vector3(0.13, 0, 0.31);
   state.controls.target.copy(focus);
   state.camera.up.set(0, 0, 1);
@@ -215,6 +241,29 @@ function setView(state: SceneState, view: RobotSceneProps["view"]): void {
 }
 
 function updateRobot(state: SceneState, props: RobotSceneProps): void {
+  if (props.urdfModel) {
+    const description = props.urdfModel.description;
+    const joints = props.urdfJoints ?? description.homeJoints;
+    const transforms = urdfLinkMatrices(description, joints);
+    state.genericLinks.forEach(({ mesh, link, visual }) => {
+      mesh.matrix.copy(transforms.get(link)!).multiply(urdfOriginMatrix(visual.origin))
+        .scale(new THREE.Vector3(...visual.scale));
+      mesh.matrixWorldNeedsUpdate = true;
+    });
+    const tool = forwardUrdfKinematics(description, joints).toolPose;
+    state.tcp.visible = tool !== null;
+    if (tool) setPose(state.tcp, tool);
+    state.genericJoints = [...joints];
+    state.frames.visible = false;
+    state.ghost.visible = false;
+    state.target.visible = false;
+    state.path.visible = false;
+    state.start.visible = false;
+    state.renderer.shadowMap.needsUpdate = true;
+    state.dirty = true;
+    return;
+  }
+  state.tcp.visible = true;
   const fk = forwardKinematics(props.model, props.joints);
   state.links.forEach((link, i) => {
     link.matrix.copy(matrix(fk.frames[i]).multiply(state.zeroInverse[i]));
@@ -255,6 +304,17 @@ function updateDiagnostics(state: SceneState): void {
   canvas.dataset.cameraFov = camera.fov.toString();
   canvas.dataset.cameraAspect = camera.aspect.toString();
   canvas.dataset.zoomTarget = state.zoomTarget.toString();
+  canvas.dataset.urdfModel = state.genericModelId ?? "";
+  canvas.dataset.urdfVisualCount = state.genericLinks.length.toString();
+  canvas.dataset.urdfJoints = JSON.stringify(state.genericJoints);
+  canvas.dataset.urdfToolPose = state.genericModelId && state.tcp.visible ? JSON.stringify({
+    position: state.tcp.position.toArray().map(v => v / SCALE),
+    orientation: [state.tcp.quaternion.w, state.tcp.quaternion.x, state.tcp.quaternion.y, state.tcp.quaternion.z],
+  }) : "null";
+  if (state.genericModelId) {
+    const bounds = new THREE.Box3().setFromObject(state.robot);
+    canvas.dataset.urdfBounds = JSON.stringify({ min: bounds.min.toArray(), max: bounds.max.toArray() });
+  } else delete canvas.dataset.urdfBounds;
   canvas.dataset.jogDragging = String(state.draggingPointer !== null);
   canvas.dataset.jogMode = transform.mode;
   canvas.dataset.jogSpace = transform.space;
@@ -436,7 +496,8 @@ export default function RobotScene(props: RobotSceneProps) {
     helper.visible = false;
     scene.add(helper);
     const local: SceneState = { scene, camera, controls, renderer, robot, ghost, frames, tcp, target, path, start, links: [], ghostLinks: [], zeroInverse: [], dirty: true,
-      zoomTarget: 1, jogObject, transform, finishJog: () => {}, draggingPointer: null, dangerZones: new Map() };
+      zoomTarget: 1, jogObject, transform, finishJog: () => {}, draggingPointer: null, dangerZones: new Map(),
+      genericLinks: [], genericFocus: null, genericRadius: 1, genericModelId: null, genericJoints: [], grid, ground, key };
     const canvas = renderer.domElement;
     const poseFromJog = (): Pose => ({ position: jogObject.position.toArray().map(v => v / SCALE) as Pose["position"], orientation: [jogObject.quaternion.w, jogObject.quaternion.x, jogObject.quaternion.y, jogObject.quaternion.z] });
     // Three's public pointer methods consume normalized x/y/button objects.
@@ -461,7 +522,7 @@ export default function RobotScene(props: RobotSceneProps) {
       if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
       controls.enabled = true;
       latest.current.onJogEnd?.();
-      if (!latest.current.jogPending) setPose(jogObject, forwardKinematics(latest.current.model, latest.current.joints).pose);
+      if (!latest.current.urdfModel && !latest.current.jogPending) setPose(jogObject, forwardKinematics(latest.current.model, latest.current.joints).pose);
       local.dirty = true;
     };
     local.finishJog = finishJog;
@@ -614,8 +675,75 @@ export default function RobotScene(props: RobotSceneProps) {
     setLoadError(null);
     local.links = [];
     local.ghostLinks = [];
+    local.genericLinks = [];
     local.robot.clear();
     local.ghost.clear();
+    const previousGeneric = local.genericModelId;
+    local.genericModelId = props.urdfModel?.id ?? null;
+    local.renderer.domElement.setAttribute("aria-label", props.urdfModel ? `${props.urdfModel.name} 三维模型场景` : "ABB IRB 1100 三维仿真场景");
+    if (props.urdfModel) {
+      local.robot.scale.setScalar(1);
+      const prepared = props.urdfModel;
+      const copies = new Map<string, THREE.BufferGeometry>();
+      for (const link of prepared.description.links) for (const visual of link.visuals) {
+        let geometry = copies.get(visual.meshPath);
+        if (!geometry) {
+          geometry = prepared.geometries.get(visual.meshPath)!.clone();
+          copies.set(visual.meshPath, geometry);
+          geometries.add(geometry);
+        }
+        const baseColor = prepared.id.startsWith("fanuc-") ? 0xe5bc54 : prepared.id.startsWith("yaskawa-") ? 0x5e89b8 : 0xe9e9e7;
+        const color = visual.color ? new THREE.Color().setRGB(...visual.color.slice(0, 3) as [number, number, number], THREE.SRGBColorSpace) : baseColor;
+        const material = new THREE.MeshStandardMaterial({ color, metalness: 0.2, roughness: 0.48,
+          opacity: visual.color?.[3] ?? 1, transparent: visual.color !== undefined && visual.color[3] < 1 });
+        materials.add(material);
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = `${prepared.id} ${link.name}`;
+        mesh.matrixAutoUpdate = false;
+        mesh.castShadow = true; mesh.receiveShadow = true;
+        local.robot.add(mesh);
+        local.genericLinks.push({ mesh, link: link.name, visual });
+      }
+      updateRobot(local, props);
+      local.robot.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(local.robot);
+      local.genericFocus = bounds.getCenter(new THREE.Vector3());
+      local.genericRadius = Math.max(0.15, bounds.getSize(new THREE.Vector3()).length() / 2);
+      const extent = Math.max(1, local.genericRadius * 2);
+      local.grid.scale.setScalar(extent);
+      local.ground.scale.setScalar(extent);
+      // Keep the actual URDF root at world zero; place the floor below geometry.
+      local.ground.position.z = Math.min(-0.001, bounds.min.z - 0.001);
+      local.grid.position.z = Math.min(0.0001, bounds.min.z + 0.0001);
+      local.controls.maxDistance = Math.max(4.5, extent * 5);
+      local.camera.far = Math.max(12, extent * 12);
+      local.camera.updateProjectionMatrix();
+      local.scene.fog = new THREE.Fog(0xf0f3f6, extent * 2.8, extent * 6);
+      local.key.position.set(0.5 * extent, -0.9 * extent, 2.1 * extent);
+      local.key.target.position.copy(local.genericFocus);
+      Object.assign(local.key.shadow.camera, { left: -extent * 1.2, right: extent * 1.2, top: extent * 1.2, bottom: -extent * 1.2, far: extent * 5 });
+      local.key.shadow.camera.updateProjectionMatrix();
+      setView(local, props.view);
+      setLoaded(local.genericLinks.length);
+      return () => {
+        geometries.forEach(geometry => geometry.dispose());
+        materials.forEach(material => material.dispose());
+        local.robot.clear(); local.genericLinks = [];
+        local.dirty = true;
+      };
+    }
+    local.robot.scale.setScalar(SCALE);
+    local.genericFocus = null;
+    local.genericJoints = [];
+    local.grid.scale.setScalar(1); local.grid.position.z = 0.0001;
+    local.ground.scale.setScalar(1); local.ground.position.z = -0.001;
+    local.controls.maxDistance = 4.5;
+    local.camera.far = 12; local.camera.updateProjectionMatrix();
+    local.scene.fog = new THREE.Fog(0xf0f3f6, 2.8, 6);
+    local.key.position.set(0.5, -0.9, 2.1); local.key.target.position.set(0.12, 0, 0.3);
+    Object.assign(local.key.shadow.camera, { left: -1.2, right: 1.2, top: 1.2, bottom: -1.2, far: 5 });
+    local.key.shadow.camera.updateProjectionMatrix();
+    if (previousGeneric) setView(local, props.view);
     local.zeroInverse = forwardKinematics(props.model, [0, 0, 0, 0, 0, 0]).frames.map((frame: Mat4) => matrix(frame).invert());
     const loader = new STLLoader();
     const base = import.meta.env.BASE_URL;
@@ -668,26 +796,26 @@ export default function RobotScene(props: RobotSceneProps) {
       local.ghostLinks = [];
       local.dirty = true;
     };
-  }, [props.model, mounted, generation]);
+  }, [props.model, props.urdfModel, mounted, generation]);
 
   useEffect(() => {
     const local = state.current;
     if (local) updateRobot(local, props);
-  }, [props.model, props.joints, props.endJoints, props.showFrames, props.targetPose, loaded]);
+  }, [props.model, props.joints, props.urdfModel, props.urdfJoints, props.endJoints, props.showFrames, props.targetPose, loaded]);
 
   useEffect(() => {
     const local = state.current;
     if (!local) return;
-    local.target.visible = props.targetPose !== null;
+    local.target.visible = !props.urdfModel && props.targetPose !== null;
     if (props.targetPose) setPose(local.target, props.targetPose);
     local.path.geometry.dispose();
     local.path.geometry = new THREE.BufferGeometry().setFromPoints(props.path.map((sample) => new THREE.Vector3(...sample.pose.position).multiplyScalar(SCALE)));
     local.path.computeLineDistances();
-    local.path.visible = props.path.length > 1;
-    local.start.visible = props.path.length > 1;
+    local.path.visible = !props.urdfModel && props.path.length > 1;
+    local.start.visible = !props.urdfModel && props.path.length > 1;
     if (props.path[0]) local.start.position.fromArray(props.path[0].pose.position).multiplyScalar(SCALE);
     local.dirty = true;
-  }, [props.targetPose, props.path, mounted]);
+  }, [props.targetPose, props.path, props.urdfModel, mounted]);
 
   useEffect(() => {
     if (state.current) updateDangerZones(state.current, props.dangerZones, props.selectedDangerZoneId);
@@ -697,30 +825,31 @@ export default function RobotScene(props: RobotSceneProps) {
     const local = state.current;
     if (!local) return;
     local.finishJog();
-    const enabled = Boolean(props.jogEnabled);
+    const enabled = !props.urdfModel && Boolean(props.jogEnabled);
     local.transform.enabled = enabled;
     local.transform.setMode(props.jogMode ?? "translate");
     local.transform.setSpace(props.jogSpace ?? "world");
     local.transform.getHelper().visible = enabled;
-    setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
+    if (!props.urdfModel) setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
     local.dirty = true;
-  }, [props.model, props.jogEnabled, props.jogMode, props.jogSpace, props.jogResetRevision, mounted]);
+  }, [props.model, props.urdfModel, props.jogEnabled, props.jogMode, props.jogSpace, props.jogResetRevision, mounted]);
 
   useEffect(() => {
     const local = state.current;
-    if (!local || local.draggingPointer !== null || props.jogPending) return;
+    if (!local || props.urdfModel || local.draggingPointer !== null || props.jogPending) return;
     setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
     local.dirty = true;
-  }, [props.jogPending, props.joints]);
+  }, [props.jogPending, props.joints, props.urdfModel]);
 
   useEffect(() => {
     if (state.current) { state.current.finishJog(); setView(state.current, props.view); }
   }, [props.view, props.viewRevision, mounted]);
 
+  const totalParts = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? 7;
   return <div className="robot-scene" aria-label="机器人三维视图">
     <div className="robot-scene-canvas" ref={host} />
     {!graphicsError && <div className={`scene-model-status${loadError ? " scene-load-error" : ""}`} role="status" data-loaded-parts={loaded}>
-      <span>{loadError || (loaded === 7 ? "机器人模型已加载 · 7/7" : `正在加载机器人模型 ${loaded}/7`)}</span>
+      <span>{loadError || (loaded === totalParts ? `机器人模型已加载 · ${loaded}/${totalParts}` : `正在加载机器人模型 ${loaded}/${totalParts}`)}</span>
       {compatibilityGraphics && !loadError && <span className="scene-compatibility-mode">兼容图形模式</span>}
       {loadError && !graphicsError && <button type="button" onClick={() => setGeneration((value) => value + 1)}>重新加载</button>}
     </div>}

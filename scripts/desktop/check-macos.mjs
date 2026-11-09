@@ -63,7 +63,8 @@ try {
   if (architecture !== architectures[target]) throw new Error(`Unexpected executable architecture: ${architecture}`);
   smoke(executable, "--smoke-test", 30_000);
   reportGraphics();
-  smoke(executable, "--ui-smoke-test", 60_000);
+  // The installed UI also verifies a first-use model download; native watchdog is 100s.
+  smoke(executable, "--ui-smoke-test", 120_000);
   console.log(`Verified copied DMG app: ${target}, valid integrity signature, native engine and WebView IPC smoke tests passed.`);
 } finally {
   if (attached) execFileSync("hdiutil", ["detach", mount], { stdio: "inherit", timeout: 30_000 });

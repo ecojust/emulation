@@ -1,0 +1,118 @@
+{
+  "repository": "https://github.com/work-r-labs/robots",
+  "revision": "ab6aa489855256de07ba46c7b45887fdbc42b607",
+  "meshes": [
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/base_link.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_base_link.stl",
+      "bytes": 592184,
+      "gitBlobSha1": "7962055a81315e69ef82fa7884da46a3456dbe28",
+      "sha256": "7a4a03ca7d25ccf3d18fe4cc202974a330516ebf38910cffa0e0e32b850270cc"
+    },
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/link_1.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_link_1_s.stl",
+      "bytes": 449484,
+      "gitBlobSha1": "58a9123b8f97a466576e035b582f849d7c169cac",
+      "sha256": "43673448234bedb04b582804839e69d6b7ad10c44f9be36ad69dc8833f2eb87c"
+    },
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/link_2.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_link_2_l.stl",
+      "bytes": 1164484,
+      "gitBlobSha1": "00e6bf86913cb680f16978b1618ef3fb4d023742",
+      "sha256": "ae9b7a79720b37887b522bd650231e296f14e00eb4ec0e9282f06edb60b2cfbe"
+    },
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/link_3.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_link_3_u.stl",
+      "bytes": 640984,
+      "gitBlobSha1": "7a9426c5f56446c6d2b3a085b290a6039fdb264e",
+      "sha256": "91df6894811f949a6850c3aa10c793e978b3f9b049c20c0313b0e17a9144e6d0"
+    },
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/link_4.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_link_4_r.stl",
+      "bytes": 781684,
+      "gitBlobSha1": "e2fa4bb14a9ceb19c992b04065651a685618fa95",
+      "sha256": "c8469700819c679147d37b2a364dd369bd91bd5541149d470087027a12d579fc"
+    },
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/link_5.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_link_5_b.stl",
+      "bytes": 146084,
+      "gitBlobSha1": "bf31278bf124a04f6758ddb68730b755ccfb8039",
+      "sha256": "a7b4da11fed68351b02f4e45eb4c914bd3307b0bf277af42606d76b836817eb1"
+    },
+    {
+      "modelId": "yaskawa-gp7",
+      "libraryPath": "library/Yaskawa/GP7_v1/meshes/link_6.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp7_support/meshes/visual/gp7_link_6_t.stl",
+      "bytes": 63484,
+      "gitBlobSha1": "0e9bf46a8b9b4d6faefde9421e6f5b67a2d8b11a",
+      "sha256": "ed6c6ecfe6c4204b7b0e8f08d19f861b64eafb6172563d61cacc169ec97855a3"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/base_link.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/base_link.stl",
+      "bytes": 61184,
+      "gitBlobSha1": "416486206e9b38e832f93b1a13971c98cbcc4372",
+      "sha256": "5dfe2b6286eeaf9d5c9eaeb1b479e3afb4567e62a70b60a5e88f5b5636fd1342"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/link_1.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/link_1_s.stl",
+      "bytes": 714684,
+      "gitBlobSha1": "867e7072b737737ef855f8e0855a559e6bc5749d",
+      "sha256": "bd8820d6a3c5a4c96d673defa2cbff5d2296340dbf6123351e750dd3c04b220b"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/link_2.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/link_2_l.stl",
+      "bytes": 716434,
+      "gitBlobSha1": "b235e7288f48fcc95237c592d5d4638d1e531cba",
+      "sha256": "a2c966f071e8a18bed46626ab2094b1bfad808005718cbd27293ef92465eba0d"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/link_3.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/link_3_u.stl",
+      "bytes": 502384,
+      "gitBlobSha1": "d5d78417c03af338f5e0df3730fd972a52634607",
+      "sha256": "d7f993705d5c0e0a73ad810db7be080fd5a807ab71dac4c2eb7a3fe270ab1637"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/link_4.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/link_4_r.stl",
+      "bytes": 221384,
+      "gitBlobSha1": "bacccf040a58843ac85eaedc703170886961bee0",
+      "sha256": "bf63934e1d8d824f4a4c5871e3e26cdbdb20f6245cce1c084972ffc9c6f66b70"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/link_5.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/link_5_b.stl",
+      "bytes": 300434,
+      "gitBlobSha1": "fad312dad7bbed3877e751ace96a71ca96d7a37d",
+      "sha256": "d73da915315f67f416a6f00e2e1f4f429f0b9819095650768d1b8b981cfdff38"
+    },
+    {
+      "modelId": "yaskawa-gp110",
+      "libraryPath": "library/Yaskawa/GP110_v1/meshes/link_6.stl",
+      "originalPath": "sources/Yaskawa/GP Series/motoman_gp110_support/meshes/gp110/visual/link_6_t.stl",
+      "bytes": 236884,
+      "gitBlobSha1": "3a9e0e0fd417928804bb96c864d8344cad004479",
+      "sha256": "0c42c1fcd60af3a6e8fcab2edc2f7b92fe96198e6d16c07523bb905166c1d005"
+    }
+  ]
+}

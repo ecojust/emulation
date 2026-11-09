@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { expectCopyState, openProgram, openScene, readRapid } from './workspace-helpers';
+import { expectCopyState, openProgram, openScene, readRapid, selectRobot } from './workspace-helpers';
 
 test.setTimeout(60_000);
 const rows = (page: Page) => page.locator('[data-endpoint-joints]');
@@ -78,7 +78,7 @@ test('applying a different wrist solution previews its actual joints and cannot 
   await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeEnabled();
   expect(await readRapid(page)).toBe(instruction);
   await candidate.row.getByRole('button', { name: /^应用姿态 / }).click();
-  await page.getByLabel('机器人型号').selectOption('irb1100-4-0.475');
+  await selectRobot(page, 'irb1100-4-0.475');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await expect(page.getByText('端点姿态预览', { exact: true })).toHaveCount(0);
   await expectCopyState(page, false);

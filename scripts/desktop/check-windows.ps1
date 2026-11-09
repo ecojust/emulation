@@ -24,7 +24,9 @@ try {
     } finally { $reader.Dispose() }
     foreach ($mode in @("--smoke-test", "--ui-smoke-test")) {
         $smoke = Start-Process -FilePath $executable -ArgumentList $mode -PassThru -NoNewWindow
-        if (-not $smoke.WaitForExit(60000)) {
+        # UI includes a first-use model download; leave room for its 100s native watchdog.
+        $timeoutMilliseconds = if ($mode -eq "--ui-smoke-test") { 120000 } else { 60000 }
+        if (-not $smoke.WaitForExit($timeoutMilliseconds)) {
             Stop-Process -Id $smoke.Id -Force
             throw "Native client $mode timed out."
         }

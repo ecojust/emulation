@@ -5,9 +5,12 @@ use emulation_core::{
     program::ProgramExportRequest,
     types::{PlanRequest, PlanResult},
 };
-use emulation_desktop::engine::{Engine, Reply, Work};
+use emulation_desktop::{
+    engine::{Engine, Reply, Work},
+    model_cache,
+};
 use std::sync::Arc;
-use tauri::{State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
@@ -204,7 +207,7 @@ fn main() {
     let ui_smoke = std::env::args().any(|arg| arg == "--ui-smoke-test");
     if ui_smoke {
         std::thread::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_secs(40));
+            std::thread::sleep(std::time::Duration::from_secs(100));
             eprintln!("Native UI smoke timed out");
             std::process::exit(1);
         });
@@ -221,9 +224,15 @@ fn main() {
             save_program,
             copy_rapid,
             preview_program,
-            ui_smoke_report
+            ui_smoke_report,
+            model_cache::list_model_cache,
+            model_cache::ensure_model,
+            model_cache::cancel_model_download
         ])
         .setup(move |app| {
+            app.manage(model_cache::ModelCacheState::new(
+                app.path().app_data_dir().map_err(|error| error.to_string()),
+            ));
             let mut window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                     .title("Emulation · 机器人运动工作台")

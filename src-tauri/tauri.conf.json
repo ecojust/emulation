@@ -12,8 +12,9 @@
   "app": {
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
-      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:5173; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost asset: http://asset.localhost ws://127.0.0.1:5173; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'",
+      "assetProtocol": { "enable": true, "scope": [] }
     }
   },
   "bundle": {
@@ -28,6 +29,6 @@
       "nsis": { "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] },
       "webviewInstallMode": { "type": "embedBootstrapper", "silent": true }
     },
-    "resources": { "../LICENSE": "LICENSE", "../vendor/work-r-labs/LICENSE": "licenses/work-r-labs/LICENSE", "../vendor/work-r-labs/SOURCE.json": "licenses/work-r-labs/SOURCE.json" }
+    "resources": { "../LICENSE": "LICENSE", "../vendor/work-r-labs/LICENSE": "licenses/work-r-labs/LICENSE", "../vendor/work-r-labs/SOURCE.json": "licenses/work-r-labs/SOURCE.json", "../vendor/work-r-labs/model-notices/": "licenses/work-r-labs/model-notices/" }
   }
 }

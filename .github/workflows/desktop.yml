@@ -59,6 +59,8 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
       - run: npm ci --no-audit --no-fund
+      - name: Verify the pinned model catalog
+        run: node scripts/generate-model-catalog.mjs --check
       - name: Verify collision bounds against original robot meshes
         run: node scripts/generate-collision-bounds.mjs --check
       - name: Read application version
@@ -67,7 +69,7 @@ jobs:
       - name: Validate numerical core on the target CPU
         run: cargo test -p emulation-core --target "${{ matrix.target }}" --release --locked
       - name: Validate native job and export policies
-        run: cargo test -p emulation-desktop --target "${{ matrix.target }}" --no-default-features --release --locked
+        run: cargo test -p emulation-desktop --target "${{ matrix.target }}" --no-default-features --features model-cache --release --locked
       - name: Build the native parity-test command
         run: cargo build -p emulation-core --bin core-cli --locked
       - name: Check frontend

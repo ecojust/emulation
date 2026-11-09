@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { expectCopyState, openProgram, openScene, readRapid } from "./workspace-helpers";
+import { expectCopyState, openProgram, openScene, readRapid, selectRobot } from "./workspace-helpers";
 
 test.setTimeout(60_000);
 
@@ -49,7 +49,7 @@ test("the workspace starts ready and explicitly selected mechanical zero refuses
   const browser = observeBrowser(page);
   await page.goto("/");
   await loaded(page, browser.meshes);
-  await expect(page.getByLabel("机器人型号")).toHaveValue(longArm);
+  await expect(page.getByRole("button", { name: "选择机器人型号", exact: true })).toContainText("IRB 1100-4/0.58");
   await expect(page.getByRole("spinbutton", { name: "起始关节 J2", exact: true })).toHaveValue("20");
   await expect(page.getByRole("spinbutton", { name: "起始关节 J5", exact: true })).toHaveValue("40");
   await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
@@ -149,7 +149,7 @@ test("changing reach loads the other real model and a 1000px workspace remains u
   await page.setViewportSize({ width: 1000, height: 1000 });
   await page.goto("/");
   await loaded(page, browser.meshes);
-  await page.getByLabel("机器人型号").selectOption(shortArm);
+  await selectRobot(page, shortArm);
   await loaded(page, browser.meshes, shortArm);
   await expectCopyState(page, false);
   await page.getByRole("button", { name: "示例起始姿态", exact: true }).click();

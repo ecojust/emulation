@@ -25,3 +25,11 @@ export async function readRapid(page: Page) {
   await openScene(page);
   return instruction;
 }
+
+export async function selectRobot(page: Page, id: string) {
+  await page.getByRole('button', { name: '选择机器人型号', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '机器人模型目录', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.locator(`[data-catalog-model-id="${id}"]`).getByRole('button', { name: /^加载 / }).click();
+  await expect(dialog).toBeHidden();
+}

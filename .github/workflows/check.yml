@@ -29,12 +29,14 @@ jobs:
         with:
           workspaces: . -> target
       - run: npm ci --no-audit --no-fund
+      - name: Verify the pinned model catalog
+        run: node scripts/generate-model-catalog.mjs --check
       - name: Verify collision bounds against original robot meshes
         run: node scripts/generate-collision-bounds.mjs --check
       - name: Check Rust algorithms without desktop system dependencies
         run: cargo test -p emulation-core --release --locked
       - name: Check native job and export policies
-        run: cargo test -p emulation-desktop --no-default-features --release --locked
+        run: cargo test -p emulation-desktop --no-default-features --features model-cache --release --locked
       - name: Build the native parity-test command
         run: cargo build -p emulation-core --bin core-cli --locked
       - run: npm run check

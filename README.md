@@ -5,11 +5,11 @@
 
 桌面客户端使用 **Tauri 2 + Rust + Three.js**：系统 WebView 与 GPU 负责界面和三维显示，Rust 后台负责正逆运动学、配置判断、路径规划和程序生成。安装后无需用户安装 Node.js、Rust、Python 或启动本地服务。
 
-在三维场景中输入目标位置或姿态，求解关节角与配置，检查从当前起点出发的直线运动，再预览姿态并导出机器人程序。当前实际支持 ABB IRB 1100 与 RAPID `.mod`；长期方向是同一仿真轨迹导出为不同品牌程序，现阶段不做厂商程序导入解析。
+在三维场景中输入目标位置或姿态，求解关节角与配置，检查从当前起点出发的直线运动，再预览姿态并导出机器人程序。当前运动求解与程序生成支持 ABB IRB 1100 与 RAPID `.mod`；模型目录另外提供 FANUC、Yaskawa 型号的下载、关节调整与工具坐标显示。长期方向是同一仿真轨迹导出为不同品牌程序，现阶段不做厂商程序导入解析。
 
 机器人基座固定在世界原点。项目复用现成的 IRB 1100 分段 CAD 网格，尺寸、机械零位、关节正向与运动范围按 ABB 官方资料校验。
 
-![IRB 1100 现成模型、目标姿态、路径与生成的 RAPID](docs/images/workspace.png)
+![机器人工作台、左侧姿态与端点干涉预览](docs/images/workspace.png)
 
 上图为工作台的浏览器参考视图；客户端沿用此界面，并启用 Rust 原生引擎和模块导出。
 
@@ -21,7 +21,7 @@
 
 - macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
-- 机器人网格随客户端打包，运动求解与程序生成均在本机执行。
+- 两款 IRB 1100 网格随客户端打包；FANUC、Yaskawa 型号首次选择时下载，校验后缓存，之后可离线使用。运动求解与程序生成在本机执行。
 
 开发客户端需要 Node.js **22.12+**（推荐24）、Rust stable，以及 macOS Xcode Command Line Tools 或 Windows Visual Studio C++ Build Tools。
 
@@ -60,7 +60,7 @@ npm run preview
 
 ## 使用流程
 
-1. 选择 IRB 1100-4/0.58 或 IRB 1100-4/0.475，观察固定在世界原点的基座。两种型号均使用自己的现成网格和尺寸，默认采用应用的非奇异示例姿态。
+1. 点击顶部型号标题打开机器人目录，按品牌选择；未缓存的型号会显示下载进度，支持取消与重试。两款 IRB 1100 使用自己的现成网格与DH参数，默认采用非奇异示例姿态。以下运动流程适用于 IRB 1100；FANUC CRX-10iA/L、R-2000iB/165F 与安川 GP7、GP110 当前支持模型、关节调整和工具坐标，详情见[型号目录与缓存](docs/robot-catalog.md)。
 2. 设定起始关节角，或使用视口的 TCP Jog 拖动法兰操作轴。可选择平移／旋转及世界／工具坐标；模型只跟随通过运动学检查的姿态，不可达时保留最后一个有效位置。拖动会更新起始关节并使旧运动指令失效。
 3. 默认`position`模式只需输入毫米单位的XYZ，方向由系统选择。需要固定方向时切换到`target`，输入XYZ及四元数或欧拉角。ABB四元数使用`[w,x,y,z]`顺序；欧拉角遵循`OrientZYX(Rz,Ry,Rx)`。
 4. 求解后查看关节角、`[cf1,cf4,cf6,cfx]`、位置／姿态误差和路径结果。其他终点逆解只作参考，不能代替整段路径验证。
@@ -80,9 +80,9 @@ npm run preview
 | 品牌 | 目标格式 | 当前状态 |
 | --- | --- | --- |
 | ABB | RAPID `.mod` | 两款 IRB1100、单段已验证 MoveL 模块生成 |
-| FANUC 发那科 | `.ls` | 接口已预留，型号／配置／控制器适配未实现 |
+| FANUC 发那科 | `.ls` | 两款URDF模型可查看；运动求解／配置／控制器尚未适配 |
 | KUKA 库卡 | `.src` + `.dat` | 接口已预留，型号／S/T／KSS 适配未实现 |
-| YASKAWA 安川 | INFORM `.jbi` | 接口已预留，型号／坐标／控制器适配未实现 |
+| YASKAWA 安川 | INFORM `.jbi` | 两款URDF模型可查看；运动求解／控制器尚未适配 |
 
 未实现的品牌明确拒绝导出，不通过替换 ABB 指令名称伪造兼容。后续品牌接入需增加对应模型、配置规则、后处理及独立验证，详见[程序格式与扩展](docs/program-formats.md)。
 
@@ -91,10 +91,10 @@ npm run preview
 ## 模型与运动学
 
 - 官方几何来源：ABB 产品规格 **3HAC064993-001**；标准 DH 按其标称几何和关节约定推导。完整参数、零位及官方工作空间核对见 [机器人参数](docs/robot-model.md)。
-- 现成外观来源：[Workr Robot Asset Library](https://github.com/work-r-labs/robots)，MIT 许可。两种型号分别包含基座和六个关节部件；原始字节、固定版本与校验值见 [模型资源说明](docs/model-assets.md)。这些是社区分发的现成资产，并非 ABB 官方认证的仿真包。
+- 现成外观来源：[Workr Robot Asset Library](https://github.com/work-r-labs/robots)，保留集合与源包MIT声明。两种型号分别包含基座和六个关节部件；原始字节、固定版本与校验值见 [模型资源说明](docs/model-assets.md)。这些是社区分发的现成资产，并非 ABB 官方认证的仿真包。
 - RAPID／配置依据：ABB 技术参考 **3HAC050917-001**，包括 `confdata`、四元数、`robtarget`、`ConfL` 与 `MoveL`。详见 [RAPID 与配置约定](docs/rapid.md)。
 - 场景使用右手坐标系，世界 Z 轴向上；基座在 `[0,0,0]`。公开位置单位为 mm、关节角为度。使用 `tool0` 的法兰中心和 `wobj0`，没有隐含工具偏移或工件坐标变换。
-- 正运动学、逆运动学和显示姿态使用同一条 DH 链。现成网格从各自的共同机械零位坐标变换到实时关节姿态。
+- IRB1100的正运动学、逆运动学和显示姿态使用同一条DH链；现成网格从各自的共同机械零位坐标变换。新增目录型号按各自URDF树、visual origin和mesh scale显示，不共用ABB的DH或控制器参数。
 - 解析逆解适用于这里的两款 IRB 1100；自动姿态先尝试保持起始方向，再搜索有限组方向，结果不宣称全局最优，也不是任意 DH 表的通用求解器。
 - MoveL 按不超过 5 mm／2° 的间隔采样，检查 cfx 不变、关节限位及连续性。相邻采样任一轴变化超过 15° 时保守拒绝；接近奇异点的部分路径可能需要调整起点或方向。
 
@@ -103,7 +103,7 @@ npm run preview
 ## 开发与检查
 
 ```sh
-cargo test --workspace --no-default-features --locked
+cargo test --workspace --no-default-features --features emulation-desktop/model-cache --locked
 cargo build -p emulation-core --bin core-cli --locked
 npm run check
 npm test
@@ -126,6 +126,7 @@ npm run test:ui
 | `crates/robot-core/` | 独立 Rust 模型、正逆解、配置、路径规划、程序 IR 与品牌后处理 |
 | `src-tauri/` | 原生窗口、后台任务／取消、IPC、模块保存与安装配置 |
 | `src/robot/` | 原生调用、渲染所需 FK，以及浏览器 TypeScript 参考算法 |
+| `src/catalog/` | 固定型号目录、下载／缓存桥接、URDF解析与选择窗口 |
 | `src/scene/` | Three.js 场景、现成机器人模型、姿态与轨迹显示 |
 | `public/models/` | 两款 IRB 1100 的原始分段 STL |
 | `vendor/work-r-labs/` | 上游许可、固定来源和逐文件摘要 |

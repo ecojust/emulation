@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { nativeDesktop, solveMotion } from './client';
 import type { PlanRequest, PlanResult } from './types';
+import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel } from '../catalog/client';
 
 let started = false;
 type DiagnosticsWindow = Window & {
@@ -13,7 +14,7 @@ export function isNativeUiSmoke(): boolean {
 }
 
 function snapshot(resources: ResourceCheck[]) {
-  const canvas = document.querySelector<HTMLCanvasElement>('canvas[aria-label="ABB IRB 1100 三维仿真场景"]');
+  const canvas = document.querySelector<HTMLCanvasElement>('.robot-scene canvas');
   const gl = canvas?.getContext('webgl2');
   const debug = gl?.getExtension('WEBGL_debug_renderer_info');
   return {
@@ -41,11 +42,13 @@ function snapshot(resources: ResourceCheck[]) {
 }
 
 /** Only an explicit --ui-smoke-test launch enables this installed-app check. */
-export async function runNativeUiSmoke(request: PlanRequest, show: (result: PlanResult) => void): Promise<void> {
+export async function runNativeUiSmoke(request: PlanRequest, show: (result: PlanResult) => void, selectCatalogModel?: (model: LoadedCatalogModel) => void): Promise<void> {
   if (!isNativeUiSmoke() || started) return;
   started = true;
   const errors: string[] = [];
   const resources: ResourceCheck[] = [];
+  let stage = 'bundled-model';
+  const catalogEvidence: Record<string, unknown> = {};
   window.addEventListener('error', event => errors.push(event.message));
   window.addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
   try {
@@ -82,14 +85,54 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       if (errors.length) throw new Error(errors.join('; '));
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    const canvas = document.querySelector<HTMLCanvasElement>('canvas[aria-label="ABB IRB 1100 三维仿真场景"]');
+    const canvas = document.querySelector<HTMLCanvasElement>('.robot-scene canvas');
     const gl = canvas?.getContext('webgl2');
     if (!gl || gl.isContextLost()) throw new Error('Installed WebView has no working WebGL2 context');
     const earlyErrors = (window as DiagnosticsWindow).__EMULATION_UI_DIAGNOSTICS__;
     if (earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Installed WebView reported a console or runtime error');
     if (errors.length) throw new Error(errors.join('; '));
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, Rust planner/module/interference IPC, WebGL2 and all 14 packaged meshes passed', ...snapshot(resources) }) });
+    stage = 'catalog-download';
+    if (!selectCatalogModel) throw new Error('Catalog selection callback is unavailable');
+    const entry = MODEL_CATALOG.find(model => model.brand === 'Yaskawa' && model.name.includes('GP7'));
+    if (!entry) throw new Error('GP7 catalog entry is unavailable');
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const loaded = await loadCatalogModel(entry.id, { signal: controller.signal, onProgress: progress => { catalogEvidence.progress = progress; } });
+      if (loaded.kind !== 'urdf' || loaded.model.geometries.size !== 7) throw new Error('Downloaded GP7 did not prepare all seven real meshes');
+      selectCatalogModel(loaded);
+      stage = 'catalog-render';
+      const renderUntil = performance.now() + 10_000;
+      const expectedPosition = [560, 0, 815];
+      while (true) {
+        const modelTitle = document.querySelector('[aria-label="选择机器人型号"]')?.textContent;
+        const positions = [...document.querySelectorAll('[aria-label="当前 TCP"] [data-axis] strong')].map(node => Number(node.textContent));
+        const mounted = document.querySelector('canvas')?.getAttribute('aria-label')?.includes(entry.name);
+        const parts = document.querySelector('[data-loaded-parts="7"]');
+        if (modelTitle?.includes(entry.name) && mounted && parts && positions.length === 3 && positions.every((value, i) => Math.abs(value - expectedPosition[i]) < 0.02)) {
+          catalogEvidence.modelId = entry.id; catalogEvidence.toolPositionMm = positions; catalogEvidence.parts = 7;
+          break;
+        }
+        if (performance.now() > renderUntil) throw new Error('Downloaded model did not render with its own GP7 tool coordinates');
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      // A second load proves reuse in this app process. Offline behavior is checked
+      // independently by transport tests that make every network request fail.
+      stage = 'catalog-cache';
+      const cache = await listModelCache(controller.signal);
+      if (!cache[entry.id]) throw new Error('Native model cache did not retain the verified download');
+      let downloadedAgain = false;
+      const cached = await loadCatalogModel(entry.id, { signal: controller.signal, onProgress: progress => { if (progress.phase === 'downloading') downloadedAgain = true; } });
+      if (cached.kind !== 'urdf') throw new Error('Native cached model returned the wrong kind');
+      cached.dispose();
+      if (downloadedAgain) throw new Error('Complete native model cache unexpectedly downloaded again');
+      catalogEvidence.cacheReused = true;
+      const activeGl = document.querySelector<HTMLCanvasElement>('.robot-scene canvas')?.getContext('webgl2');
+      if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
+      if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
+    } finally { clearTimeout(deadline); }
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, native motion/interference IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
-    await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), ...snapshot(resources), errors }) });
+    await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, catalogEvidence, ...snapshot(resources), errors }) });
   }
 }
