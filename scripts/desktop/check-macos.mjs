@@ -24,7 +24,7 @@ let attached = false;
 
 function reportGraphics() {
   try {
-    const description = execFileSync("/usr/sbin/system_profiler", ["SPDisplaysDataType", "-detailLevel", "mini"], { encoding: "utf8", timeout: 15_000, maxBuffer: 1024 * 1024 });
+    const description = execFileSync("/usr/sbin/system_profiler", ["SPDisplaysDataType", "-detailLevel", "mini"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 15_000, maxBuffer: 1024 * 1024 });
     // Keep capability facts only, never monitor/computer serial numbers or user-named displays.
     const fields = /^\s*(Chipset Model|Type|Bus|VRAM(?: \(Dynamic, Max\))?|Vendor|Metal(?: Family)? Support|Display Type|Resolution|Main Display|Mirror|Online|Connection Type):/;
     const lines = description.split(/\r?\n/).filter((line) => fields.test(line)).map((line) => line.trim());

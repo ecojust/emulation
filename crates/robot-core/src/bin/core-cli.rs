@@ -1,11 +1,13 @@
 //! JSON-lines diagnostic executable. This is a test/benchmark bridge, not a desktop sidecar.
 use emulation_core::{
+    collision::{check_collisions, CollisionRequest},
     kinematics, model, planner,
     types::{JointAngles, PlanRequest, Pose},
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::AtomicBool;
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -23,6 +25,9 @@ enum Command {
     },
     Plan {
         request: PlanRequest,
+    },
+    Collision {
+        request: CollisionRequest,
     },
 }
 
@@ -44,6 +49,10 @@ fn execute(command: Command) -> Result<Value, String> {
         }
         Command::Plan { request } => {
             serde_json::to_value(planner::plan_move_l(&request)).map_err(|e| e.to_string())
+        }
+        Command::Collision { request } => {
+            serde_json::to_value(check_collisions(&request, &AtomicBool::new(false))?)
+                .map_err(|e| e.to_string())
         }
     }
 }

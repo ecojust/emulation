@@ -59,6 +59,8 @@ jobs:
           key: ${{ matrix.target }}
           cache-on-failure: true
       - run: npm ci --no-audit --no-fund
+      - name: Verify collision bounds against original robot meshes
+        run: node scripts/generate-collision-bounds.mjs --check
       - name: Read application version
         id: version
         run: node -e 'const fs=require("node:fs"); fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${require("./package.json").version}\n`);'

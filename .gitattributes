@@ -1,2 +1,4 @@
 *.stl binary
 vendor/work-r-labs/LICENSE -text
+vendor/work-r-labs/SOURCE.json -text
+src/robot/link-bounds.json -text

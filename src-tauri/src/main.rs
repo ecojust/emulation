@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use emulation_core::{
+    collision::{CollisionRequest, CollisionResult},
     program::ProgramExportRequest,
     types::{PlanRequest, PlanResult},
 };
@@ -62,6 +63,22 @@ async fn solve_motion(
     match reply {
         Reply::Plan(result) => Ok(result),
         _ => Err("原生计算返回了错误的结果类型".into()),
+    }
+}
+
+#[tauri::command]
+async fn check_collisions(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: CollisionRequest,
+) -> Result<Vec<CollisionResult>, String> {
+    match engine
+        .submit(request_id, Work::Collision(request))?
+        .await
+        .map_err(|_| "端点干涉检查未完成")??
+    {
+        Reply::Collision(results) => Ok(results),
+        _ => Err("原生干涉检查返回类型错误".into()),
     }
 }
 
@@ -199,6 +216,7 @@ fn main() {
         .manage(UiSmoke { enabled: ui_smoke })
         .invoke_handler(tauri::generate_handler![
             solve_motion,
+            check_collisions,
             cancel_motion,
             save_program,
             copy_rapid,

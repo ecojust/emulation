@@ -29,6 +29,8 @@ jobs:
         with:
           workspaces: . -> target
       - run: npm ci --no-audit --no-fund
+      - name: Verify collision bounds against original robot meshes
+        run: node scripts/generate-collision-bounds.mjs --check
       - name: Check Rust algorithms without desktop system dependencies
         run: cargo test -p emulation-core --release --locked
       - name: Check native job and export policies

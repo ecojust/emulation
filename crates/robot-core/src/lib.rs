@@ -1,4 +1,5 @@
 //! Portable native computation. No GUI, WebView, filesystem or device connection.
+pub mod collision;
 pub mod configuration;
 pub mod kinematics;
 pub mod math;

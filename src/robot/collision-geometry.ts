@@ -1,0 +1,129 @@
+import bounds from './link-bounds.json';
+import { forwardKinematics, jointsWithinLimits, multiplyMatrices } from './kinematics';
+import { getRobotModel } from './model';
+import type { JointAngles, Mat4, RobotId, Vec3 } from './types';
+
+/** World-aligned warning volume, in millimetres. This is not a controller safety zone. */
+export interface DangerZone { enabled: boolean; centerMm: Vec3; sizeMm: Vec3 }
+export interface CollisionZone extends DangerZone { id: string }
+export interface CollisionRequest { modelId: RobotId; zones: CollisionZone[]; solutions: { id: string; joints: JointAngles }[] }
+export interface CollisionResult { id: string; collidingLinks: number[]; zones: { zoneId: string; collidingLinks: number[] }[] }
+/** Conservative box enclosing a complete rigid mesh; axes are world-space unit vectors. */
+export interface LinkBoundingBox { index: number; centerMm: Vec3; halfSizeMm: Vec3; axes: [Vec3, Vec3, Vec3] }
+
+export const COLLISION_LIMITS = { maximumSolutions: 256, maximumZones: 64, maximumIdBytes: 128, coordinateMm: 1e6, sizeMm: 1e6 } as const;
+const SAT_EPSILON = 1e-10;
+const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const finiteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const vector = (value: unknown): value is Vec3 => Array.isArray(value) && value.length === 3 && Array.from(value).every(finiteNumber);
+const validId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && new TextEncoder().encode(value).length <= COLLISION_LIMITS.maximumIdBytes;
+
+export function validateCollisionRequest(request: CollisionRequest): void {
+  if (!request || typeof request.modelId !== 'string' || !Object.hasOwn(bounds.models, request.modelId)) throw new Error('碰撞预检需要有效机器人型号');
+  const model = getRobotModel(request.modelId);
+  if (!Array.isArray(request.zones) || request.zones.length > COLLISION_LIMITS.maximumZones) throw new Error('碰撞预检一次最多检查 64 个危险区');
+  const zoneIds = new Set<string>();
+  for (const zone of request.zones) {
+    if (!zone || !validId(zone.id) || zoneIds.has(zone.id)) throw new Error('危险区标识须非空、唯一且不超过 128 字节');
+    zoneIds.add(zone.id);
+    if (typeof zone.enabled !== 'boolean' || !vector(zone.centerMm) || !vector(zone.sizeMm)
+      || zone.centerMm.some(value => Math.abs(value) > COLLISION_LIMITS.coordinateMm)
+      || zone.sizeMm.some(value => value <= 0 || value > COLLISION_LIMITS.sizeMm)) {
+      throw new Error('危险区中心须在 ±1000000 mm 内，三个尺寸须大于 0 且不超过 1000000 mm');
+    }
+  }
+  if (!Array.isArray(request.solutions) || request.solutions.length > COLLISION_LIMITS.maximumSolutions) throw new Error('碰撞预检一次最多检查 256 个姿态');
+  const ids = new Set<string>();
+  for (const solution of request.solutions) {
+    if (!solution || !validId(solution.id) || ids.has(solution.id)) {
+      throw new Error('碰撞预检的姿态标识须非空、唯一且不超过 128 字节');
+    }
+    ids.add(solution.id);
+    if (!Array.isArray(solution.joints) || solution.joints.length !== 6 || !Array.from(solution.joints).every(finiteNumber) || !jointsWithinLimits(model, solution.joints)) {
+      throw new Error('碰撞预检的关节角须为六个有限数值且位于该型号限位内');
+    }
+  }
+}
+
+function inverseRigid(frame: Mat4): Mat4 {
+  const output = [
+    frame[0], frame[4], frame[8], 0,
+    frame[1], frame[5], frame[9], 0,
+    frame[2], frame[6], frame[10], 0,
+    0, 0, 0, 1,
+  ];
+  const position: Vec3 = [frame[3], frame[7], frame[11]];
+  for (let row = 0; row < 3; row++) output[row * 4 + 3] = -dot(output.slice(row * 4, row * 4 + 3) as Vec3, position);
+  return output;
+}
+
+const zeroInverse = new Map<RobotId, Mat4[]>();
+
+/** Exactly the same F_i(q) inverse(F_i(0)) rigid placement used by the STL scene. */
+export function linkBoundingBoxes(modelId: RobotId, joints: JointAngles): LinkBoundingBox[] {
+  if (!Object.hasOwn(bounds.models, modelId)) throw new Error('不支持的机器人型号');
+  const model = getRobotModel(modelId);
+  const fk = forwardKinematics(model, joints);
+  let inverse = zeroInverse.get(modelId);
+  if (!inverse) {
+    inverse = forwardKinematics(model, model.homeJoints).frames.map(inverseRigid);
+    zeroInverse.set(modelId, inverse);
+  }
+  return bounds.models[modelId].parts.map(part => {
+    const transform = multiplyMatrices(fk.frames[part.index], inverse![part.index]);
+    const zeroCenter = part.minMm.map((min, axis) => (min + part.maxMm[axis]) / 2);
+    const centerMm = [0, 1, 2].map(row => transform[row * 4 + 3] + zeroCenter.reduce((sum, value, column) => sum + transform[row * 4 + column] * value, 0)) as Vec3;
+    return {
+      index: part.index, centerMm,
+      halfSizeMm: part.minMm.map((min, axis) => (part.maxMm[axis] - min) / 2) as Vec3,
+      axes: [[transform[0], transform[4], transform[8]], [transform[1], transform[5], transform[9]], [transform[2], transform[6], transform[10]]],
+    };
+  });
+}
+
+/** 15-axis OBB/AABB separating-axis test. Contact counts as possible interference.
+ * A positive result is conservative: an enclosing box can overlap empty space in a mesh.
+ */
+export function intersectsDangerZone(box: LinkBoundingBox, zone: DangerZone): boolean {
+  const a = box.halfSizeMm;
+  const b = zone.sizeMm.map(value => value / 2);
+  const rotation = box.axes;
+  const absolute = rotation.map(axis => axis.map(value => Math.abs(value) + SAT_EPSILON));
+  const difference = zone.centerMm.map((value, axis) => value - box.centerMm[axis]) as Vec3;
+  const translation = rotation.map(axis => dot(difference, axis));
+  // A's three face normals.
+  for (let i = 0; i < 3; i++) {
+    const radiusB = b.reduce((sum, value, j) => sum + value * absolute[i][j], 0);
+    if (Math.abs(translation[i]) > a[i] + radiusB) return false;
+  }
+  // B's three world-aligned face normals.
+  for (let j = 0; j < 3; j++) {
+    const radiusA = a.reduce((sum, value, i) => sum + value * absolute[i][j], 0);
+    if (Math.abs(difference[j]) > radiusA + b[j]) return false;
+  }
+  // Nine edge cross-products. The epsilon also handles almost parallel axes.
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const i1 = (i + 1) % 3, i2 = (i + 2) % 3, j1 = (j + 1) % 3, j2 = (j + 2) % 3;
+    const radiusA = a[i1] * absolute[i2][j] + a[i2] * absolute[i1][j];
+    const radiusB = b[j1] * absolute[i][j2] + b[j2] * absolute[i][j1];
+    const distance = Math.abs(translation[i2] * rotation[i1][j] - translation[i1] * rotation[i2][j]);
+    if (distance > radiusA + radiusB) return false;
+  }
+  return true;
+}
+
+/** Browser/reference computation only. The desktop always calls the Rust engine. */
+export function checkCollisionReference(request: CollisionRequest): CollisionResult[] {
+  validateCollisionRequest(request);
+  const activeZones = request.zones.filter(zone => zone.enabled);
+  return request.solutions.map(solution => {
+    const boxes = activeZones.length ? linkBoundingBoxes(request.modelId, solution.joints) : [];
+    const zones = activeZones.flatMap(zone => {
+      const collidingLinks = boxes.filter(box => intersectsDangerZone(box, zone)).map(box => box.index);
+      return collidingLinks.length ? [{ zoneId: zone.id, collidingLinks }] : [];
+    });
+    const collidingLinks = [...new Set(zones.flatMap(zone => zone.collidingLinks))].sort((a, b) => a - b);
+    return { id: solution.id, collidingLinks, zones };
+  });
+}
+

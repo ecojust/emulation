@@ -54,6 +54,11 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     show(result);
     const file = await invoke<{ fileName: string; content: string }>('preview_program', { requestId: crypto.randomUUID(), request: { programName: 'UiSmoke', controller: 'abb_rapid', motion: request } });
     if (!file.fileName.endsWith('.mod') || !file.content.includes('MODULE UiSmoke') || !file.content.includes('CJointT') || !file.content.includes('MoveL')) throw new Error('Native module IPC returned an invalid module');
+    const interference = await invoke<{ id: string; collidingLinks: number[]; zones: { zoneId: string; collidingLinks: number[] }[] }[]>('check_collisions', {
+      requestId: crypto.randomUUID(),
+      request: { modelId: request.modelId, zones: [{ id: 'smoke-zone', enabled: true, centerMm: [0, 0, 400], sizeMm: [4000, 4000, 4000] }], solutions: [{ id: 'ui-smoke', joints: request.startJoints }] },
+    });
+    if (interference.length !== 1 || interference[0].id !== 'ui-smoke' || interference[0].collidingLinks.length !== 7 || interference[0].zones[0]?.zoneId !== 'smoke-zone') throw new Error('Native bounding-box inspection IPC returned an invalid result');
     // Check packaged files independently from rendering, so a missing GPU cannot
     // be misreported as a missing STL. Preserve each response in failure evidence.
     await Promise.all(['irb1100-4-0.58', 'irb1100-4-0.475'].flatMap(model => ['base_link', 'link_1', 'link_2', 'link_3', 'link_4', 'link_5', 'link_6'].map(async name => {
@@ -83,7 +88,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const earlyErrors = (window as DiagnosticsWindow).__EMULATION_UI_DIAGNOSTICS__;
     if (earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Installed WebView reported a console or runtime error');
     if (errors.length) throw new Error(errors.join('; '));
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, Rust planner IPC, module IPC, WebGL2 and all 14 packaged meshes passed', ...snapshot(resources) }) });
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, Rust planner/module/interference IPC, WebGL2 and all 14 packaged meshes passed', ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), ...snapshot(resources), errors }) });
   }
