@@ -44,4 +44,5 @@ jobs:
           path: |
             test-results/
             playwright-report/
+            /tmp/emulation-*.png
           if-no-files-found: ignore
