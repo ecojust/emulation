@@ -19,6 +19,8 @@
 
 安装包由 [桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)生成：成功运行中的 Artifacts 提供 macOS Apple Silicon／Intel 的 DMG 和 Windows x64 的安装程序，附源提交、CPU 架构和 SHA-256 清单。这里是 CI 构建产物，不等同于已发布 GitHub Release。
 
+已验证的测试包（应用源版本`b0ebd4d`）：[macOS M系列](https://github.com/ecojust/emulation/actions/runs/42637609895/artifacts/13684620623) · [Windows x64](https://github.com/ecojust/emulation/actions/runs/42637609895/artifacts/13684192488)。两者完成实际安装和模型下载／缓存验收。Intel已通过构建、签名与原生核心检查，但托管GPU没有可用WebGL2，图形运行仍待验证。
+
 - macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
 - 两款 IRB 1100 网格随客户端打包；FANUC、Yaskawa 型号首次选择时下载，校验后缓存，之后可离线使用。运动求解与程序生成在本机执行。

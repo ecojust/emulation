@@ -57,6 +57,21 @@ async function hitZoneIds(page: Page): Promise<string[][]> {
 async function sceneZones(page: Page): Promise<{ id: string; enabled: boolean; minMm?: number[]; maxMm?: number[] }[]> {
   return JSON.parse((await canvas(page).getAttribute('data-danger-zones'))!);
 }
+async function expectZoneInputs(page: Page, center: number[], size: number[]) {
+  for (const [index, axis] of ['X', 'Y', 'Z'].entries()) {
+    await expect(page.getByRole('spinbutton', { name: `危险区中心 ${axis}`, exact: true })).toHaveValue(String(center[index]));
+    await expect(page.getByRole('spinbutton', { name: `危险区尺寸 ${axis}`, exact: true })).toHaveValue(String(size[index]));
+  }
+}
+async function expectRenderedZone(page: Page, id: string, min: number[], max: number[]) {
+  // Worker completion and a matching zone ID do not imply the next scene RAF
+  // has applied every dimension. Read fresh bounds until the geometry matches.
+  await expect.poll(async () => {
+    const zone = (await sceneZones(page)).find(item => item.id === id);
+    if (!zone?.enabled || zone.minMm?.length !== 3 || zone.maxMm?.length !== 3) return Infinity;
+    return Math.max(...zone.minMm.map((value, i) => Math.abs(value - min[i])), ...zone.maxMm.map((value, i) => Math.abs(value - max[i])));
+  }, { message: `Rendered bounds of ${id}: ${JSON.stringify({ min, max })}` }).toBeLessThan(5e-7);
+}
 
 test('applying a different wrist solution previews its actual joints and cannot reuse validated motion commands', async ({ page }) => {
   const errors = await openSolutions(page);
@@ -131,24 +146,23 @@ test('multiple danger zones retain their identities and endpoint preview across 
   expect(firstId).not.toBe('');
   await page.getByRole('textbox', { name: '危险区名称', exact: true }).fill('Near fixture');
   await setZone(page, [0, 0, 300], [2500, 2500, 2500]);
+  await expectZoneInputs(page, [0, 0, 300], [2500, 2500, 2500]);
   await expect.poll(() => allStates(page, ['hit'])).toBe(true);
+  await expectRenderedZone(page, firstId, [-1250, -1250, -950], [1250, 1250, 1550]);
   await page.getByRole('button', { name: '添加危险区', exact: true }).click();
+  await expect(selector).not.toHaveValue(firstId);
+  await expect(selector).not.toHaveValue('');
   const secondId = await selector.inputValue();
   expect(secondId).not.toBe(firstId);
   await page.getByRole('textbox', { name: '危险区名称', exact: true }).fill('Far fixture');
   await setZone(page, [5000, 5000, 5000], [100, 100, 100]);
+  await expectZoneInputs(page, [5000, 5000, 5000], [100, 100, 100]);
   await expect.poll(async () => (await hitZoneIds(page)).every(ids => ids.length === 1 && ids[0] === firstId)).toBe(true);
   await expect(rows(page)).toHaveCount(originalCount);
   await expect(rows(page).first().getByLabel('可能干涉', { exact: true })).toHaveAttribute('title', /Near fixture/);
   expect(await rows(page).first().getByLabel('可能干涉', { exact: true }).getAttribute('title')).not.toContain('Far fixture');
   await expect.poll(async () => (await sceneZones(page)).map(zone => zone.id).sort()).toEqual([firstId, secondId].sort());
-  const zones = await sceneZones(page);
-  const far = zones.find(zone => zone.id === secondId)!;
-  expect(far.enabled).toBe(true);
-  for (let axis = 0; axis < 3; axis++) {
-    expect(far.minMm![axis]).toBeCloseTo(4950, 6);
-    expect(far.maxMm![axis]).toBeCloseTo(5050, 6);
-  }
+  await expectRenderedZone(page, secondId, [4950, 4950, 4950], [5050, 5050, 5050]);
   const candidate = await differentWrist(page);
   await openProgram(page);
   await candidate.row.getByRole('button', { name: /^应用姿态 / }).click();
@@ -171,6 +185,8 @@ test('multiple danger zones retain their identities and endpoint preview across 
   await expect(page.getByText('端点姿态预览', { exact: true })).toBeVisible();
   await expect(selector).toHaveValue(secondId);
   await expectJoints(page, candidate.joints);
+  await expectRenderedZone(page, firstId, [-1250, -1250, -950], [1250, 1250, 1550]);
+  await expectRenderedZone(page, secondId, [4950, 4950, 4950], [5050, 5050, 5050]);
   await expect.poll(async () => {
     const current = JSON.parse((await canvas(page).getAttribute('data-camera-position'))!) as number[];
     return Math.hypot(...current.map((value, i) => value - camera[i]));
@@ -180,12 +196,15 @@ test('multiple danger zones retain their identities and endpoint preview across 
   await expect(selector).toHaveValue(firstId);
   await expect(page.getByRole('textbox', { name: '危险区名称', exact: true })).toHaveValue('Near fixture');
   await setZone(page, [6000, 6000, 6000], [100, 100, 100]);
+  await expectZoneInputs(page, [6000, 6000, 6000], [100, 100, 100]);
   await expect.poll(() => allStates(page, ['clear'])).toBe(true);
+  await expectRenderedZone(page, firstId, [5950, 5950, 5950], [6050, 6050, 6050]);
   for (const ids of await hitZoneIds(page)) expect(ids).toEqual([]);
   await expectJoints(page, candidate.joints);
   await page.getByRole('button', { name: '删除危险区', exact: true }).click();
   await expect(selector).toHaveValue(secondId);
   await expect.poll(async () => (await sceneZones(page)).map(zone => zone.id)).toEqual([secondId]);
+  await expectRenderedZone(page, secondId, [4950, 4950, 4950], [5050, 5050, 5050]);
   await expect(rows(page)).toHaveCount(originalCount);
   await expect.poll(() => allStates(page, ['clear'])).toBe(true);
   await page.getByRole('button', { name: '删除危险区', exact: true }).click();
@@ -193,10 +212,13 @@ test('multiple danger zones retain their identities and endpoint preview across 
   await expect.poll(() => allStates(page, ['off'])).toBe(true);
   expect((await rows(page).allTextContents()).join(' ')).not.toMatch(/包围盒未重叠|路径安全|安全可执行|无碰撞/);
   await page.getByRole('button', { name: '添加危险区', exact: true }).click();
+  await expect(selector).not.toHaveValue('');
   expect(await selector.inputValue()).not.toBe(firstId);
   expect(await selector.inputValue()).not.toBe(secondId);
+  const disabledId = await selector.inputValue();
   await page.getByRole('checkbox', { name: '显示干涉区域', exact: true }).uncheck();
   await expect.poll(() => allStates(page, ['off'])).toBe(true);
+  await expect.poll(async () => sceneZones(page)).toEqual([{ id: disabledId, enabled: false }]);
   expect((await rows(page).allTextContents()).join(' ')).not.toContain('包围盒未重叠');
   await expectJoints(page, candidate.joints);
   await expect(rows(page)).toHaveCount(originalCount);
