@@ -146,6 +146,7 @@ export default function App() {
   const collisionRun = useRef<AbortController | null>(null);
   const [inspectionRevision, setInspectionRevision] = useState(0);
   const [inspection, setInspection] = useState<{ key: string; pending: boolean; solutions: IKSolution[]; error: string }>({ key: '', pending: false, solutions: [], error: '' });
+  const [endpointPreview, setEndpointPreview] = useState<{ modelId: string; pointId: string; revision: number; solution: IKSolution } | null>(null);
   const [collisionView, setCollisionView] = useState<CollisionView>({ key: '', status: 'pending', items: [] });
   const [loop, setLoop] = useState(false);
   const [execution, setExecution] = useState<ExecutionStatus>({ phase: 'idle', message: '', pointId: null, line: 0, cycle: 0 });
@@ -163,7 +164,9 @@ export default function App() {
     const t = after.t === before.t ? 0 : (progress - before.t) / (after.t - before.t);
     return before.joints.map((value, i) => value + (after.joints[i] - value) * t) as JointAngles;
   }, [nativeJoints, catalogJoints, genericModel, activeSegment, progress]);
-  const visibleJoints = displayJoints;
+  // A candidate is a rendering override, never the source for teaching or motion.
+  const previewSolution = endpointPreview?.modelId === activeModelId && endpointPreview.pointId === selectedPoint?.id && endpointPreview.revision === selectedPoint.revision ? endpointPreview.solution : null;
+  const visibleJoints = previewSolution?.joints ?? displayJoints;
   const currentFk = useMemo(() => genericModel ? null : forwardKinematics(model, displayJoints), [genericModel, model, displayJoints]);
   const currentPose = useMemo(() => genericModel ? forwardUrdfKinematics(genericModel.description, displayJoints).toolPose : currentFk!.pose, [genericModel, displayJoints, currentFk]);
   const configuration = useMemo(() => genericModel ? null : getConfiguration(model, displayJoints, currentFk!), [genericModel, model, displayJoints, currentFk]);
@@ -176,7 +179,8 @@ export default function App() {
       return '';
     } catch (error) { return error instanceof Error ? error.message : '关节输入无效'; }
   }, [genericModel, catalogDraft, jointDraft, limits]);
-  const captureDisabledReason = executing || busy || exporting || jogStatus.pending || jogDragging ? '请等待当前操作完成后再记录姿态。' : poseError || (!currentPose || visibleJoints.length !== 6 ? '当前模型缺少有效的六轴工具姿态。' : genericModel ? genericChain?.error || null : configuration?.singular || !configuration?.configuration ? (configuration?.reason || '当前姿态没有有效 robconf') + '；请调整关节或使用示例姿态。' : null);
+  const poseCaptureDisabledReason = executing || busy || exporting || jogStatus.pending || jogDragging ? '请等待当前操作完成后再记录姿态。' : poseError || (!currentPose || displayJoints.length !== 6 ? '当前模型缺少有效的六轴工具姿态。' : genericModel ? genericChain?.error || null : configuration?.singular || !configuration?.configuration ? (configuration?.reason || '当前姿态没有有效 robconf') + '；请调整关节或使用示例姿态。' : null);
+  const captureDisabledReason = previewSolution ? '请先退出端点预览，再记录姿态或检查运动。' : poseCaptureDisabledReason;
   const runDisabledReason = captureDisabledReason || (!program.points.length ? '请先在程序中记录目标点。' : null);
   const sceneZones = useMemo(() => zoneConfiguration.validZones.map(zone => ({ ...zone, name: zones.find(draft => draft.id === zone.id)?.name.trim() || '未命名危险区' })), [zoneConfiguration.validZones, zones]);
   const scenePaths = useMemo(() => program.paths.map(path => ({ id: path.id, name: path.name, selected: selection.kind === 'path' && selection.id === path.id, points: path.pointIds.flatMap(id => {
@@ -256,7 +260,7 @@ export default function App() {
     if (!sourceWritable() || captureDisabledReason || !currentPose) throw new Error(captureDisabledReason || '当前不能插入机器人姿态。');
     const modelKey = activeModelId, owner = documents, file = owner.files.find(item => item.id === input.fileId), revision = owner.project.sourceRevision;
     if (!file || file.text !== input.source) throw new Error('源码文件已改变，请重试。');
-    const captured: ProgramSnapshot = { pose: { position: [...currentPose.position], orientation: [...currentPose.orientation] }, joints: [...visibleJoints], configuration: genericModel ? null : [...configuration!.configuration!] as ProgramSnapshot['configuration'], speedMmPerSecond: speed };
+    const captured: ProgramSnapshot = { pose: { position: [...currentPose.position], orientation: [...currentPose.orientation] }, joints: [...displayJoints], configuration: genericModel ? null : [...configuration!.configuration!] as ProgramSnapshot['configuration'], speedMmPerSecond: speed };
     const module = await import('./programming/source-insertion');
     if (!alive.current || activeModelRef.current !== modelKey || documentsRef.current.project.sourceRevision !== revision || sourceOperation.current || executionRun.current || closeAttempt.current.busy) throw new Error('工程或机器人状态已改变，请重新插入姿态。');
     return module.insertCurrentSourcePose(modelKey, input.source, input.from, input.to, captured);
@@ -340,6 +344,7 @@ export default function App() {
     writeBodyPose(displayJoints);
   }
   function clearSegment(preserve = true) {
+    setEndpointPreview(null);
     if (preserve) preserveVisiblePose();
     motionRun.current?.abort(); motionRun.current = null;
     exportRun.current?.abort(); exportRun.current = null;
@@ -361,7 +366,7 @@ export default function App() {
   }
   function changeWorkspaceView(next: WorkspaceView) {
     if (next === activeView) return;
-    setPlaying(false); stopJog(); setZoneDragging(false);
+    setEndpointPreview(null); setPlaying(false); stopJog(); setZoneDragging(false);
     workspace.setActiveView(next);
   }
   function changeView(next: View) { stopJog(); setZoneDragging(false); setView(next); setViewRevision(value => value + 1); }
@@ -417,12 +422,11 @@ export default function App() {
     catch (error) { setMessage(error instanceof Error ? error.message : 'Path 创建失败'); }
   }
   function removePoints(ids: string[]) { if (executionRun.current) return; clearSegment(); cancelInspections(); setInspectionRevision(value => value + 1); for (const id of ids) program.removePoint(id); setSelectedRows(rows => rows.filter(id => !ids.includes(id))); }
-  function applySolution(solution: IKSolution) {
-    if (!selectedPoint || busy || exporting || executionRun.current) return;
-    clearSegment(false); stopJog(); cancelInspections();
-    program.updatePoint(selectedPoint.id, { pose: solution.pose, joints: solution.joints, configuration: solution.configuration, speedMmPerSecond: selectedPoint.speedMmPerSecond });
-    setNativeJoints([...solution.joints]); setJointDraft(strings(solution.joints)); workspace.setActiveView('scene');
-    setMessage('已将此端点解应用到目标点和机器人；原运动验证已失效。');
+  function previewEndpoint(solution: IKSolution) {
+    if (!selectedPoint || busy || exporting || executionRun.current || jogStatus.pending || jogDragging) return;
+    setPlaying(false);
+    setEndpointPreview({ modelId: activeModelId, pointId: selectedPoint.id, revision: selectedPoint.revision, solution });
+    workspace.setActiveView('scene');
   }
   async function checkSegment() {
     if (!selectedPoint || captureDisabledReason) return;
@@ -449,7 +453,7 @@ export default function App() {
     const request: PlanRequest = { modelId, startJoints: start, target: { position: point.pose.position, orientation: point.pose.orientation }, speedMmPerSecond: point.speedMmPerSecond };
     const result = await solveMotion(request, signal);
     if (result.status !== 'success') throw new Error(result.message);
-    if (!point.configuration || result.selected.configuration.some((value, i) => value !== point.configuration![i])) throw new Error('可达运动的 robconf 与已记录目标点不一致，请应用匹配的端点解或调整机器人起点。');
+    if (!point.configuration || result.selected.configuration.some((value, i) => value !== point.configuration![i])) throw new Error('可达运动的 robconf 与已记录目标点不一致，请调整机器人起点，或调姿后重新记录目标点。');
     return { ...base, kind: 'abb', request, result };
   }
   function stopExecution(report = true) {
@@ -533,6 +537,7 @@ export default function App() {
   }
   async function copySegment() { if (!code) return; try { await copyRapid(code); setCopyState('已复制'); } catch { setCopyState('请选中代码手动复制'); } }
 
+  useEffect(() => { setEndpointPreview(null); }, [activeModelId, selectedPoint?.id, selectedPoint?.revision]);
   useEffect(() => {
     const controller = new AbortController(); inspectionRun.current?.abort(); inspectionRun.current = controller;
     if (!selectedPoint || genericModel || busy || exporting || executing || jogStatus.pending || jogDragging) return () => controller.abort();
@@ -612,7 +617,7 @@ export default function App() {
       <a className="brand" href="./" aria-label="Emulation 首页"><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
       <div className="header-divider"/><div className="project-label"><span className="project-context">运动工作台</span><span className="project-separator">/</span><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={exporting || executing || sourceBusy} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span></button></div>
       <div className="workspace-view-switch" aria-label="工作区视图">{(['scene', 'program'] as const).map(item => <button key={item} type="button" aria-pressed={activeView === item} className={activeView === item ? 'selected' : ''} onClick={() => changeWorkspaceView(item)}>{item === 'scene' ? '场景' : '程序'}</button>)}</div>
-      <div className="header-right"><span className="version">v0.2.0</span></div>
+      <div className="header-right"><span className="version">v0.2.1</span></div>
     </header>
     <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={closeState !== null}>
       <aside className="object-panel" aria-label="场景对象">
@@ -635,7 +640,7 @@ export default function App() {
       <section className="scene-panel" aria-label="机器人视口" aria-hidden={activeView !== 'scene'} inert={activeView !== 'scene'}>
         <div className="scene-heading"><div><span className="eyebrow">ROBOT WORKSPACE</span><h1>机器人工作区</h1><p>{genericModel ? 'URDF 模型 · 关节姿态 · 工具坐标' : '对象调姿 · 姿态记录 · 端点检查'}</p></div><span className="robot-tag"><span className={activeBrand === 'ABB' ? 'abb-mark' : 'robot-brand-mark'}>{activeBrand}</span>{activeName}<span className="tag-divider"/>{limits.length} 轴</span></div>
         <div className="viewport">
-          <RobotScene model={model} joints={displayJoints} urdfModel={genericModel ?? undefined} urdfJoints={displayJoints}
+          <RobotScene model={model} joints={visibleJoints} urdfModel={genericModel ?? undefined} urdfJoints={visibleJoints}
             targetPose={selectedPoint?.pose ?? null} path={activeSegment?.result.path ?? EMPTY_PATH} endJoints={activeSegment?.result.path.at(-1)?.joints}
             showFrames={showFrames} view={view} viewRevision={viewRevision}
             jogEnabled={!genericModel && selection.kind === 'robot' && activeView === 'scene' && jogEnabled && !busy && !exporting && !executing && !poseError}
@@ -652,12 +657,13 @@ export default function App() {
           <div className="viewport-caption"><span className="axis-dot"/>基座位于世界原点 <code>[0, 0, 0]</code></div>
           <div className="scene-legend"><span><i className="legend-current"/>当前 TCP</span>{selectedPoint && <span><i className="legend-target"/>已记录目标</span>}{activeSegment && <span><i className="legend-path"/>已验证单段</span>}</div>
         </div>
-        <div className="playback"><button className="play-button" aria-label={playing ? '暂停播放' : '播放路径'} disabled={!activeSegment || busy} onClick={() => { if (!playing && progress >= 1) setProgress(0); setPlaying(value => !value); }}><Icon name={playing ? 'pause' : 'play'} size={15}/></button><div className="playback-track"><input type="range" aria-label="路径进度" min="0" max="100" step="0.1" value={progress * 100} disabled={!activeSegment || busy} onChange={event => { setPlaying(false); setProgress(Number(event.target.value) / 100); }}/></div><span className="progress-value">{Math.round(progress * 100)}<small>%</small></span><label className="frame-toggle"><input type="checkbox" checked={showFrames} onChange={event => setShowFrames(event.target.checked)}/>显示关节坐标系</label></div>
+        {previewSolution && <div className="endpoint-preview-notice" role="status" aria-label="端点预览"><div><strong>正在预览端点姿态</strong><span>仅改变三维显示，目标点、程序和原机器人姿态保持不变。</span><code>robconf [{previewSolution.configuration.join(', ')}]</code></div><button type="button" className="copy-button" onClick={() => setEndpointPreview(null)}>退出预览</button></div>}
+        <div className="playback"><button className="play-button" aria-label={playing ? '暂停播放' : '播放路径'} disabled={!activeSegment || busy || Boolean(previewSolution)} onClick={() => { if (!playing && progress >= 1) setProgress(0); setPlaying(value => !value); }}><Icon name={playing ? 'pause' : 'play'} size={15}/></button><div className="playback-track"><input type="range" aria-label="路径进度" min="0" max="100" step="0.1" value={progress * 100} disabled={!activeSegment || busy || Boolean(previewSolution)} onChange={event => { setPlaying(false); setProgress(Number(event.target.value) / 100); }}/></div><span className="progress-value">{Math.round(progress * 100)}<small>%</small></span><label className="frame-toggle"><input type="checkbox" checked={showFrames} onChange={event => setShowFrames(event.target.checked)}/>显示关节坐标系</label></div>
         {execution.message && <div className={'execution-status execution-' + execution.phase} role="status" aria-label="程序运行状态" data-run-phase={execution.phase} data-run-point-id={execution.pointId ?? ''} data-run-line={execution.line} data-run-cycle={execution.cycle}><span>{execution.message}</span>{executing && <button type="button" className="copy-button" onClick={() => stopExecution()}>停止运行</button>}</div>}
       </section>
 
       <aside className="control-panel" aria-label="对象属性"><fieldset disabled={exporting || executing} className="inspector-fieldset">
-        {selection.kind === 'robot' && <RobotInspector name={activeName} model={genericModel ? null : model} pose={currentPose} joints={visibleJoints}
+        {selection.kind === 'robot' && <RobotInspector name={activeName} model={genericModel ? null : model} pose={currentPose} joints={displayJoints}
           drafts={genericModel ? catalogDraft : jointDraft} limits={limits} euler={currentPose ? quaternionToEulerZYX(currentPose.orientation) : null}
           configuration={configuration?.configuration ?? null} poseError={poseError} captureDisabledReason={captureDisabledReason} speed={speed}
           onSpeed={setSpeed} onJoint={editJoint} onInitial={() => setRobotPose('ready')} onZero={() => setRobotPose('zero')}/>}
@@ -674,20 +680,20 @@ export default function App() {
           const point = program.points.find(item => item.id === id);
           return point && <li key={id}><button type="button" className="copy-button" onClick={() => chooseObject({ kind: 'target', id })}>{point.pointName}</button><span>{profile.linearInstruction} · {point.speedMmPerSecond} mm/s</span></li>;
         })}</ol><button type="button" className="text-button" onClick={() => { program.removePath(selectedPath.id); workspace.selectObject({ kind: 'robot' }); }}>删除 Path 编组</button><p className="field-hint">删除编组保留原程序点和执行顺序。</p></div>}
-        {selectedPoint && <TargetInspector modelKey={activeModelId} point={selectedPoint} updateDisabledReason={captureDisabledReason} checking={busy} onUpdate={updatePointFromCurrent} onCheck={() => void checkSegment()}>
+        {selectedPoint && <TargetInspector modelKey={activeModelId} point={selectedPoint} updateDisabledReason={poseCaptureDisabledReason} previewing={Boolean(previewSolution)} checking={busy} onUpdate={updatePointFromCurrent} onCheck={() => void checkSegment()}>
           {busy && <button type="button" className="text-button" onClick={() => clearSegment()}>取消 {profile.linearInstruction} 检查</button>}
           {segmentError && <div className="result-error" role="alert"><div><strong>此 {profile.linearInstruction} 未通过</strong><p>{segmentError}</p></div></div>}
           {activeSegment && <div className="result-success">
             <div className="success-heading"><span><Icon name="check" size={15}/></span><div><h3>此 {profile.linearInstruction} 已通过运动学检查</h3><p>仅当前起点到 {selectedPoint.pointName} · {activeSegment.result.path.length} 个采样点</p></div></div>
             <p className="field-hint">未验证整段碰撞、其他程序段或控制器动态。</p>
             {activeSegment.kind === 'abb' && <textarea className="segment-code" readOnly spellCheck={false} aria-label="RAPID MoveL 指令" value={code}/>}
-            <div className="segment-actions">{activeSegment.kind === 'abb' && <button className="copy-button" type="button" onClick={() => void copySegment()}>{copyState || '复制此 MoveL'}</button>}<button className="copy-button" type="button" onClick={() => { setProgress(0); setPlaying(true); workspace.setActiveView('scene'); }}>播放此 {profile.linearInstruction}</button></div>
+            <div className="segment-actions">{activeSegment.kind === 'abb' && <button className="copy-button" type="button" onClick={() => void copySegment()}>{copyState || '复制此 MoveL'}</button>}<button className="copy-button" type="button" disabled={Boolean(previewSolution)} onClick={() => { setProgress(0); setPlaying(true); workspace.setActiveView('scene'); }}>播放此 {profile.linearInstruction}</button></div>
             {activeSegment.kind === 'abb' ? <><label className="field-label segment-module-label">模块名称<input aria-label="程序模块名称" maxLength={32} value={moduleName} onChange={event => setModuleName(event.target.value)}/></label><button className="copy-button" type="button" disabled={!nativeDesktop || exporting} onClick={() => void exportSegment()}>{exporting ? '正在导出…' : '导出此 MoveL'}</button><p className="field-hint" role="status">{exportMessage || (nativeDesktop ? '仅导出此已验证运动段；模块会检查实际起始关节，不自动移动到起点。' : '完整模块请使用桌面客户端导出。')}</p></> : <p className="field-hint">此型号支持运动仿真；控制器文件导出尚未适配。</p>}
           </div>}
           {!genericModel && <section className="endpoint-details"><div className="field-heading"><h3>端点姿态与干涉检测</h3><button type="button" className="text-button" disabled={busy || exporting} onClick={() => { cancelInspections(); setInspectionRevision(value => value + 1); }}>重新检查端点解</button></div>
-            <p className="field-hint" role="status" aria-label="端点检查状态">{inspection.key !== pointKey || inspection.pending ? '正在检查端点逆解…' : inspection.error || (solutions.length ? '应用会更新此点与机器人本体，并使原运动验证失效。' : '没有找到有效的端点逆解。')}</p>
-            <div className="endpoint-list">{solutions.map((solution, index) => <div key={solution.id} className="endpoint-solution" role="group" aria-label={'端点解 ' + (index + 1)} data-endpoint-joints={JSON.stringify(solution.joints)} data-collision-state={collisionInfo(solution.id).state} data-collision-zone-ids={JSON.stringify(collisionIds(solution.id))} data-collision-uncertain-zone-ids={JSON.stringify(collisionIds(solution.id, true))}>
-              <div className="endpoint-solution-heading"><code>{'[' + solution.configuration.join(', ') + ']'}</code>{solution.configuration.every((value, i) => value === selectedPoint.configuration?.[i]) && <small>已记录配置</small>}<button type="button" className="copy-button endpoint-apply" aria-label={'应用姿态 ' + (index + 1)} disabled={busy || exporting} onClick={() => applySolution(solution)}>应用</button></div>
+            <p className="field-hint" role="status" aria-label="端点检查状态">{inspection.key !== pointKey || inspection.pending ? '正在检查端点逆解…' : inspection.error || (solutions.length ? '预览仅显示候选姿态，不修改目标点、原机器人姿态或已验证路径。' : '没有找到有效的端点逆解。')}</p>
+            <div className="endpoint-list">{solutions.map((solution, index) => <div key={solution.id} className={'endpoint-solution' + (previewSolution?.id === solution.id ? ' endpoint-previewed' : '')} role="group" aria-label={'端点解 ' + (index + 1)} data-endpoint-joints={JSON.stringify(solution.joints)} data-collision-state={collisionInfo(solution.id).state} data-collision-zone-ids={JSON.stringify(collisionIds(solution.id))} data-collision-uncertain-zone-ids={JSON.stringify(collisionIds(solution.id, true))}>
+              <div className="endpoint-solution-heading"><code>{'[' + solution.configuration.join(', ') + ']'}</code>{solution.configuration.every((value, i) => value === selectedPoint.configuration?.[i]) && <small>已记录配置</small>}<button type="button" className="copy-button endpoint-preview" aria-label={'预览姿态 ' + (index + 1)} aria-pressed={previewSolution?.id === solution.id} disabled={busy || exporting} onClick={() => previewEndpoint(solution)}>预览</button></div>
               <span className="endpoint-joints">{solution.joints.map(value => numberText(value, 1)).join(' / ')}°</span>{collisionBadge(solution.id)}
             </div>)}</div>
             <p className="field-hint">! 确认干涉 · ? 无法可靠判断内部。检测只覆盖端点与危险区，未检查整段路径或自碰撞。</p>

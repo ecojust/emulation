@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { bodyPose, captureCurrent, checkedSegment, expectBodyJoints, expectCopyState, makePath, observeBrowser, openProgram, openScene, openWorkspace, scene, selectPoint, selectRobot, type CapturedPoint } from './workspace-helpers';
+import { bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectCopyState, makePath, observeBrowser, openProgram, openScene, openWorkspace, programRows, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
+import { generateSource, openTeach } from './programming-helpers';
 
 test.setTimeout(90_000);
 const rows = (page: Page) => page.locator('[data-endpoint-joints]');
@@ -65,26 +66,122 @@ async function readyRow(page: Page) {
   return rows(page).nth(index);
 }
 
-test('applying an independent wrist solution updates the stored point and actual robot while invalidating checked motion', async ({ page }) => {
+test('previewing an independent wrist solution preserves the saved target, program and checked motion, then restores the exact playback pose', async ({ page }) => {
+  test.setTimeout(120_000);
   const errors = observeBrowser(page);
   await openWorkspace(page);
-  const point = await checkedSegment(page);
+  const point = await captureCurrent(page);
+  await makePath(page, [point]);
+  const originalSource = await generateSource(page);
+  await openTeach(page);
+  await setJoint(page, 1, 3);
+  await selectPoint(page, point);
+  await page.getByRole('button', { name: '检查到此点的 MoveL', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '此 MoveL 已通过运动学检查', exact: true })).toBeVisible();
   await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
+  const progress = page.getByRole('slider', { name: '路径进度', exact: true });
+  // Use the real range keyboard controls to preview from a paused interior
+  // sample, so resetting either the checked segment or its cursor is observable.
+  await progress.press('Home');
+  for (let i = 0; i < 3; i++) await progress.press('PageUp');
+  const originalProgress = await progress.inputValue();
+  expect(Number(originalProgress)).toBeGreaterThan(0);
+  expect(Number(originalProgress)).toBeLessThan(100);
+  await expect.poll(async () => (await bodyJoints(page))[0]).toBeLessThan(2.99);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  const originalBody = await bodyJoints(page);
   const originalTarget = await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue();
+  const originalConfiguration = await page.getByLabel('目标 robconf', { exact: true }).textContent();
+  const originalPath = await scene(page).getAttribute('data-scene-paths');
+  const originalRapid = await readRapid(page);
   const candidate = await differentWrist(page);
-  await candidate.row.getByRole('button', { name: /^应用姿态 / }).click();
+  const preview = candidate.row.getByRole('button', { name: /^预览姿态 / });
+  await preview.click();
+  await expect(preview).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('status', { name: '端点预览', exact: true })).toBeVisible();
   await expectBodyJoints(page, candidate.joints);
   await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
-  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).not.toHaveValue(originalTarget);
-  await expect(page.locator('.workspace-message')).toContainText(/原运动验证已失效/);
-  await expectCopyState(page, false);
-  await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '导出此 MoveL', exact: true })).toHaveCount(0);
-  await page.screenshot({ path: '/tmp/emulation-endpoint-applied.png' });
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
+  await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveText(originalConfiguration!);
+  await expect(scene(page)).toHaveAttribute('data-scene-paths', originalPath!);
+  await expect(progress).toHaveValue(originalProgress);
+  expect(await readRapid(page)).toBe(originalRapid);
+  await expectCopyState(page, true);
+  await expect(page.getByRole('button', { name: '用当前姿态更新点', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '检查到此点的 MoveL', exact: true })).toBeDisabled();
+  await page.screenshot({ path: '/tmp/emulation-endpoint-preview.png' });
+  await page.getByRole('button', { name: '退出预览', exact: true }).click();
+  await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
+  await expect(preview).toHaveAttribute('aria-pressed', 'false');
+  await expectBodyJoints(page, originalBody);
+  await expect(progress).toHaveValue(originalProgress);
+  expect(await readRapid(page)).toBe(originalRapid);
+  await expectCopyState(page, true);
+  expect(await generateSource(page)).toBe(originalSource);
+  await openTeach(page);
+  await expect(programRows(page)).toHaveCount(1);
+  await expect(programRows(page).first()).toHaveAttribute('data-program-point-id', point.id);
+  await selectRobotObject(page);
+  for (let i = 0; i < 6; i++) {
+    const draft = Number(await page.getByRole('spinbutton', { name: `机器人关节 J${i + 1}`, exact: true }).inputValue());
+    expect(draft).toBeCloseTo(originalBody[i], 5);
+  }
+  await selectPoint(page, point);
+  await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
+  const again = await differentWrist(page);
+  await again.row.getByRole('button', { name: /^预览姿态 / }).click();
+  await expectBodyJoints(page, again.joints);
   await selectRobot(page, 'irb1100-4-0.475');
   await expectBodyJoints(page, [0, 20, -30, 0, 40, 0]);
+  await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
   await expect(rows(page)).toHaveCount(0);
   await expectCopyState(page, false);
+  expect(errors).toEqual([]);
+});
+
+test('candidate preview keeps the inspector scrolled in place and never commits temporary joints on object or view changes', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 720 });
+  const { errors, point } = await openSolutions(page);
+  const controls = page.getByRole('complementary', { name: '对象属性', exact: true });
+  const originalBody = await bodyJoints(page);
+  const originalTarget = await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue();
+  await expect.poll(() => allStates(page, ['hit', 'clear', 'uncertain'])).toBe(true);
+  const count = await rows(page).count();
+  expect(count).toBeGreaterThan(3);
+  for (const index of [count - 2, count - 1]) {
+    const row = rows(page).nth(index), button = row.getByRole('button', { name: /^预览姿态 / });
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport();
+    const before = await controls.evaluate(element => element.scrollTop);
+    expect(before).toBeGreaterThan(100);
+    const joints = JSON.parse((await row.getAttribute('data-endpoint-joints'))!) as number[];
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await expectBodyJoints(page, joints);
+    await expect.poll(async () => Math.abs(await controls.evaluate(element => element.scrollTop) - before)).toBeLessThanOrEqual(1);
+    await expect(button).toBeInViewport();
+    await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
+  }
+  const previewScroll = await controls.evaluate(element => element.scrollTop);
+  await page.getByRole('button', { name: '退出预览', exact: true }).click();
+  await expectBodyJoints(page, originalBody);
+  await expect.poll(async () => Math.abs(await controls.evaluate(element => element.scrollTop) - previewScroll)).toBeLessThanOrEqual(1);
+  expect(await page.evaluate(() => ({ x: scrollX, y: scrollY }))).toEqual({ x: 0, y: 0 });
+  await page.screenshot({ path: '/tmp/emulation-endpoint-preview-scroll.png' });
+  await rows(page).last().getByRole('button', { name: /^预览姿态 / }).click();
+  await selectRobotObject(page);
+  await expectBodyJoints(page, originalBody);
+  await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
+  for (let i = 0; i < 6; i++) await expect(page.getByRole('spinbutton', { name: `机器人关节 J${i + 1}`, exact: true })).toHaveValue(String(originalBody[i]));
+  await selectPoint(page, point);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
+  await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
+  await rows(page).last().getByRole('button', { name: /^预览姿态 / }).click();
+  await openProgram(page);
+  await openScene(page);
+  await expectBodyJoints(page, originalBody);
+  await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
   expect(errors).toEqual([]);
 });
 
