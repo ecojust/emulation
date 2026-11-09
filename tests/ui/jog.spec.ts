@@ -57,23 +57,39 @@ async function translate(page: Page, axis: 'X' | 'Y' | 'Z', pixels = 8) {
   await settled(page);
 }
 
-test('wheel zoom progresses over several frames, settles and respects both distance bounds', async ({ page }) => {
+test('wheel zoom interpolates, settles and respects both distance bounds', async ({ page }) => {
   const errors = await open(page), canvas = scene(page), box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + box.width * .4, box.y + box.height * .6);
   const initial = Number(await canvas.getAttribute('data-camera-distance'));
   const pageY = await page.evaluate(() => window.scrollY);
-  const sampling = canvas.evaluate(async element => {
-    const values: number[] = [];
-    for (let i = 0; i < 45; i++) {
-      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      values.push(Number(element.getAttribute('data-camera-distance')));
-    }
-    return values;
-  });
+  let listenerReady!: () => void;
+  const ready = new Promise<void>(resolve => { listenerReady = resolve; });
+  await page.exposeFunction('zoomSamplingReady', () => listenerReady());
+  const sampling = canvas.evaluate(element => new Promise<number[]>(resolve => {
+    // Start on the actual event, so CDP input latency cannot consume our samples.
+    element.addEventListener('wheel', async () => {
+      const values = [Number(element.getAttribute('data-camera-distance'))];
+      for (let i = 0; i < 45; i++) {
+        await new Promise<void>(frame => requestAnimationFrame(() => frame()));
+        values.push(Number(element.getAttribute('data-camera-distance')));
+      }
+      resolve(values);
+    }, { once: true, capture: true });
+    void (window as unknown as { zoomSamplingReady: () => Promise<void> }).zoomSamplingReady();
+  }));
+  await ready;
   await page.mouse.wheel(0, -160);
   const values = await sampling;
+  const target = Number(await canvas.getAttribute('data-zoom-target'));
   expect(Math.min(...values)).toBeLessThan(initial - .05);
-  expect(new Set(values.map(value => value.toFixed(5))).size).toBeGreaterThan(4);
+  // An abrupt jump has no strict intermediate sample. Counting a minimum number
+  // of distinct frames would instead impose an FPS requirement on the CI GPU.
+  expect(values.some(value => value > target + 1e-5 && value < initial - 1e-5)).toBe(true);
+  for (const value of values) {
+    expect(Number.isFinite(value)).toBe(true);
+    expect(value).toBeGreaterThanOrEqual(target - 1e-8);
+    expect(value).toBeLessThanOrEqual(initial + 1e-8);
+  }
   for (let i = 1; i < values.length; i++) expect(values[i]).toBeLessThanOrEqual(values[i - 1] + 1e-6);
   await expect.poll(async () => Math.abs(Number(await canvas.getAttribute('data-camera-distance')) - Number(await canvas.getAttribute('data-zoom-target')))).toBeLessThan(.0001);
   for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -10000);

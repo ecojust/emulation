@@ -61,6 +61,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Verify the pinned model catalog
         run: node scripts/generate-model-catalog.mjs --check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Verify collision bounds against original robot meshes
         run: node scripts/generate-collision-bounds.mjs --check
       - name: Read application version
@@ -78,7 +80,23 @@ jobs:
           npm test
       - name: Build desktop installer
         run: |
-          npm run tauri -- build --target "${{ matrix.target }}" --features desktop --bundles "${{ matrix.bundles }}" --ci -- --locked
+          build_log="$RUNNER_TEMP/emulation-desktop-build.log"
+          set +e
+          npm run tauri -- build --target "${{ matrix.target }}" --features desktop --bundles "${{ matrix.bundles }}" --ci -- --locked 2>&1 | tee "$build_log"
+          build_status=("${PIPESTATUS[@]}")
+          set -e
+          if [[ "${build_status[1]}" -ne 0 ]]; then
+            exit "${build_status[1]}"
+          fi
+          if [[ "${build_status[0]}" -ne 0 ]]; then
+            if [[ "$RUNNER_OS" == "macOS" ]] && grep -Fq 'error running bundle_dmg.sh' "$build_log" && grep -Fq 'Resource busy' "$build_log"; then
+              echo "DMG detach reported Resource busy; retrying the same build once."
+              sleep 3
+              npm run tauri -- build --target "${{ matrix.target }}" --features desktop --bundles "${{ matrix.bundles }}" --ci -- --locked
+            else
+              exit "${build_status[0]}"
+            fi
+          fi
           git diff --exit-code -- Cargo.lock package-lock.json
         env:
           # Integrity signing only: these artifacts are not Apple notarized.

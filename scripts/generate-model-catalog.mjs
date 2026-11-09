@@ -75,7 +75,13 @@ async function readOptional(path) {
 
 async function fetchBytes(url, maximumBytes) {
   if (offline) throw new Error(`Offline cache is missing ${url}`);
-  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(45_000), headers: { 'User-Agent': 'emulation-model-catalog-generator' } });
+  const headers = { 'User-Agent': 'emulation-model-catalog-generator' };
+  // Use the read-only workflow token for GitHub API access. It is never sent
+  // to raw asset CDN URLs, and redirects remain forbidden.
+  if (new URL(url).origin === 'https://api.github.com' && process.env.GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(45_000), headers });
   if (!response.ok) throw new Error(`Download failed (${response.status}): ${url}`);
   const declaredLength = Number(response.headers.get('content-length'));
   if (declaredLength && declaredLength > maximumBytes) throw new Error(`Oversized response: ${url}`);

@@ -28,9 +28,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: . -> target
+          cache-on-failure: true
       - run: npm ci --no-audit --no-fund
       - name: Verify the pinned model catalog
         run: node scripts/generate-model-catalog.mjs --check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - name: Verify collision bounds against original robot meshes
         run: node scripts/generate-collision-bounds.mjs --check
       - name: Check Rust algorithms without desktop system dependencies
