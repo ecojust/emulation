@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 1,
+  "units": "mm",
+  "approximation": "conservative_per_link_obb",
+  "coordinates": "mechanical_zero_common_base_frame",
+  "source": {
+    "repository": "https://github.com/work-r-labs/robots",
+    "commit": "ab6aa489855256de07ba46c7b45887fdbc42b607",
+    "license": "MIT",
+    "manifestPath": "vendor/work-r-labs/SOURCE.json",
+    "manifestSha256": "93c49e46a9ede6831818a9be8ea74d10569146ab448d0367217ce3e1360e3eaa"
+  },
+  "models": {
+    "irb1100-4-0.475": {
+      "parts": [
+        {
+          "index": 0,
+          "name": "base_link",
+          "minMm": [
+            -149,
+            -79,
+            0
+          ],
+          "maxMm": [
+            79,
+            79,
+            159.5
+          ],
+          "sha256": "15b59765b3dd5d49e07c977cec7e206452d65323a135bd28ff325961aab021de",
+          "sourcePath": "public/models/irb1100-4-0.475/base_link.stl"
+        },
+        {
+          "index": 1,
+          "name": "link_1",
+          "minMm": [
+            -84.26520538330078,
+            -91.20919036865234,
+            146
+          ],
+          "maxMm": [
+            85.9496841430664,
+            91.20919036865234,
+            377.024169921875
+          ],
+          "sha256": "05f2ff6948f269f609f8b145955bc2f1017861111c889b64400518f37d8f0f40",
+          "sourcePath": "public/models/irb1100-4-0.475/link_1.stl"
+        },
+        {
+          "index": 2,
+          "name": "link_2",
+          "minMm": [
+            -52,
+            -89.5,
+            276.0126037597656
+          ],
+          "maxMm": [
+            50.987388610839844,
+            89.5,
+            597.3251953125
+          ],
+          "sha256": "0b9cc85a17deb705670e0462d96e69b6f4a6546fcbe7cedc241a2a83d9935677",
+          "sourcePath": "public/models/irb1100-4-0.475/link_2.stl"
+        },
+        {
+          "index": 3,
+          "name": "link_3",
+          "minMm": [
+            -72.19999694824219,
+            -63,
+            489
+          ],
+          "maxMm": [
+            72.5,
+            47.400001525878906,
+            609
+          ],
+          "sha256": "e1dda7dd139825dfb94280a876c57f96baa886ee1021e7c5c0bc1b6346529ed4",
+          "sourcePath": "public/models/irb1100-4-0.475/link_3.stl"
+        },
+        {
+          "index": 4,
+          "name": "link_4",
+          "minMm": [
+            45.5,
+            -51.5,
+            518.1500244140625
+          ],
+          "maxMm": [
+            287.5,
+            51.5,
+            629.7056884765625
+          ],
+          "sha256": "81c40e7b56461b369377cfdf2f7fd1e5e42c5c83e44d3fad41c0f890274f6bad",
+          "sourcePath": "public/models/irb1100-4-0.475/link_4.stl"
+        },
+        {
+          "index": 5,
+          "name": "link_5",
+          "minMm": [
+            212.32733154296875,
+            -35,
+            524.018310546875
+          ],
+          "maxMm": [
+            313.3999938964844,
+            35,
+            599.9981079101562
+          ],
+          "sha256": "4e2f30968f1d32a384889fcef242d89b9a52e8855480dd8b415c1a9f9ce1ba7b",
+          "sourcePath": "public/models/irb1100-4-0.475/link_5.stl"
+        },
+        {
+          "index": 6,
+          "name": "link_6",
+          "minMm": [
+            306,
+            -20,
+            542.0226440429688
+          ],
+          "maxMm": [
+            314,
+            20,
+            581.9993286132812
+          ],
+          "sha256": "91ad21d5c3805163b9699c4d2d0fa7a4c1eca30fcd107a24aad0731cf51ae192",
+          "sourcePath": "public/models/irb1100-4-0.475/link_6.stl"
+        }
+      ]
+    },
+    "irb1100-4-0.58": {
+      "parts": [
+        {
+          "index": 0,
+          "name": "base_link",
+          "minMm": [
+            -149,
+            -79,
+            0
+          ],
+          "maxMm": [
+            79,
+            79,
+            159.5
+          ],
+          "sha256": "52d6fd54aa77591f296fdf27378adfc6f1a706bdede649e1dbb3410c6195cb16",
+          "sourcePath": "public/models/irb1100-4-0.58/base_link.stl"
+        },
+        {
+          "index": 1,
+          "name": "link_1",
+          "minMm": [
+            -84.26520538330078,
+            -91.20919036865234,
+            146
+          ],
+          "maxMm": [
+            85.9496841430664,
+            91.20919036865234,
+            377.024169921875
+          ],
+          "sha256": "05f2ff6948f269f609f8b145955bc2f1017861111c889b64400518f37d8f0f40",
+          "sourcePath": "public/models/irb1100-4-0.58/link_1.stl"
+        },
+        {
+          "index": 2,
+          "name": "link_2",
+          "minMm": [
+            -51,
+            -89.5,
+            276.0081481933594
+          ],
+          "maxMm": [
+            50.991851806640625,
+            89.5,
+            652.32568359375
+          ],
+          "sha256": "520ee923eec95f5bb84cdda52480cc9e7919cb2b2e071e99032d580fc375e5cb",
+          "sourcePath": "public/models/irb1100-4-0.58/link_2.stl"
+        },
+        {
+          "index": 3,
+          "name": "link_3",
+          "minMm": [
+            -72.19999694824219,
+            -63,
+            544
+          ],
+          "maxMm": [
+            72.5,
+            47.400001525878906,
+            664
+          ],
+          "sha256": "4133a3fa683ca638bc3afc3a469e7824c4d8989000975610d807c61171d39eef",
+          "sourcePath": "public/models/irb1100-4-0.58/link_3.stl"
+        },
+        {
+          "index": 4,
+          "name": "link_4",
+          "minMm": [
+            45.5,
+            -51.5,
+            572.1106567382812
+          ],
+          "maxMm": [
+            337.4712219238281,
+            51.5,
+            684.6942749023438
+          ],
+          "sha256": "871811984911ae8c377c7cff3b8193473911dffb5865ed14366e513b88d217bc",
+          "sourcePath": "public/models/irb1100-4-0.58/link_4.stl"
+        },
+        {
+          "index": 5,
+          "name": "link_5",
+          "minMm": [
+            262.32733154296875,
+            -35,
+            579.018310546875
+          ],
+          "maxMm": [
+            363.3999938964844,
+            35,
+            654.9981079101562
+          ],
+          "sha256": "f3cf884eeb73c0e5af4d8d33378671066bdc1bce1e20a169be7026594389de41",
+          "sourcePath": "public/models/irb1100-4-0.58/link_5.stl"
+        },
+        {
+          "index": 6,
+          "name": "link_6",
+          "minMm": [
+            356,
+            -20,
+            597.0226440429688
+          ],
+          "maxMm": [
+            364,
+            20,
+            636.9993286132812
+          ],
+          "sha256": "135c4954e181f5819d7d9545152b03a8dbda2b38c8307c2017ef41649aced3b0",
+          "sourcePath": "public/models/irb1100-4-0.58/link_6.stl"
+        }
+      ]
+    }
+  }
+}

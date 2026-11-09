@@ -20,7 +20,9 @@ ABB 四元数是 `[q1,q2,q3,q4] = [w,x,y,z]`，与 Three.js 的构造参数顺�
 
 欧拉角函数接受 `[Rz,Ry,Rx]`，界面也按 Rz、Ry、Rx 展示，旋转矩阵为 `Rz(Rz) Ry(Ry) Rx(Rx)`；不能混用内禀旋转或弧度。
 
-完整 robtarget 输入包含四组：`[[x,y,z],[qw,qx,qy,qz],[cf1,cf4,cf6,cfx],[eax_a,...,eax_f]]`，也支持单条 `CONST/VAR/PERS robtarget name := ...;` 声明。严格解析数值，不执行表达式或其他 RAPID 指令。没有外轴，六个外轴值均须为 `9E9`。导入时严格校验配置格式，但只采用位置与方向；界面提示“读取位置与方向，重新选择可达 robconf”，仿真根据起始关节和整段路径重新求配置。
+界面提供`position`（只输入XYZ，自动选择方向）和`target`（XYZ加固定方向）两个入口，不再提供完整robtarget粘贴入口。仿真根据起始关节和整段路径重新求配置。
+
+底层保留的`parseRobtarget`数值工具接受四组数据：`[[x,y,z],[qw,qx,qy,qz],[cf1,cf4,cf6,cfx],[eax_a,...,eax_f]]`，或单条`CONST/VAR/PERS robtarget name := ...;`声明。它严格校验配置和数值，不执行表达式或其他RAPID指令；当前无外轴，六个外轴值均须为`9E9`。该工具不是厂商程序导入功能。
 
 姿态校验遵循 ABB `NOrient` 的误差范围：`abs(sum(q²)-1) <= 0.1` 可归一化；零四元数、非有限值和偏差更大的输入拒绝。接受的姿态统一归一化后求解。
 

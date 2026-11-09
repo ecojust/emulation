@@ -1,0 +1,609 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/work-r-labs/robots",
+    "revision": "ab6aa489855256de07ba46c7b45887fdbc42b607"
+  },
+  "models": [
+    {
+      "id": "irb1100-4-0.475",
+      "brand": "ABB",
+      "name": "ABB IRB 1100-4/0.475",
+      "bundledMotionModelId": "irb1100-4-0.475",
+      "urdfPath": "IRB1100_4kg_475_STD.urdf",
+      "files": [
+        {
+          "path": "IRB1100_4kg_475_STD.urdf",
+          "bytes": 6364,
+          "sha256": "b53adf01232db778a4edb542d9a130cc6d7145c7b544aea843aad113c172097f",
+          "gitBlobSha1": "13296de414c300611a07c0856c7d2d40e42aa4dd",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/IRB1100_4kg_475_STD.urdf"
+        },
+        {
+          "path": "meshes/base_link.stl",
+          "bytes": 1180984,
+          "sha256": "15b59765b3dd5d49e07c977cec7e206452d65323a135bd28ff325961aab021de",
+          "gitBlobSha1": "65704504a1a6a88f6ad9b4f37e865ed454b97ca4",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/base_link.stl"
+        },
+        {
+          "path": "meshes/link_1.stl",
+          "bytes": 1198784,
+          "sha256": "05f2ff6948f269f609f8b145955bc2f1017861111c889b64400518f37d8f0f40",
+          "gitBlobSha1": "43022e8fe0f0ffdca9bfec7b0914ecd43af77585",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_1.stl"
+        },
+        {
+          "path": "meshes/link_2.stl",
+          "bytes": 1651184,
+          "sha256": "0b9cc85a17deb705670e0462d96e69b6f4a6546fcbe7cedc241a2a83d9935677",
+          "gitBlobSha1": "66a56830946a0b656a6b9748b1cc6ead5eee4a0b",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_2.stl"
+        },
+        {
+          "path": "meshes/link_3.stl",
+          "bytes": 674834,
+          "sha256": "e1dda7dd139825dfb94280a876c57f96baa886ee1021e7c5c0bc1b6346529ed4",
+          "gitBlobSha1": "2fadce458886f2992a52248cd94ab92c93a08d1b",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_3.stl"
+        },
+        {
+          "path": "meshes/link_4.stl",
+          "bytes": 1857884,
+          "sha256": "81c40e7b56461b369377cfdf2f7fd1e5e42c5c83e44d3fad41c0f890274f6bad",
+          "gitBlobSha1": "0daf1880859c2788fd1b653b302e18f0012e4ca4",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_4.stl"
+        },
+        {
+          "path": "meshes/link_5.stl",
+          "bytes": 623284,
+          "sha256": "4e2f30968f1d32a384889fcef242d89b9a52e8855480dd8b415c1a9f9ce1ba7b",
+          "gitBlobSha1": "3048d9951e52cac064e4ee895e9eca852c4a6bf7",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_5.stl"
+        },
+        {
+          "path": "meshes/link_6.stl",
+          "bytes": 82884,
+          "sha256": "91ad21d5c3805163b9699c4d2d0fa7a4c1eca30fcd107a24aad0731cf51ae192",
+          "gitBlobSha1": "2acdbd00d003dcafb67c2403153ca0092a4dc394",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_475_STD_v1/meshes/link_6.stl"
+        },
+        {
+          "path": "notices/work-r-labs-MIT.txt",
+          "bytes": 1063,
+          "sha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+          "gitBlobSha1": "8b268d0169e8bd413d937cfd706c9d4d5ebf4959",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "path": "notices/source-model-MIT.txt",
+          "bytes": 1075,
+          "sha256": "25843f9143b800e5a2f3657e6e5fa2ec1856e489848abdd7a2a0da3265bd4866",
+          "gitBlobSha1": "314c3afe2f421b53bcae58a7a6abe7125dc5e717",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/ABB/IRB1100_4kg-475-STD/IRB1100_4kg-475-STD_description/LICENSE"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "Workr Robot Asset Library — MIT (2025 work_r)",
+          "spdx": "MIT",
+          "path": "notices/work-r-labs-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "name": "Original model package — MIT (2018 Toshinori Kitamura)",
+          "spdx": "MIT",
+          "path": "notices/source-model-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/ABB/IRB1100_4kg-475-STD/IRB1100_4kg-475-STD_description/LICENSE"
+        }
+      ],
+      "downloadBytes": 7278340
+    },
+    {
+      "id": "irb1100-4-0.58",
+      "brand": "ABB",
+      "name": "ABB IRB 1100-4/0.58",
+      "bundledMotionModelId": "irb1100-4-0.58",
+      "urdfPath": "IRB1100_4kg_580_STD.urdf",
+      "files": [
+        {
+          "path": "IRB1100_4kg_580_STD.urdf",
+          "bytes": 6389,
+          "sha256": "da5c9b6ef9a51756f552042653db7cb8ec481176f784b7a38d8e32885a4b9b92",
+          "gitBlobSha1": "9c7b62e6b4e9e4ec3df6f89e8e388962437cbae3",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/IRB1100_4kg_580_STD.urdf"
+        },
+        {
+          "path": "meshes/base_link.stl",
+          "bytes": 1174284,
+          "sha256": "52d6fd54aa77591f296fdf27378adfc6f1a706bdede649e1dbb3410c6195cb16",
+          "gitBlobSha1": "a2024a475f139b5ace19dbda1cd2319e6a5f2e14",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/base_link.stl"
+        },
+        {
+          "path": "meshes/link_1.stl",
+          "bytes": 1198784,
+          "sha256": "05f2ff6948f269f609f8b145955bc2f1017861111c889b64400518f37d8f0f40",
+          "gitBlobSha1": "43022e8fe0f0ffdca9bfec7b0914ecd43af77585",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_1.stl"
+        },
+        {
+          "path": "meshes/link_2.stl",
+          "bytes": 1516184,
+          "sha256": "520ee923eec95f5bb84cdda52480cc9e7919cb2b2e071e99032d580fc375e5cb",
+          "gitBlobSha1": "279d4447ab4b6af7b0d79bfad4c186be4697c7fc",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_2.stl"
+        },
+        {
+          "path": "meshes/link_3.stl",
+          "bytes": 705934,
+          "sha256": "4133a3fa683ca638bc3afc3a469e7824c4d8989000975610d807c61171d39eef",
+          "gitBlobSha1": "17a05af77b2842c1eb9ae7c2bd728c8f8ed42cbb",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_3.stl"
+        },
+        {
+          "path": "meshes/link_4.stl",
+          "bytes": 2146984,
+          "sha256": "871811984911ae8c377c7cff3b8193473911dffb5865ed14366e513b88d217bc",
+          "gitBlobSha1": "461260affd3c0d37143896bf71646525fc17ba4f",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_4.stl"
+        },
+        {
+          "path": "meshes/link_5.stl",
+          "bytes": 623284,
+          "sha256": "f3cf884eeb73c0e5af4d8d33378671066bdc1bce1e20a169be7026594389de41",
+          "gitBlobSha1": "e8b23ad5f1a911f00e600c15bc4bf08275d91fa6",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_5.stl"
+        },
+        {
+          "path": "meshes/link_6.stl",
+          "bytes": 82884,
+          "sha256": "135c4954e181f5819d7d9545152b03a8dbda2b38c8307c2017ef41649aced3b0",
+          "gitBlobSha1": "40fc0051dc466e8cf04e90087f4e71a2dea5389b",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/ABB/IRB1100_4kg_580_STD_v1/meshes/link_6.stl"
+        },
+        {
+          "path": "notices/work-r-labs-MIT.txt",
+          "bytes": 1063,
+          "sha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+          "gitBlobSha1": "8b268d0169e8bd413d937cfd706c9d4d5ebf4959",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "path": "notices/source-model-MIT.txt",
+          "bytes": 1075,
+          "sha256": "25843f9143b800e5a2f3657e6e5fa2ec1856e489848abdd7a2a0da3265bd4866",
+          "gitBlobSha1": "314c3afe2f421b53bcae58a7a6abe7125dc5e717",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/ABB/IRB1100_4kg-580-STD/IRB1100_4kg-580-STD_description/LICENSE"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "Workr Robot Asset Library — MIT (2025 work_r)",
+          "spdx": "MIT",
+          "path": "notices/work-r-labs-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "name": "Original model package — MIT (2018 Toshinori Kitamura)",
+          "spdx": "MIT",
+          "path": "notices/source-model-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/ABB/IRB1100_4kg-580-STD/IRB1100_4kg-580-STD_description/LICENSE"
+        }
+      ],
+      "downloadBytes": 7456865
+    },
+    {
+      "id": "fanuc-crx10ia-l",
+      "brand": "FANUC",
+      "name": "FANUC CRX-10iA/L",
+      "urdfPath": "CRX_10iA_L.urdf",
+      "files": [
+        {
+          "path": "CRX_10iA_L.urdf",
+          "bytes": 6679,
+          "sha256": "fd6ecfdd3cd1d09161c48a75d1436aa57817c2017bca4a3827395b7bb94ad3ef",
+          "gitBlobSha1": "aef5b46cfc6da0bce4bd5580777431ac8639b306",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/CRX_10iA_L.urdf"
+        },
+        {
+          "path": "meshes/base_link.stl",
+          "bytes": 636084,
+          "sha256": "19705f5dbb544616ac3f21ee0c9a8320892b52bf4e451aec4ce0e59b2f65b46c",
+          "gitBlobSha1": "344d4816cbcd8d7065349d50bb8086bc39b2cc1b",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/base_link.stl"
+        },
+        {
+          "path": "meshes/link_1.stl",
+          "bytes": 583884,
+          "sha256": "8da27e169b4b752e3a51c4f3262bf45089bd004cef4c1ab2adc773db999202ab",
+          "gitBlobSha1": "3ce7373cb65e470088b5e66430fb907e4a6a2d2d",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_1.stl"
+        },
+        {
+          "path": "meshes/link_2.stl",
+          "bytes": 891684,
+          "sha256": "3042fbd2e41b989813bdd9e4a5f49311937b22ff5608b55e17aac86f4c9acb0e",
+          "gitBlobSha1": "58f7fc59c81298933873b6e301c1df3ca9c42acc",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_2.stl"
+        },
+        {
+          "path": "meshes/link_3.stl",
+          "bytes": 624484,
+          "sha256": "56b99a46906d91c5ed4b750530410ca22c0183acda11a27db12af855594f05e4",
+          "gitBlobSha1": "c8d5eb1e1f2b1c6e6773f0871acc1513f5df50af",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_3.stl"
+        },
+        {
+          "path": "meshes/link_4.stl",
+          "bytes": 578584,
+          "sha256": "7d19b173a2c4a27538e07b5393d2688ed4b099d253310ca8dab4b638bf60bbaf",
+          "gitBlobSha1": "602adb6358f6b17964caea3376affdf2c52e8225",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_4.stl"
+        },
+        {
+          "path": "meshes/link_5.stl",
+          "bytes": 524684,
+          "sha256": "501d73d43880458845b81f1e52b670d24319f611a43621352e6e55ef49e68816",
+          "gitBlobSha1": "373e10d51312a4325beddc0481e07175097646fd",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_5.stl"
+        },
+        {
+          "path": "meshes/link_6.stl",
+          "bytes": 139884,
+          "sha256": "c842cab29f9f14fced8f50b0505387a999894fe96d7b96b5cc0e5a9fdcc7236d",
+          "gitBlobSha1": "c78b453d638c3291b0068d260921eacdbb5986f5",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_6.stl"
+        },
+        {
+          "path": "notices/work-r-labs-MIT.txt",
+          "bytes": 1063,
+          "sha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+          "gitBlobSha1": "8b268d0169e8bd413d937cfd706c9d4d5ebf4959",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "path": "notices/source-model-MIT.txt",
+          "bytes": 1075,
+          "sha256": "25843f9143b800e5a2f3657e6e5fa2ec1856e489848abdd7a2a0da3265bd4866",
+          "gitBlobSha1": "314c3afe2f421b53bcae58a7a6abe7125dc5e717",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Fanuc/CRX-Series/CRX-10iA_L_v01_description/LICENSE"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "Workr Robot Asset Library — MIT (2025 work_r)",
+          "spdx": "MIT",
+          "path": "notices/work-r-labs-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "name": "Original model package — MIT (2018 Toshinori Kitamura)",
+          "spdx": "MIT",
+          "path": "notices/source-model-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Fanuc/CRX-Series/CRX-10iA_L_v01_description/LICENSE"
+        }
+      ],
+      "downloadBytes": 3988105
+    },
+    {
+      "id": "fanuc-r2000ib-165f",
+      "brand": "FANUC",
+      "name": "FANUC R-2000iB/165F",
+      "urdfPath": "R_2000iB_165F.urdf",
+      "files": [
+        {
+          "path": "R_2000iB_165F.urdf",
+          "bytes": 8375,
+          "sha256": "fd9f4d2611dff9d0734d127b1105442cc5d398a977282777a462abc896fa1ebb",
+          "gitBlobSha1": "86216259642955a7d61f8dd33b9b0a709fb68372",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/R_2000iB_165F.urdf"
+        },
+        {
+          "path": "meshes/base_link.stl",
+          "bytes": 154684,
+          "sha256": "9190e7af6027907803b9c2334cd711ceb490724b52b2dc5f810f142a07f5be60",
+          "gitBlobSha1": "0dbe8d90e6901e725bf25c8c28392d4434246d56",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/base_link.stl"
+        },
+        {
+          "path": "meshes/link_1.stl",
+          "bytes": 226084,
+          "sha256": "e1b5d9e596af1c46b5a53e407b11e57a1d2d464b7c2354e3a184fa572a9f3193",
+          "gitBlobSha1": "fbe13f129c756a33cd574a732465d8f1149b4aab",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_1.stl"
+        },
+        {
+          "path": "meshes/link_2.stl",
+          "bytes": 124184,
+          "sha256": "8cb605909b15761cc3aeba147498776c2429b2121f967a4cbced0b0aa6e303fc",
+          "gitBlobSha1": "013484f24df84ae9e61ee08f759f2174a25f5810",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_2.stl"
+        },
+        {
+          "path": "meshes/link_3.stl",
+          "bytes": 232184,
+          "sha256": "5b101f75c1d84d6d95f7d7bcaf8f123c6dc913d74501d052f1201e230ab5209b",
+          "gitBlobSha1": "c2e03d66e739f834b0cef2749e93eea44638f0af",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_3.stl"
+        },
+        {
+          "path": "meshes/link_4.stl",
+          "bytes": 93784,
+          "sha256": "bbf272572ba268077f7be0b5531963d2ace7382b44019bf868a180114491d399",
+          "gitBlobSha1": "04dfe5a1c1815da3c70c981f4724bd3bc43d5eef",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_4.stl"
+        },
+        {
+          "path": "meshes/link_5.stl",
+          "bytes": 154084,
+          "sha256": "aaf5696977233ed8ffc06483dbd6a26494a8116aa6b02111c6d5ac1c078c7d3e",
+          "gitBlobSha1": "4c738eeec4ca46509d527243c4da9cd7d55fbc86",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_5.stl"
+        },
+        {
+          "path": "meshes/link_6.stl",
+          "bytes": 92884,
+          "sha256": "34adaf3175d90e160569ff048e6f24cc6b8792cfbb7a3779d857c8b8288edefa",
+          "gitBlobSha1": "fbc3d9ca7a8ba0cdc2d1e979f5d6b43ac8b80e3c",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_6.stl"
+        },
+        {
+          "path": "meshes/balancer.stl",
+          "bytes": 95084,
+          "sha256": "b8bfbae4cf84290c51f6ca2b740151e408f19eec7a31ff38fe95cff9c8e88836",
+          "gitBlobSha1": "0852b814316d94d8ec914ebb72269b3761c1f1fc",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/balancer.stl"
+        },
+        {
+          "path": "meshes/balancer_shaft.stl",
+          "bytes": 24884,
+          "sha256": "2a44d59bf60edad6b46fe173159a1b556b982543cca6b85287f578d72d9c4ce2",
+          "gitBlobSha1": "ff56ac616e8a9a76e9e6d6e846d2d73c34209057",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/balancer_shaft.stl"
+        },
+        {
+          "path": "notices/work-r-labs-MIT.txt",
+          "bytes": 1063,
+          "sha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+          "gitBlobSha1": "8b268d0169e8bd413d937cfd706c9d4d5ebf4959",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "path": "notices/source-model-MIT.txt",
+          "bytes": 1075,
+          "sha256": "25843f9143b800e5a2f3657e6e5fa2ec1856e489848abdd7a2a0da3265bd4866",
+          "gitBlobSha1": "314c3afe2f421b53bcae58a7a6abe7125dc5e717",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Fanuc/R2000-Series/R-2000iB165F_description/LICENSE"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "Workr Robot Asset Library — MIT (2025 work_r)",
+          "spdx": "MIT",
+          "path": "notices/work-r-labs-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "name": "Original model package — MIT (2018 Toshinori Kitamura)",
+          "spdx": "MIT",
+          "path": "notices/source-model-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Fanuc/R2000-Series/R-2000iB165F_description/LICENSE"
+        }
+      ],
+      "downloadBytes": 1208369
+    },
+    {
+      "id": "yaskawa-gp7",
+      "brand": "Yaskawa",
+      "name": "Yaskawa MOTOMAN GP7",
+      "urdfPath": "GP7.urdf",
+      "files": [
+        {
+          "path": "GP7.urdf",
+          "bytes": 3989,
+          "sha256": "fc29b984a7f9ed2ae725c081ea1141a8861dd5798c1e7594320473af543061e9",
+          "gitBlobSha1": "3d811ca45a53b1c4820e652070b7bfa1c2ff0eff",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/GP7.urdf"
+        },
+        {
+          "path": "meshes/base_link.stl",
+          "bytes": 592184,
+          "sha256": "7a4a03ca7d25ccf3d18fe4cc202974a330516ebf38910cffa0e0e32b850270cc",
+          "gitBlobSha1": "7962055a81315e69ef82fa7884da46a3456dbe28",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/base_link.stl"
+        },
+        {
+          "path": "meshes/link_1.stl",
+          "bytes": 449484,
+          "sha256": "43673448234bedb04b582804839e69d6b7ad10c44f9be36ad69dc8833f2eb87c",
+          "gitBlobSha1": "58a9123b8f97a466576e035b582f849d7c169cac",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_1.stl"
+        },
+        {
+          "path": "meshes/link_2.stl",
+          "bytes": 1164484,
+          "sha256": "ae9b7a79720b37887b522bd650231e296f14e00eb4ec0e9282f06edb60b2cfbe",
+          "gitBlobSha1": "00e6bf86913cb680f16978b1618ef3fb4d023742",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_2.stl"
+        },
+        {
+          "path": "meshes/link_3.stl",
+          "bytes": 640984,
+          "sha256": "91df6894811f949a6850c3aa10c793e978b3f9b049c20c0313b0e17a9144e6d0",
+          "gitBlobSha1": "7a9426c5f56446c6d2b3a085b290a6039fdb264e",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_3.stl"
+        },
+        {
+          "path": "meshes/link_4.stl",
+          "bytes": 781684,
+          "sha256": "c8469700819c679147d37b2a364dd369bd91bd5541149d470087027a12d579fc",
+          "gitBlobSha1": "e2fa4bb14a9ceb19c992b04065651a685618fa95",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_4.stl"
+        },
+        {
+          "path": "meshes/link_5.stl",
+          "bytes": 146084,
+          "sha256": "a7b4da11fed68351b02f4e45eb4c914bd3307b0bf277af42606d76b836817eb1",
+          "gitBlobSha1": "bf31278bf124a04f6758ddb68730b755ccfb8039",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_5.stl"
+        },
+        {
+          "path": "meshes/link_6.stl",
+          "bytes": 63484,
+          "sha256": "ed6c6ecfe6c4204b7b0e8f08d19f861b64eafb6172563d61cacc169ec97855a3",
+          "gitBlobSha1": "0e9bf46a8b9b4d6faefde9421e6f5b67a2d8b11a",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_6.stl"
+        },
+        {
+          "path": "notices/work-r-labs-MIT.txt",
+          "bytes": 1063,
+          "sha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+          "gitBlobSha1": "8b268d0169e8bd413d937cfd706c9d4d5ebf4959",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "path": "notices/motoman-package.xml",
+          "bytes": 2036,
+          "sha256": "4241ecc8927986456dc88c24eba9801db6751b0760cc4a7fb4572fc4c906f344",
+          "gitBlobSha1": "fe6e022ae62385e688e10d61e812662d0e48b952",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Yaskawa/GP%20Series/motoman_gp7_support/package.xml"
+        },
+        {
+          "path": "notices/BSD-3-Clause-template.txt",
+          "bytes": 1460,
+          "sha256": "5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d",
+          "gitBlobSha1": "ea890afbc70c94011b765722a95e2c8c7d4f1233",
+          "url": "https://raw.githubusercontent.com/spdx/license-list-data/31846481de7ea17d92f2f46fad76abe58b2e9bb0/text/BSD-3-Clause.txt"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "Workr Robot Asset Library — MIT (2025 work_r)",
+          "spdx": "MIT",
+          "path": "notices/work-r-labs-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "name": "ROS-Industrial Motoman — declared BSD-3-Clause (original package.xml)",
+          "spdx": "BSD-3-Clause",
+          "path": "notices/motoman-package.xml",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Yaskawa/GP%20Series/motoman_gp7_support/package.xml"
+        },
+        {
+          "name": "BSD-3-Clause standard terms template — copyright placeholders are not model attribution",
+          "spdx": "BSD-3-Clause",
+          "path": "notices/BSD-3-Clause-template.txt",
+          "url": "https://raw.githubusercontent.com/spdx/license-list-data/31846481de7ea17d92f2f46fad76abe58b2e9bb0/text/BSD-3-Clause.txt"
+        }
+      ],
+      "downloadBytes": 3846936
+    },
+    {
+      "id": "yaskawa-gp110",
+      "brand": "Yaskawa",
+      "name": "Yaskawa MOTOMAN GP110",
+      "urdfPath": "GP110.urdf",
+      "files": [
+        {
+          "path": "GP110.urdf",
+          "bytes": 3989,
+          "sha256": "a892a6f0ef45f4586738069fe5df6e9aa4a9dd13dac18de476aba38320e5abe5",
+          "gitBlobSha1": "6fcf37f2a311fb56812c9700545f4f42ebca6e37",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/GP110.urdf"
+        },
+        {
+          "path": "meshes/base_link.stl",
+          "bytes": 61184,
+          "sha256": "5dfe2b6286eeaf9d5c9eaeb1b479e3afb4567e62a70b60a5e88f5b5636fd1342",
+          "gitBlobSha1": "416486206e9b38e832f93b1a13971c98cbcc4372",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/base_link.stl"
+        },
+        {
+          "path": "meshes/link_1.stl",
+          "bytes": 714684,
+          "sha256": "bd8820d6a3c5a4c96d673defa2cbff5d2296340dbf6123351e750dd3c04b220b",
+          "gitBlobSha1": "867e7072b737737ef855f8e0855a559e6bc5749d",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_1.stl"
+        },
+        {
+          "path": "meshes/link_2.stl",
+          "bytes": 716434,
+          "sha256": "a2c966f071e8a18bed46626ab2094b1bfad808005718cbd27293ef92465eba0d",
+          "gitBlobSha1": "b235e7288f48fcc95237c592d5d4638d1e531cba",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_2.stl"
+        },
+        {
+          "path": "meshes/link_3.stl",
+          "bytes": 502384,
+          "sha256": "d7f993705d5c0e0a73ad810db7be080fd5a807ab71dac4c2eb7a3fe270ab1637",
+          "gitBlobSha1": "d5d78417c03af338f5e0df3730fd972a52634607",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_3.stl"
+        },
+        {
+          "path": "meshes/link_4.stl",
+          "bytes": 221384,
+          "sha256": "bf63934e1d8d824f4a4c5871e3e26cdbdb20f6245cce1c084972ffc9c6f66b70",
+          "gitBlobSha1": "bacccf040a58843ac85eaedc703170886961bee0",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_4.stl"
+        },
+        {
+          "path": "meshes/link_5.stl",
+          "bytes": 300434,
+          "sha256": "d73da915315f67f416a6f00e2e1f4f429f0b9819095650768d1b8b981cfdff38",
+          "gitBlobSha1": "fad312dad7bbed3877e751ace96a71ca96d7a37d",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_5.stl"
+        },
+        {
+          "path": "meshes/link_6.stl",
+          "bytes": 236884,
+          "sha256": "0c42c1fcd60af3a6e8fcab2edc2f7b92fe96198e6d16c07523bb905166c1d005",
+          "gitBlobSha1": "3a9e0e0fd417928804bb96c864d8344cad004479",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_6.stl"
+        },
+        {
+          "path": "notices/work-r-labs-MIT.txt",
+          "bytes": 1063,
+          "sha256": "119e95d8c2ab10f18f17d7a0e889f7a92bdba90f4870bbb6e4e9fefded29fb0a",
+          "gitBlobSha1": "8b268d0169e8bd413d937cfd706c9d4d5ebf4959",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "path": "notices/motoman-package.xml",
+          "bytes": 2205,
+          "sha256": "f9a9af5a32c4fff7d6f376482d5f9aa4b6f1c47e5359f7c683a9cde36a31bb2a",
+          "gitBlobSha1": "927c0f3dc4acdcc495e155643315784a8ec4de9e",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Yaskawa/GP%20Series/motoman_gp110_support/package.xml"
+        },
+        {
+          "path": "notices/BSD-3-Clause-template.txt",
+          "bytes": 1460,
+          "sha256": "5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d",
+          "gitBlobSha1": "ea890afbc70c94011b765722a95e2c8c7d4f1233",
+          "url": "https://raw.githubusercontent.com/spdx/license-list-data/31846481de7ea17d92f2f46fad76abe58b2e9bb0/text/BSD-3-Clause.txt"
+        }
+      ],
+      "licenses": [
+        {
+          "name": "Workr Robot Asset Library — MIT (2025 work_r)",
+          "spdx": "MIT",
+          "path": "notices/work-r-labs-MIT.txt",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/LICENSE"
+        },
+        {
+          "name": "ROS-Industrial Motoman — declared BSD-3-Clause (original package.xml)",
+          "spdx": "BSD-3-Clause",
+          "path": "notices/motoman-package.xml",
+          "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/sources/Yaskawa/GP%20Series/motoman_gp110_support/package.xml"
+        },
+        {
+          "name": "BSD-3-Clause standard terms template — copyright placeholders are not model attribution",
+          "spdx": "BSD-3-Clause",
+          "path": "notices/BSD-3-Clause-template.txt",
+          "url": "https://raw.githubusercontent.com/spdx/license-list-data/31846481de7ea17d92f2f46fad76abe58b2e9bb0/text/BSD-3-Clause.txt"
+        }
+      ],
+      "downloadBytes": 2762105
+    }
+  ]
+}

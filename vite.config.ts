@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 
 function notices() {
   return {
@@ -12,8 +12,12 @@ function notices() {
         ["third-party/work-r-labs/LICENSE.txt", "vendor/work-r-labs/LICENSE"],
         ["third-party/work-r-labs/SOURCE.json", "vendor/work-r-labs/SOURCE.json"],
       ]) this.emitFile({ type: "asset", fileName, source: read(sourcePath) });
+      for (const name of readdirSync(new URL("vendor/work-r-labs/model-notices/", import.meta.url))) {
+        this.emitFile({ type: "asset", fileName: `third-party/work-r-labs/model-notices/${name}`, source: read(`vendor/work-r-labs/model-notices/${name}`) });
+      }
       const packages = ["react", "react-dom", "scheduler", "three"];
-      const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n");
+      const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n")
+        + `\n\n@tauri-apps/api (MIT option)\n${"=".repeat(60)}\n${read("node_modules/@tauri-apps/api/LICENSE-MIT")}`;
       this.emitFile({ type: "asset", fileName: "THIRD_PARTY_NOTICES.txt", source });
     },
   };

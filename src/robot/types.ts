@@ -63,7 +63,7 @@ export interface PlanSuccess {
 }
 export interface PlanFailure {
   status: "failure";
-  code: "invalid_input" | "joint_limit" | "unreachable" | "singular_start" | "singular_path" | "configuration_change" | "path_unreachable";
+  code: "invalid_input" | "joint_limit" | "unreachable" | "singular_start" | "singular_path" | "configuration_change" | "path_unreachable" | "cancelled";
   message: string;
   failedAt?: number;
   solutions?: IKSolution[];

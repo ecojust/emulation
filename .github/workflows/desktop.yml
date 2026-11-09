@@ -1,0 +1,130 @@
+name: Build native desktop clients
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Both macOS targets are built and executed on their native CPU type.
+          - name: macOS Apple Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+            artifact: macOS-arm64
+          - name: macOS Intel
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+            artifact: macOS-x64
+          - name: Windows x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            artifact: Windows-x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+      - run: npm ci --no-audit --no-fund
+      - name: Verify the pinned model catalog
+        run: node scripts/generate-model-catalog.mjs --check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Verify collision bounds against original robot meshes
+        run: node scripts/generate-collision-bounds.mjs --check
+      - name: Read application version
+        id: version
+        run: node -e 'const fs=require("node:fs"); fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${require("./package.json").version}\n`);'
+      - name: Validate numerical core on the target CPU
+        run: cargo test -p emulation-core --target "${{ matrix.target }}" --release --locked
+      - name: Validate native job and export policies
+        run: cargo test -p emulation-desktop --target "${{ matrix.target }}" --no-default-features --features model-cache --release --locked
+      - name: Build the native parity-test command
+        run: cargo build -p emulation-core --bin core-cli --locked
+      - name: Check frontend
+        run: |
+          npm run check
+          npm test
+      - name: Build desktop installer
+        run: |
+          build_log="$RUNNER_TEMP/emulation-desktop-build.log"
+          set +e
+          npm run tauri -- build --target "${{ matrix.target }}" --features desktop --bundles "${{ matrix.bundles }}" --ci -- --locked 2>&1 | tee "$build_log"
+          build_status=("${PIPESTATUS[@]}")
+          set -e
+          if [[ "${build_status[1]}" -ne 0 ]]; then
+            exit "${build_status[1]}"
+          fi
+          if [[ "${build_status[0]}" -ne 0 ]]; then
+            if [[ "$RUNNER_OS" == "macOS" ]] && grep -Fq 'error running bundle_dmg.sh' "$build_log" && grep -Fq 'Resource busy' "$build_log"; then
+              echo "DMG detach reported Resource busy; retrying the same build once."
+              sleep 3
+              npm run tauri -- build --target "${{ matrix.target }}" --features desktop --bundles "${{ matrix.bundles }}" --ci -- --locked
+            else
+              exit "${build_status[0]}"
+            fi
+          fi
+          git diff --exit-code -- Cargo.lock package-lock.json
+        env:
+          # Integrity signing only: these artifacts are not Apple notarized.
+          APPLE_SIGNING_IDENTITY: "-"
+      - name: Verify the application copied from the macOS DMG
+        if: runner.os == 'macOS'
+        run: node scripts/desktop/check-macos.mjs "${{ matrix.target }}"
+      - name: Install and verify the Windows client
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/desktop/check-windows.ps1 -Target "${{ matrix.target }}"
+      - name: Record installer checksums
+        run: node scripts/desktop/manifest.mjs "${{ matrix.target }}"
+      - name: Upload desktop installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulation-${{ steps.version.outputs.version }}-${{ matrix.artifact }}
+          path: |
+            target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            target/${{ matrix.target }}/release/bundle/artifact-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload failed native smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulation-${{ matrix.artifact }}-diagnostics
+          path: target/${{ matrix.target }}/release/bundle/diagnostics/
+          if-no-files-found: ignore
+          retention-days: 14

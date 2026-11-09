@@ -8,3 +8,5 @@
 .scene-graphics-error p { margin: 8px 0 0; }
 @media (max-width: 700px) { .scene-model-status { font-size: 9px; padding: 6px 7px; } }
 .scene-model-status.scene-load-error { left: 18px; top: 60px; right: 18px; max-width: none; color: #9c3e43; }
+
+.scene-compatibility-mode { color: #946c32; border-left: 1px solid #d7dde4; padding-left: 8px; }
