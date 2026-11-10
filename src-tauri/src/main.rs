@@ -364,6 +364,8 @@ fn main() {
             ));
             let mut window =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    // Keep scene-tree HTML5 drops in the WebView; file imports use dialogs.
+                    .disable_drag_drop_handler()
                     .title("Emulation · 机器人运动工作台")
                     .inner_size(1440.0, 1000.0)
                     .min_inner_size(1000.0, 720.0)
