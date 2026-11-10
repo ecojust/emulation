@@ -74,7 +74,7 @@ export function insertCurrentSourcePose(modelId: string, source: string, from: n
       return closing ? [{ start: match.index!, headerEnd, end: headerEnd + closing.index }] : [];
     });
     const module = modules.find(item => from >= item.start && to <= item.end) ?? modules[0];
-    if (!module) throw new Error('请先建立完整的 MODULE / ENDMODULE，或使用“从示教生成”。');
+    if (!module) throw new Error('请先建立完整的 MODULE / ENDMODULE，或在场景中将 Path 转换为程序。');
     const routines = [...mask.slice(module.headerEnd, module.end).matchAll(/\b(?:LOCAL\s+)?(PROC|FUNC|TRAP)\b/gi)].flatMap(match => {
       const start = module.headerEnd + match.index!;
       const kind = match[1].toUpperCase();
@@ -126,7 +126,7 @@ export function insertCurrentSourcePose(modelId: string, source: string, from: n
   }
   if (profile.brand === 'FANUC') {
     const mn = /^\/MN[\t ]*\r?$/im.exec(mask), pos = /^\/POS[\t ]*\r?$/im.exec(mask), end = /^\/END\b/im.exec(mask);
-    if (!mn || !pos || !end || !(mn.index < pos.index && pos.index < end.index)) throw new Error('请先建立 /MN、/POS 和 /END 分区，或使用“从示教生成”。');
+    if (!mn || !pos || !end || !(mn.index < pos.index && pos.index < end.index)) throw new Error('请先建立 /MN、/POS 和 /END 分区，或在场景中将 Path 转换为程序。');
     const begin = afterLine(source, mn.index);
     const position = statementPosition(source, mask, from, to, begin, pos.index);
     // Unnumbered LS instruction lines are valid; preserve all existing row numbers.
@@ -136,7 +136,7 @@ export function insertCurrentSourcePose(modelId: string, source: string, from: n
   }
   const pos = /^\/\/POS[\t ]*\r?$/im.exec(mask), inst = /^\/\/INST[\t ]*\r?$/im.exec(mask);
   const end = inst ? /^END[\t ]*\r?$/im.exec(mask.slice(inst.index)) : null;
-  if (!pos || !inst || !end || pos.index >= inst.index) throw new Error('请先建立 //POS、//INST 和 END 分区，或使用“从示教生成”。');
+  if (!pos || !inst || !end || pos.index >= inst.index) throw new Error('请先建立 //POS、//INST 和 END 分区，或在场景中将 Path 转换为程序。');
   const positionHeaders = mask.slice(pos.index, inst.index);
   const lastFrame = [...positionHeaders.matchAll(/^\/\/\/POSTYPE[\t ]+(\w+)[\t ]*\r?$/gim)].at(-1)?.[1].toUpperCase();
   const lastFormat = [...positionHeaders.matchAll(/^\/\/\/(RECTAN|PULSE)\b/gim)].at(-1)?.[1].toUpperCase();

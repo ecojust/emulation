@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
-import { generateSource, openCode, openTeach } from './programming-helpers';
+import { generateSource, openCode } from './programming-helpers';
 import type { Pose } from '../../src/robot/types';
-import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectCopyState, makePath, observeBrowser, openProgram, openScene, openWorkspace, programRows, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
+import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, createPath, expectBodyJoints, expectCopyState, selectPathForPoints, observeBrowser, openScene, openWorkspace, pathObjects, pathPoints, selectPath, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
 
 test.setTimeout(120_000);
 const ready = [0, 20, -30, 0, 40, 0];
@@ -40,11 +40,12 @@ async function stopSampling(page: Page): Promise<Sample[]> {
     return scope.emulationRunSamples;
   });
 }
-async function run(page: Page, loop = false) {
-  await openTeach(page);
+async function run(page: Page, loop = false, pathId?: string) {
+  await openScene(page);
+  await selectPath(page, pathId ?? (await pathObjects(page).first().getAttribute('data-object-id'))!);
   await page.getByRole('checkbox', { name: '循环运行', exact: true }).setChecked(loop);
   await startSampling(page);
-  await page.getByRole('button', { name: '运行程序', exact: true }).click();
+  await page.getByRole('button', { name: '运行 Path', exact: true }).click();
   await expect(page.locator('[data-active-view]')).toHaveAttribute('data-active-view', 'scene');
 }
 async function assertStopped(page: Page, from: number[], to: number[], keyboard = false, controlledClock = false) {
@@ -78,11 +79,17 @@ function deviation(position: number[], from: number[], to: number[]) {
   return { t, error: Math.hypot(...position.map((value, i) => value - from[i] - t * delta[i])) };
 }
 
-test('Run plans every ABB line before switching to ordered Cartesian playback and locks edits without engine badges', async ({ page }) => {
+test('Run Path plans every ABB line before switching to ordered Cartesian playback and locks edits without engine badges', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const first = await recordJoint1(page, 6), second = await recordJoint1(page, 12);
-  await makePath(page, [first, second]);
+  // A different Path contains an incompatible wrist branch. Running the first
+  // Path must neither plan nor play this unrelated point.
+  const otherPath = await createPath(page);
+  await setJoint(page, 5, -40);
+  await captureCurrent(page, otherPath);
+  await setJoint(page, 5, 40);
+  await selectPathForPoints(page, [first, second]);
   await setJoint(page, 1, 0);
   await expectBodyJoints(page, ready);
   const start = await bodyPose(page);
@@ -91,6 +98,7 @@ test('Run plans every ABB line before switching to ordered Cartesian playback an
   await run(page);
   await expect(runState(page)).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
   await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '程序', exact: true })).toBeDisabled();
   await selectRobotObject(page); // Reading another inspector must not cancel playback.
   for (let joint = 1; joint <= 6; joint++) await expect(page.getByRole('spinbutton', { name: `机器人关节 J${joint}`, exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toBeDisabled();
@@ -107,9 +115,9 @@ test('Run plans every ABB line before switching to ordered Cartesian playback an
     // Rendered FK must follow the actual checked Cartesian segment instead.
     expect(Math.max(...interior.map(sample => sample.error))).toBeLessThan(.2);
   }
-  await openProgram(page);
-  await expect(programRows(page)).toHaveCount(2);
-  await expect(page.getByRole('button', { name: '＋ 插入当前姿态', exact: true })).toBeEnabled();
+  await selectPath(page, first.pathId);
+  await expect(pathPoints(page, first.pathId)).toHaveCount(2);
+  await expect(page.getByRole('button', { name: '添加当前点到 Path', exact: true })).toBeEnabled();
   await page.screenshot({ path: '/tmp/emulation-program-run-complete.png' });
   expect(errors).toEqual([]);
 });
@@ -123,15 +131,20 @@ test('Loop closes from the last point to the first without replaying approach an
   await expectBodyJoints(page, ready);
   await run(page, true);
   await expect(runState(page)).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
-  await openProgram(page);
-  await expect(page.getByRole('button', { name: '＋ 插入当前姿态', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '转为 Path', exact: true })).toBeDisabled();
+  // Keep a real UI selection while the clock drives continuous scene frames.
+  // Pointer actionability can stall waiting for stable animation frames here.
+  const activePath = page.locator(`[data-object-kind="path"][data-object-id="${first.pathId}"]`);
+  await expect(activePath).toBeVisible();
+  await expect(activePath).toBeEnabled();
+  await activePath.press('Enter');
+  await expect(activePath).toHaveClass(/selected/);
+  await expect(page.getByRole('button', { name: '添加当前点到 Path', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '转换为程序', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '删除 Path', exact: true })).toBeDisabled();
   await expect(page.getByRole('checkbox', { name: '循环运行', exact: true })).toBeDisabled();
-  await programRows(page).first().focus();
-  await page.keyboard.press('ControlOrMeta+a');
+  await pathPoints(page, first.pathId).first().focus();
   await page.keyboard.press('Delete');
-  await expect(programRows(page)).toHaveCount(2);
-  await openScene(page);
+  await expect(pathPoints(page, first.pathId)).toHaveCount(2);
   await expect.poll(async () => Number(await runState(page).getAttribute('data-run-cycle')), { timeout: 25_000 }).toBeGreaterThanOrEqual(2);
   // The first two cycles above use wall time. Freeze only the Stop observation
   // window: a real mouse click's actionability wait can consume this short leg.
@@ -154,10 +167,9 @@ test('Loop closes from the last point to the first without replaying approach an
     expect(sample.joints[0]).toBeGreaterThanOrEqual(2 - .001);
     expect(sample.joints[0]).toBeLessThanOrEqual(4 + .001);
   }
-  await page.getByRole('button', { name: '程序', exact: true }).press('Enter');
-  await expect(page.getByRole('region', { name: /程序编辑区$/ })).toBeVisible();
+  await page.locator(`[data-object-kind="path"][data-object-id="${first.pathId}"]`).press('Enter');
   await expect(page.getByRole('checkbox', { name: '循环运行', exact: true })).toBeChecked();
-  await expect(page.getByRole('button', { name: '运行程序', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '运行 Path', exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
@@ -190,7 +202,7 @@ test('a Path point context menu positions the recorded joints with stoppable vie
   await openWorkspace(page);
   const point = await recordJoint1(page, 160, 50);
   const from = [-160, ...ready.slice(1)];
-  await makePath(page, [point]);
+  await selectPathForPoints(page, [point]);
   await setJoint(page, 1, -160);
   await openScene(page);
   await expectBodyJoints(page, from);
@@ -245,8 +257,9 @@ test('a real GP7 records INFORM Cartesian targets and runs its own URDF chain wi
   const second = await captureCurrent(page), lastPose = await bodyPose(page);
   const expected = [547.3587776286031, 242.02369993286896, 516.5348915917687];
   for (let i = 0; i < 3; i++) expect(lastPose.position[i]).toBeCloseTo(expected[i], 5);
-  await expect(programRows(page).nth(0)).toHaveAccessibleName('MOVL C00000');
-  await expect(programRows(page).nth(1)).toHaveAccessibleName('MOVL C00001');
+  await expect(pathPoints(page, first.pathId)).toHaveCount(2);
+  expect(first.name).toBe('P001');
+  expect(second.name).toBe('P002');
   await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: '目标 Yaskawa 位置数据', exact: true })).toHaveValue(/C00001=/);
   const code = await generateSource(page);
@@ -256,7 +269,7 @@ test('a real GP7 records INFORM Cartesian targets and runs its own URDF chain wi
   expect(code).toContain('///RCONF {{RCONF_P002}}');
   expect(code).toContain('///TOOL {{TOOL}}');
   expect(code).not.toMatch(/robconf|robtarget|MoveL/);
-  await makePath(page, [first, second]);
+  await selectPathForPoints(page, [first, second]);
   await setPose(seed);
   const start = await bodyPose(page);
   await run(page);
@@ -272,21 +285,19 @@ test('a real GP7 records INFORM Cartesian targets and runs its own URDF chain wi
   }
   await expect(page.getByRole('button', { name: '导出此 MoveL', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/emulation-gp7-program-complete.png' });
-  await openTeach(page);
-  await expect(page.locator('[data-program-point-id][data-executing="true"]')).toHaveCount(0);
-  await expect(programRows(page).getByText('执行中', { exact: true })).toHaveCount(0);
+  await openScene(page);
+  await expect(page.locator('[data-object-kind="target"][data-executing="true"]')).toHaveCount(0);
   await openCode(page);
-  await expect(page.getByRole('button', { name: '运行源码', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '运行源码', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/emulation-gp7-inform-template.png' });
-  // Finished and explicitly stopped runs must both clear the live-row marker.
-  await openTeach(page);
+  // Finished and explicitly stopped runs both clear the live Path-point marker.
+  await selectPath(page, first.pathId);
   await page.getByRole('checkbox', { name: '循环运行', exact: true }).check();
-  await page.getByRole('button', { name: '运行程序', exact: true }).click();
+  await page.getByRole('button', { name: '运行 Path', exact: true }).click();
   await expect(runState(page)).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
   await stopButton(page).press('Enter');
   await expect(runState(page)).toHaveAttribute('data-run-phase', 'idle');
-  await openTeach(page);
-  await expect(page.locator('[data-program-point-id][data-executing="true"]')).toHaveCount(0);
-  await expect(programRows(page).getByText('执行中', { exact: true })).toHaveCount(0);
+  await openScene(page);
+  await expect(page.locator('[data-object-kind="target"][data-executing="true"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

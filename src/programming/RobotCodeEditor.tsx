@@ -38,7 +38,6 @@ export interface RobotCodeEditorProps {
   onImportFiles?: () => void;
   onSave?: () => void;
   onExport?: () => void;
-  onGenerateFromTeach?: () => boolean | void;
   captureDisabledReason?: string | null;
   onInsertCurrent?: (input: { fileId: string; source: string; from: number; to: number }) => SourceInsertion | Promise<SourceInsertion>;
 }
@@ -226,14 +225,13 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
   const languageCompartment = useRef(new Compartment()), readOnlyCompartment = useRef(new Compartment());
   const externalChange = useRef(false), insertedRaw = useRef<string | null>(null);
   const sourceVersion = useRef(0);
-  const generatedReplacement = useRef<{ fileId: string; source: string } | null>(null);
   const replacementSnapshots = useRef<{ fileId: string; normalized: string; raw: string }[]>([]);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [panel, setPanel] = useState<'diagnostics' | 'reference'>('diagnostics');
   const [collapsed, setCollapsed] = useState(false), [query, setQuery] = useState('');
   const [reference, setReference] = useState<string | null>(null);
   const [notice, setNotice] = useState(''), [inserting, setInserting] = useState(false);
-  const [dialog, setDialog] = useState<{ kind: 'new' | 'rename' | 'delete' | 'generate'; name: string; fileId?: string; source?: string } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: 'new' | 'rename' | 'delete'; name: string; fileId?: string; source?: string } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const activeFile = props.files.find(file => file.id === props.activeFileId) ?? null;
   const pending = Boolean(activeFile && props.pendingFileIds?.includes(activeFile.id));
@@ -364,7 +362,6 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
     for (const id of states.current.keys()) if (!props.files.some(item => item.id === id)) { states.current.delete(id); rawSources.current.delete(id); }
     const switched = activeId.current !== (file?.id ?? null);
     if (switched) {
-      generatedReplacement.current = null;
       if (activeId.current && props.files.some(item => item.id === activeId.current)) states.current.set(activeId.current, view.state);
       activeId.current = file?.id ?? null; sourceVersion.current++;
       const text = file?.text ?? ''; rawSources.current.set(file?.id ?? '', text); map.current = sourceMap(text);
@@ -376,13 +373,10 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
     const text = file?.text ?? '';
     if (switched || rawSources.current.get(file?.id ?? '') !== text) {
       const mapped = sourceMap(text);
-      const previousText = rawSources.current.get(file?.id ?? '') ?? '';
-      const generated = Boolean(file && generatedReplacement.current?.fileId === file.id && generatedReplacement.current.source === previousText);
-      if (generated && file) { rememberReplacement(file.id, previousText); rememberReplacement(file.id, text); generatedReplacement.current = null; }
       rawSources.current.set(file?.id ?? '', text); map.current = mapped; sourceVersion.current++;
       if (view.state.doc.toString() !== mapped.text) {
         externalChange.current = true;
-        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: mapped.text }, selection: EditorSelection.cursor(Math.min(view.state.selection.main.head, mapped.text.length)), annotations: [Transaction.addToHistory.of(generated), isolateHistory.of('full')], ...(generated ? { userEvent: 'input.generate' } : {}) });
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: mapped.text }, selection: EditorSelection.cursor(Math.min(view.state.selection.main.head, mapped.text.length)), annotations: [Transaction.addToHistory.of(false), isolateHistory.of('full')] });
         externalChange.current = false;
       }
     }
@@ -448,14 +442,6 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
     if (dialog.kind === 'new') props.onNewFile?.(name);
     else if (dialog.kind === 'rename' && activeFile) props.onRenameFile?.(activeFile.id, name);
     else if (dialog.kind === 'delete' && activeFile) props.onRemoveFile?.(activeFile.id);
-    else if (dialog.kind === 'generate' && activeFile) {
-      const marker = { fileId: activeFile.id, source: activeFile.text }; generatedReplacement.current = marker;
-      try { if (props.onGenerateFromTeach?.() === false) generatedReplacement.current = null; }
-      catch (error) { generatedReplacement.current = null; setNotice(error instanceof Error ? error.message : '源码生成失败'); }
-      // The synchronous data callback commits in this event. A failed/no-op
-      // generation must not label a later unrelated load as undoable generation.
-      window.setTimeout(() => { if (generatedReplacement.current === marker) generatedReplacement.current = null; }, 0);
-    }
     setDialog(null);
   }
   const command = (run: (view: EditorView) => unknown) => { const view = editor.current; if (view) { run(view); view.focus(); } };
@@ -464,7 +450,9 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
     catch { setNotice('复制链接失败，可手动复制：' + url); }
   }
   return <section className="robot-code-workspace" aria-label="机器人源码工作区" data-language-id={props.language.id} data-language-dialect={props.language.dialect}>
-    <div className="robot-code-filebar"><div className="robot-code-files" role="tablist" aria-label="源码文件">{props.files.map(file => <button type="button" role="tab" key={file.id} aria-selected={activeFile?.id === file.id} data-source-dirty={Boolean(file.dirty)} title={file.name + (file.dirty ? ' · 已修改' : '')} onClick={() => props.onActiveFileChange(file.id)}><span>{file.name}</span>{file.dirty && <i aria-hidden="true">●</i>}</button>)}</div></div>
+    <div className="robot-code-filebar"><div className="robot-code-current-file" aria-label="当前模块" data-source-file-id={activeFile?.id} data-source-dirty={Boolean(activeFile?.dirty)} title={activeFile?.name}>
+      <span>{activeFile?.name ?? '未选择模块'}</span>{activeFile?.dirty && <i aria-label="已修改">●</i>}
+    </div></div>
     <div className="robot-code-tools">
       {props.onNewFile && <button type="button" disabled={props.readOnly} onClick={() => setDialog({ kind: 'new', name: 'Program' + (props.language.extensions[0]?.startsWith('.') ? '' : '.') + (props.language.extensions[0] ?? 'txt') })}>新建文件</button>}
       {props.onImportFiles && <button type="button" disabled={props.readOnly} onClick={props.onImportFiles}>导入源码</button>}
@@ -472,7 +460,6 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
       {props.onExport && <button type="button" disabled={readOnly} onClick={props.onExport}>导出源码</button>}
       {props.onRenameFile && <button type="button" disabled={readOnly} onClick={() => setDialog({ kind: 'rename', name: activeFile?.name ?? '', fileId: activeFile?.id, source: activeFile?.text })}>重命名</button>}
       {props.onRemoveFile && <button type="button" disabled={readOnly} onClick={() => setDialog({ kind: 'delete', name: activeFile?.name ?? '', fileId: activeFile?.id, source: activeFile?.text })}>删除文件</button>}
-      {props.onGenerateFromTeach && <button type="button" disabled={readOnly} onClick={() => setDialog({ kind: 'generate', name: activeFile?.name ?? '', fileId: activeFile?.id, source: activeFile?.text })}>从示教生成</button>}
       {props.onInsertCurrent && <button type="button" disabled={readOnly || inserting || Boolean(props.captureDisabledReason)} title={props.captureDisabledReason ?? ''} onClick={() => void insertCurrent()}>插入当前姿态</button>}
       <button type="button" disabled={!activeFile} onClick={() => command(openSearchPanel)}>查找</button>
       <button type="button" disabled={readOnly} onClick={() => command(undo)}>撤销</button>
@@ -480,7 +467,10 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
       <button type="button" disabled={readOnly} onClick={() => command(startCompletion)}>补全</button>
       {props.toolbar}<small>{props.language.dialect}</small>
     </div>
-    <div className="robot-code-surface" ref={host} onContextMenu={event => { if (!props.onInsertCurrent) return; event.preventDefault(); setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 55)) }); }}/>
+    <div className="robot-code-editor-area">
+      <div className="robot-code-surface" ref={host} onContextMenu={event => { if (!activeFile || !props.onInsertCurrent) return; event.preventDefault(); setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 55)) }); }}/>
+      {!activeFile && <div className="robot-code-no-file"><strong>{props.files.length ? '从左侧选择一个模块' : '还没有模块文件'}</strong><p>在场景中将 Path 转换成程序，或使用上方按钮新建、导入模块。</p></div>}
+    </div>
     <section className={'robot-code-bottom' + (collapsed ? ' is-collapsed' : '')} aria-label="源码辅助面板">
       <div className="robot-code-panel-tabs" role="tablist" aria-label="源码辅助视图"><button type="button" role="tab" aria-selected={panel === 'diagnostics'} onClick={() => { setPanel('diagnostics'); setCollapsed(false); }}>问题 {diagnostics.length}</button><button type="button" role="tab" aria-selected={panel === 'reference'} onClick={() => { setPanel('reference'); setCollapsed(false); }}>指令参考</button><button className="robot-code-panel-collapse" type="button" aria-label={collapsed ? '展开源码辅助面板' : '折叠源码辅助面板'} onClick={() => setCollapsed(value => !value)}>{collapsed ? '展开' : '收起'}</button></div>
       {!collapsed && <div className="robot-code-panel-body">{panel === 'diagnostics' ? <>
@@ -497,7 +487,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
       </>}</div>}
     </section>
     <footer className="robot-code-statusbar"><span role="status" aria-label="源码状态">{notice && notice + ' · '}{props.status || (pending ? '正在检查源码…' : props.dirty ? '源码已修改' : '草稿就绪')}</span><code>{props.language.name} · {cursor.line}:{cursor.column}</code></footer>
-    {dialog && <div className="robot-code-dialog-backdrop"><form className="robot-code-dialog" role="dialog" aria-modal="true" aria-label={dialog.kind === 'new' ? '新建源码文件' : dialog.kind === 'rename' ? '重命名源码文件' : dialog.kind === 'delete' ? '删除源码文件' : '从示教生成源码'} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setDialog(null); } if (event.key === 'Tab') { const elements = [...event.currentTarget.querySelectorAll<HTMLElement>('input:not(:disabled),button:not(:disabled)')]; const first = elements[0], last = elements.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } } }} onSubmit={event => { event.preventDefault(); confirmDialog(); }}><h3>{dialog.kind === 'new' ? '新建源码文件' : dialog.kind === 'rename' ? '重命名源码文件' : dialog.kind === 'delete' ? '删除源码文件' : '从示教生成源码'}</h3>{dialog.kind === 'new' || dialog.kind === 'rename' ? <label>文件名称<input autoFocus aria-label="源码文件名称" value={dialog.name} onChange={event => setDialog({ ...dialog, name: event.target.value })}/></label> : <p>{dialog.kind === 'delete' ? '将删除草稿文件：' : '将用当前示教点生成的模板替换：'}<strong>{dialog.name}</strong>{dialog.kind === 'generate' && '。其他文件保持原样。'}</p>}<div><button autoFocus={dialog.kind === 'delete' || dialog.kind === 'generate'} type="button" onClick={() => setDialog(null)}>取消</button><button type="submit" disabled={Boolean(props.readOnly || (dialog.kind === 'new' || dialog.kind === 'rename') && !dialog.name.trim())}>{dialog.kind === 'delete' ? '删除' : dialog.kind === 'generate' ? '替换此文件' : '确定'}</button></div></form></div>}
+    {dialog && <div className="robot-code-dialog-backdrop"><form className="robot-code-dialog" role="dialog" aria-modal="true" aria-label={dialog.kind === 'new' ? '新建源码文件' : dialog.kind === 'rename' ? '重命名源码文件' : '删除源码文件'} onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setDialog(null); } if (event.key === 'Tab') { const elements = [...event.currentTarget.querySelectorAll<HTMLElement>('input:not(:disabled),button:not(:disabled)')]; const first = elements[0], last = elements.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } } }} onSubmit={event => { event.preventDefault(); confirmDialog(); }}><h3>{dialog.kind === 'new' ? '新建源码文件' : dialog.kind === 'rename' ? '重命名源码文件' : '删除源码文件'}</h3>{dialog.kind === 'new' || dialog.kind === 'rename' ? <label>文件名称<input autoFocus aria-label="源码文件名称" value={dialog.name} onChange={event => setDialog({ ...dialog, name: event.target.value })}/></label> : <p>将删除草稿文件：<strong>{dialog.name}</strong></p>}<div><button autoFocus={dialog.kind === 'delete'} type="button" onClick={() => setDialog(null)}>取消</button><button type="submit" disabled={Boolean(props.readOnly || (dialog.kind === 'new' || dialog.kind === 'rename') && !dialog.name.trim())}>{dialog.kind === 'delete' ? '删除' : '确定'}</button></div></form></div>}
     {menu && <div className="robot-code-context-menu" role="menu" aria-label="源码右键菜单" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}><button autoFocus type="button" role="menuitem" disabled={readOnly || inserting || Boolean(props.captureDisabledReason)} onClick={() => void insertCurrent()}>插入当前姿态</button></div>}
   </section>;
 }

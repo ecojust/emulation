@@ -8,7 +8,7 @@ function sample(q: JointAngles, t: number): MotionSample {
   return { t, joints: [...q], pose: { position: [q[0], 0, 500], orientation: [1, 0, 0, 0] } };
 }
 function point(id: string, angle: number): ProgramPoint {
-  return { id, pointName: id, kind: 'MoveL', pathId: null, revision: 0, pose: sample(joints(angle), 1).pose,
+  return { id, pointName: id, kind: 'MoveL', pathId: 'path-1', revision: 0, pose: sample(joints(angle), 1).pose,
     joints: joints(angle), configuration: [0, 0, 0, 0], speedMmPerSecond: 100 };
 }
 // Synthetic callback isolates sequence/timeline mechanics; robot geometry is

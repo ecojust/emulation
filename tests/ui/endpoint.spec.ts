@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectCopyState, makePath, observeBrowser, openProgram, openScene, openWorkspace, programRows, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
-import { generateSource, openTeach } from './programming-helpers';
+import { bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectCopyState, selectPathForPoints, observeBrowser, openProgram, openScene, openWorkspace, pathPoints, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
+import { generateSource, readSource } from './programming-helpers';
 
 test.setTimeout(90_000);
 const rows = (page: Page) => page.locator('[data-endpoint-joints]');
@@ -8,7 +8,7 @@ async function openSolutions(page: Page) {
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const point = await captureCurrent(page);
-  await makePath(page, [point]);
+  await selectPathForPoints(page, [point]);
   await selectPoint(page, point);
   await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
   return { errors, point };
@@ -71,9 +71,9 @@ test('previewing an independent wrist solution preserves the saved target, progr
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const point = await captureCurrent(page);
-  await makePath(page, [point]);
+  await selectPathForPoints(page, [point]);
   const originalSource = await generateSource(page);
-  await openTeach(page);
+  await openScene(page);
   await setJoint(page, 1, 3);
   await selectPoint(page, point);
   await page.getByRole('button', { name: '检查到此点的 MoveL', exact: true }).click();
@@ -117,10 +117,11 @@ test('previewing an independent wrist solution preserves the saved target, progr
   await expect(progress).toHaveValue(originalProgress);
   expect(await readRapid(page)).toBe(originalRapid);
   await expectCopyState(page, true);
-  expect(await generateSource(page)).toBe(originalSource);
-  await openTeach(page);
-  await expect(programRows(page)).toHaveCount(1);
-  await expect(programRows(page).first()).toHaveAttribute('data-program-point-id', point.id);
+  await openProgram(page);
+  expect(await readSource(page)).toBe(originalSource);
+  await openScene(page);
+  await expect(pathPoints(page)).toHaveCount(1);
+  await expect(pathPoints(page).first()).toHaveAttribute('data-object-id', point.id);
   await selectRobotObject(page);
   for (let i = 0; i < 6; i++) {
     const draft = Number(await page.getByRole('spinbutton', { name: `机器人关节 J${i + 1}`, exact: true }).inputValue());
@@ -253,8 +254,10 @@ test('multiple zone identities and stored endpoint survive view changes, edits, 
   await expect.poll(async () => Math.abs(Number(await scene(page).getAttribute('data-camera-distance')) - Number(await scene(page).getAttribute('data-zoom-target')))).toBeLessThan(1e-8);
   const camera = JSON.parse((await scene(page).getAttribute('data-camera-position'))!) as number[];
   await openProgram(page);
-  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
+  await expect(page.getByRole('complementary', { name: '对象属性', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveCount(0);
   await openScene(page);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
   await expect.poll(async () => {
     const actual = JSON.parse((await scene(page).getAttribute('data-camera-position'))!) as number[];
     return Math.hypot(...actual.map((value, i) => value - camera[i]));

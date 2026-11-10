@@ -2,8 +2,8 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import type { RobotCatalog, RobotCatalogModel } from '../../src/catalog/types';
 import type { Pose } from '../../src/robot/types';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
-import { bodyJoints, captureCurrent, checkedSegment, expectCopyState, openProgram, openScene, readRapid, selectRobot } from './workspace-helpers';
-import { chooseCompletion, codeEditor, generateSource, newSource, openTeach, readSource, replaceSource } from './programming-helpers';
+import { bodyJoints, captureCurrent, checkedSegment, expectCopyState, openScene, pathPoints, readRapid, selectRobot } from './workspace-helpers';
+import { chooseCompletion, codeEditor, generateSource, moduleList, newSource, readSource, replaceSource } from './programming-helpers';
 
 test.setTimeout(90_000);
 let catalog: RobotCatalog;
@@ -196,16 +196,15 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
     expect((await genericCanvas(page).screenshot()).equals(before)).toBe(false);
     await page.screenshot({ path: `/tmp/emulation-catalog-${model.id}.png` });
     const point = await captureCurrent(page);
-    const editor = page.getByRole('region', { name: /程序编辑区$/ });
-    await expect(editor.getByRole('option')).toHaveCount(1);
+    await expect(pathPoints(page, point.pathId)).toHaveCount(1);
+    await expect(pathPoints(page, point.pathId)).toHaveAttribute('data-point-name', point.name);
+    await expect(pathPoints(page, point.pathId)).toHaveAccessibleName('选择目标点 ' + point.name);
     await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveCount(0);
-    const code = await generateSource(page);
-    await expect(page.getByRole('button', { name: '运行源码', exact: true })).toBeDisabled();
-    await openTeach(page);
-    const row = editor.getByRole('option');
-    await expect(row).toHaveAttribute('data-program-point-name', point.name);
+    const code = await generateSource(page, point.pathId);
+    await expect(page.getByRole('button', { name: '运行源码', exact: true })).toHaveCount(0);
+    await expect(moduleList(page).getByRole('option')).toHaveCount(1);
     if (model.brand === 'FANUC') {
-      await expect(row).toHaveAccessibleName('L P[1]');
+      await expect(moduleList(page).getByRole('option', { selected: true })).toHaveAccessibleName(/\.ls$/);
       expect(code).toContain('L P[1] 100mm/sec FINE');
       expect(code).toContain('P[1]{');
       expect(code).toContain('J1=30 deg');
@@ -213,7 +212,7 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
       expect(code).toContain('{{UT}}');
       expect(code).not.toMatch(/MoveL|robconf|robtarget/);
     } else {
-      await expect(row).toHaveAccessibleName('MOVL C00000');
+      await expect(moduleList(page).getByRole('option', { selected: true })).toHaveAccessibleName(/\.jbi$/);
       expect(code).toContain('MOVL C00000 V=100');
       expect(code).toContain('C00000=');
       expect(code).toContain('///TOOL {{TOOL}}');

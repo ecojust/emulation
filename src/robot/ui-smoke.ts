@@ -56,6 +56,25 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
   const nativeEvidence: Record<string, unknown> = {};
   window.addEventListener('error', event => errors.push(event.message));
   window.addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
+  async function waitForUi(ready: () => boolean, message: string, timeout = 15_000) {
+    const deadline = performance.now() + timeout;
+    while (!ready()) {
+      if (performance.now() > deadline) throw new Error(message);
+      if (errors.length) throw new Error(errors.join('; '));
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  async function changeView(name: '程序' | '场景') {
+    const button = [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(item => item.textContent === name);
+    if (!button) throw new Error(`Installed ${name} view is unavailable`);
+    button.click();
+    await waitForUi(() => button.getAttribute('aria-pressed') === 'true', `Installed ${name} view did not open`);
+  }
+  const moduleOptions = () => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="程序模块列表"] [role="option"]')];
+  function assertSourceDoesNotRun() {
+    const canRun = [...document.querySelectorAll<HTMLButtonElement>('.robot-code-tools button')].some(button => !button.disabled && /^(?:运行|执行)/.test(button.textContent?.trim() ?? ''));
+    if (canRun) throw new Error('Installed source editor exposes execution without a source runner');
+  }
   try {
     stage = 'offline-source-worker';
     // Execute the production inline worker from the installed custom protocol,
@@ -74,23 +93,21 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     if (!invalid.byFile.bad.diagnostics.some(item => item.severity === 'error')) throw new Error('Installed source worker accepted malformed RAPID');
     nativeEvidence.sourceWorker = { languages: sources.map(sample => sample.dialectId), invalidSourceRejected: true };
     stage = 'offline-editor-view';
-    const programButton = [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(button => button.textContent === '程序');
-    if (!programButton) throw new Error('Installed program view is unavailable');
-    programButton.click();
-    await new Promise(resolve => setTimeout(resolve, 0));
-    const codeButton = [...document.querySelectorAll<HTMLButtonElement>('.program-mode-switch button')].find(button => button.textContent === '代码');
-    if (!codeButton) throw new Error('Installed source mode is unavailable');
-    codeButton.click();
-    const editorDeadline = performance.now() + 15_000;
-    while (!document.querySelector('.robot-code-workspace[data-language-id="rapid"] .cm-content')) {
-      if (performance.now() > editorDeadline) throw new Error('Installed local source editor did not mount');
-      if (errors.length) throw new Error(errors.join('; '));
-      await new Promise(resolve => setTimeout(resolve, 100));
+    await changeView('程序');
+    await waitForUi(() => Boolean(document.querySelector('.robot-code-workspace[data-language-id="rapid"] .cm-content')
+      && document.querySelector('[aria-label="程序模块列表"]')), 'Installed local module editor did not mount');
+    const sourceTools = [...document.querySelectorAll<HTMLButtonElement>('.robot-code-tools button')];
+    for (const label of ['新建文件', '导入源码']) {
+      const button = sourceTools.find(item => item.textContent === label);
+      if (!button || button.disabled) throw new Error(`Installed module editor cannot ${label}`);
     }
-    if (!document.querySelector('[aria-label="源码运行状态"]')?.textContent?.includes('示教')) throw new Error('Installed source run state did not separate authored code from teach simulation');
+    const initialModules = moduleOptions();
+    if (!initialModules.length && (!document.querySelector('.robot-code-no-file')?.textContent?.includes('Path')
+      || document.querySelector('.robot-code-workspace .cm-content')?.textContent?.trim())) throw new Error('Installed empty module workspace did not offer Path conversion');
+    assertSourceDoesNotRun();
     nativeEvidence.sourceEditorMounted = true;
-    [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(button => button.textContent === '场景')?.click();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    nativeEvidence.initialModuleCount = initialModules.length;
+    await changeView('场景');
     stage = 'bundled-model';
     const result = await solveMotion(request);
     if (result.status !== 'success' || result.path.length < 7 || Math.abs(result.selected.pose.position[1] - 30) > 0.001) throw new Error('Native IPC returned an invalid motion path');
@@ -137,6 +154,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     if (resources.some(resource => resource.error)) throw new Error('Packaged STL resource verification failed');
     // Publish the point after direct native checks finish, so background inspector
     // requests triggered by selection cannot be preempted by the smoke export.
+    const previousPathIds = new Set([...document.querySelectorAll<HTMLElement>('[data-object-kind="path"]')].map(element => element.dataset.objectId));
     show(result);
     const until = performance.now() + 20000;
     while (!document.querySelector('[data-loaded-parts="7"]') || !document.querySelector('.result-success')) {
@@ -154,6 +172,40 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const earlyErrors = (window as DiagnosticsWindow).__EMULATION_UI_DIAGNOSTICS__;
     if (earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Installed WebView reported a console or runtime error');
     if (errors.length) throw new Error(errors.join('; '));
+    stage = 'offline-path-module';
+    // Exercise the same Path context menu as the user; source conversion must
+    // add and select a new module without replacing any existing source file.
+    await changeView('程序');
+    const previousModules = new Map(moduleOptions().map(option => [option.dataset.sourceFileId, option.getAttribute('aria-label')]));
+    await changeView('场景');
+    const smokePath = [...document.querySelectorAll<HTMLButtonElement>('[data-object-kind="path"]')]
+      .find(button => !previousPathIds.has(button.dataset.objectId) && button.getAttribute('aria-label') === '选择路径 Smoke Path');
+    if (!smokePath) throw new Error('Installed native result did not create the smoke Path');
+    const bounds = smokePath.getBoundingClientRect();
+    smokePath.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + 8, clientY: bounds.top + 8 }));
+    await waitForUi(() => Boolean(document.querySelector('[role="menu"][aria-label="Path 右键菜单"]')), 'Installed Path context menu did not open');
+    const convert = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"][aria-label="Path 右键菜单"] [role="menuitem"]')]
+      .find(button => button.textContent === '转换为程序');
+    if (!convert || convert.disabled) throw new Error('Installed Path cannot convert its recorded pose into a module');
+    convert.click();
+    await waitForUi(() => moduleOptions().some(option => option.getAttribute('aria-selected') === 'true' && !previousModules.has(option.dataset.sourceFileId)), 'Installed Path conversion did not select a new module');
+    const currentModules = moduleOptions(), selectedModule = currentModules.find(option => option.getAttribute('aria-selected') === 'true')!;
+    const moduleName = selectedModule.getAttribute('aria-label') ?? '', moduleId = selectedModule.dataset.sourceFileId;
+    if (!moduleId || !/\.modx?$/i.test(moduleName) || selectedModule.dataset.sourceDirty !== 'true' || currentModules.length !== previousModules.size + 1
+      || [...previousModules].some(([id, name]) => !currentModules.some(option => option.dataset.sourceFileId === id && option.getAttribute('aria-label') === name))) throw new Error('Installed Path conversion replaced existing modules or created an invalid source file');
+    await waitForUi(() => document.querySelector('[aria-label="当前模块"]')?.getAttribute('data-source-file-id') === moduleId
+      && /\bMoveL\b/.test(document.querySelector('.robot-code-workspace .cm-content')?.textContent ?? ''), 'Installed editor did not load the converted Path module');
+    const generatedSource = [...document.querySelectorAll('.robot-code-workspace .cm-line')].map(line => line.textContent).join('\n');
+    if (!/\bMODULE\b/.test(generatedSource) || !/\brobtarget\b/.test(generatedSource) || !/\bENDMODULE\b/.test(generatedSource)) throw new Error('Installed Path conversion did not render a complete RAPID module');
+    await waitForUi(() => Boolean(document.querySelector('[aria-label="源码辅助面板"] .robot-code-diagnostics'))
+      && !document.querySelector('.robot-code-empty')?.textContent?.includes('正在检查源码'), 'Installed converted module analysis did not finish');
+    if (document.querySelector('.robot-code-empty[role="alert"]')) throw new Error('Installed converted module analysis failed');
+    const moduleDiagnostics = [...document.querySelectorAll<HTMLLIElement>('.robot-code-diagnostics li')]
+      .filter(item => item.querySelector('.diagnostic-location')?.textContent?.startsWith(moduleName + ':'));
+    if (moduleDiagnostics.some(item => item.querySelector('.severity-error'))) throw new Error('Installed source editor rejected the converted Path module');
+    assertSourceDoesNotRun();
+    nativeEvidence.pathModule = { name: moduleName, selected: true, sourceContainsMoveL: true, previousModulesPreserved: true, diagnostics: moduleDiagnostics.length };
+    await changeView('场景');
     stage = 'catalog-download';
     if (!selectCatalogModel) throw new Error('Catalog selection callback is unavailable');
     const entry = MODEL_CATALOG.find(model => model.brand === 'Yaskawa' && model.name.includes('GP7'));
@@ -205,7 +257,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
     } finally { clearTimeout(deadline); }
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path-to-module editor workflow, WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });
   }

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { getProgramProfile } from './program-templates';
 import {
-  captureProgramPoint, convertProgramPointsToPath, createProgramStore, removeProgramPath,
+  captureProgramPointToPath, createProgramPath, createProgramStore, getProgramPathPoints, removeProgramPath,
   removeProgramPoint, renameProgramPath, replaceRobotProgram, updateProgramPoint,
   type ProgramPath, type ProgramPoint, type ProgramSnapshot, type RobotProgram,
 } from './program';
@@ -27,19 +27,20 @@ export function useProgram(modelId: string | null) {
   const program = modelId !== null ? store[modelId] : null;
   return {
     program, points: program?.points ?? NO_POINTS, paths: program?.paths ?? NO_PATHS, revision: program?.revision ?? 0,
-    capture(snapshot: ProgramSnapshot, afterPointId: string | null = null): ProgramPoint {
-      const changed = captureProgramPoint(active(), snapshot, afterPointId);
+    createPath(name?: string): ProgramPath {
+      const changed = createProgramPath(active(), name);
       commit(changed.program); return changed.value;
     },
+    captureToPath(pathId: string, snapshot: ProgramSnapshot): ProgramPoint {
+      const changed = captureProgramPointToPath(active(), pathId, snapshot);
+      commit(changed.program); return changed.value;
+    },
+    pointsForPath(pathId: string): readonly ProgramPoint[] { return getProgramPathPoints(active(), pathId); },
     updatePoint(id: string, snapshot: ProgramSnapshot): ProgramPoint {
       const changed = updateProgramPoint(active(), id, snapshot);
       commit(changed.program); return changed.value;
     },
     removePoint(id: string): void { commit(removeProgramPoint(active(), id)); },
-    convertToPath(ids: readonly string[], name?: string): ProgramPath {
-      const changed = convertProgramPointsToPath(active(), ids, name);
-      commit(changed.program); return changed.value;
-    },
     removePath(id: string): void { commit(removeProgramPath(active(), id)); },
     renamePath(id: string, name: string): void { commit(renameProgramPath(active(), id, name)); },
   };

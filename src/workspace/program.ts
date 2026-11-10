@@ -11,13 +11,13 @@ export interface ProgramPoint extends ProgramSnapshot {
   readonly id: string;
   readonly pointName: string;
   readonly kind: 'MoveL';
-  readonly pathId: string | null;
+  readonly pathId: string;
   readonly revision: number;
 }
 export interface ProgramPath {
   readonly id: string;
   readonly name: string;
-  /** References in program execution order, never selection-click order. */
+  /** Point references in this Path’s capture order. */
   readonly pointIds: readonly string[];
 }
 export interface RobotProgram {
@@ -85,13 +85,40 @@ function pathName(name: string): string {
   return trimmed;
 }
 
-export function captureProgramPoint(program: RobotProgram, snapshot: ProgramSnapshot, afterPointId: string | null = null, id: string = crypto.randomUUID()): ProgramChange<ProgramPoint> {
+/** Create an independent container before recording any robot poses. */
+export function createProgramPath(program: RobotProgram, name?: string, id: string = crypto.randomUUID()): ProgramChange<ProgramPath> {
   checkNewId(program, id);
-  const afterIndex = afterPointId === null ? program.points.length - 1 : program.points.findIndex(point => point.id === afterPointId);
-  if (afterPointId !== null && afterIndex < 0) throw new Error('插入位置已不存在，请重新选择程序行。');
-  const point: ProgramPoint = Object.freeze({ ...cloneSnapshot(program.modelId, snapshot), id, pointName: `P${String(program.nextPointNumber).padStart(3, '0')}`, kind: 'MoveL', pathId: null, revision: 0 });
-  const points = [...program.points]; points.splice(afterIndex + 1, 0, point);
-  return { program: update(program, { points: Object.freeze(points), nextPointNumber: program.nextPointNumber + 1 }), value: point };
+  const path = pathObject(id, pathName(name ?? `Path ${program.nextPathNumber}`), []);
+  return { program: update(program, { paths: Object.freeze([...program.paths, path]), nextPathNumber: program.nextPathNumber + 1 }), value: path };
+}
+
+/** Append a frozen pose snapshot and its owning Path reference in one commit. */
+export function captureProgramPointToPath(program: RobotProgram, pathId: string, snapshot: ProgramSnapshot, id: string = crypto.randomUUID()): ProgramChange<ProgramPoint> {
+  const path = program.paths.find(item => item.id === pathId);
+  if (!path) throw new Error('Path 已不存在，请重新选择。');
+  checkNewId(program, id);
+  if (!Number.isSafeInteger(program.nextPointNumber) || program.nextPointNumber < 1 || program.nextPointNumber > 99999) throw new Error('程序点编号已超出 P001 至 P99999 范围。');
+  const point: ProgramPoint = Object.freeze({ ...cloneSnapshot(program.modelId, snapshot), id, pointName: `P${String(program.nextPointNumber).padStart(3, '0')}`, kind: 'MoveL', pathId, revision: 0 });
+  const paths = program.paths.map(item => item.id === pathId ? pathObject(item.id, item.name, [...item.pointIds, point.id]) : item);
+  return { program: update(program, { points: Object.freeze([...program.points, point]), paths: Object.freeze(paths), nextPointNumber: program.nextPointNumber + 1 }), value: point };
+}
+
+/** Resolve an explicit Path order without borrowing points from another Path. */
+export function resolveProgramPathPoints(path: ProgramPath, points: readonly ProgramPoint[]): readonly ProgramPoint[] {
+  if (new Set(path.pointIds).size !== path.pointIds.length) throw new Error('Path 包含重复的目标点引用。');
+  const byId = new Map(points.map(point => [point.id, point]));
+  if (byId.size !== points.length) throw new Error('目标点标识重复。');
+  return Object.freeze(path.pointIds.map(id => {
+    const point = byId.get(id);
+    if (!point || point.pathId !== path.id) throw new Error('Path 包含已删除或不属于此 Path 的目标点。');
+    return point;
+  }));
+}
+
+export function getProgramPathPoints(program: RobotProgram, pathId: string): readonly ProgramPoint[] {
+  const path = program.paths.find(item => item.id === pathId);
+  if (!path) throw new Error('Path 已不存在。');
+  return resolveProgramPathPoints(path, program.points);
 }
 
 export function updateProgramPoint(program: RobotProgram, id: string, snapshot: ProgramSnapshot): ProgramChange<ProgramPoint> {
@@ -103,33 +130,16 @@ export function updateProgramPoint(program: RobotProgram, id: string, snapshot: 
 
 export function removeProgramPoint(program: RobotProgram, id: string): RobotProgram {
   if (!program.points.some(point => point.id === id)) return program;
-  const paths = program.paths.flatMap(path => {
-    if (!path.pointIds.includes(id)) return [path];
-    const remaining = path.pointIds.filter(pointId => pointId !== id);
-    return remaining.length ? [pathObject(path.id, path.name, remaining)] : [];
-  });
+  const paths = program.paths.map(path => path.pointIds.includes(id)
+    ? pathObject(path.id, path.name, path.pointIds.filter(pointId => pointId !== id)) : path);
   return update(program, { points: Object.freeze(program.points.filter(point => point.id !== id)), paths: Object.freeze(paths) });
 }
 
-export function convertProgramPointsToPath(program: RobotProgram, pointIds: readonly string[], name?: string, id: string = crypto.randomUUID()): ProgramChange<ProgramPath> {
-  checkNewId(program, id);
-  const selected = new Set(pointIds);
-  if (!selected.size || [...selected].some(pointId => !program.points.some(point => point.id === pointId))) throw new Error('请先选择当前程序中存在的目标点。');
-  const ordered = program.points.filter(point => selected.has(point.id)).map(point => point.id);
-  const path = pathObject(id, pathName(name ?? `Path ${program.nextPathNumber}`), ordered);
-  const paths = program.paths.flatMap(previous => {
-    const remaining = previous.pointIds.filter(pointId => !selected.has(pointId));
-    return remaining.length ? [remaining.length === previous.pointIds.length ? previous : pathObject(previous.id, previous.name, remaining)] : [];
-  });
-  paths.push(path);
-  const points = program.points.map(point => selected.has(point.id) ? Object.freeze({ ...point, pathId: id }) : point);
-  return { program: update(program, { points: Object.freeze(points), paths: Object.freeze(paths), nextPathNumber: program.nextPathNumber + 1 }), value: path };
-}
-
+/** Path points belong to their container; deleting it must not leave orphan poses. */
 export function removeProgramPath(program: RobotProgram, id: string): RobotProgram {
   if (!program.paths.some(path => path.id === id)) return program;
   return update(program, { paths: Object.freeze(program.paths.filter(path => path.id !== id)),
-    points: Object.freeze(program.points.map(point => point.pathId === id ? Object.freeze({ ...point, pathId: null }) : point)) });
+    points: Object.freeze(program.points.filter(point => point.pathId !== id)) });
 }
 
 export function renameProgramPath(program: RobotProgram, id: string, name: string): RobotProgram {

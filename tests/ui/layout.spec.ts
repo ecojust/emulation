@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
-import { bodyJoints, captureCurrent, openProgram, openScene, programRows, selectRobotObject } from './workspace-helpers';
+import { bodyJoints, captureCurrent, openProgram, openScene, pathPoints, selectPath, selectRobotObject } from './workspace-helpers';
+import { codeWorkspace, generateSource, moduleList, newSource, readSource } from './programming-helpers';
 
 async function noDocumentScroll(page: Page) {
   await expect.poll(() => page.evaluate(() => {
@@ -17,8 +18,8 @@ async function sceneSized(page: Page) {
   return (await scene.boundingBox())!;
 }
 
-test('resizing the fixed workspace preserves object-only navigation, local inspectors and program scrolling', async ({ page }) => {
-  test.setTimeout(90_000);
+test('resizing the fixed workspace preserves scene objects and locally scrolling Path and module panels', async ({ page }) => {
+  test.setTimeout(150_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -74,47 +75,76 @@ test('resizing the fixed workspace preserves object-only navigation, local inspe
   await noDocumentScroll(page);
   await page.screenshot({ path: '/tmp/emulation-workspace-1000x720.png' });
   const originalJoints = await bodyJoints(page);
-  await captureCurrent(page);
-  const rows = programRows(page);
-  const insert = page.getByRole('button', { name: '＋ 插入当前姿态', exact: true });
-  // Populate through real capture callbacks so overflow represents actual
-  // saved MoveL objects, not injected DOM or mocked program state.
+  const first = await captureCurrent(page);
+  const points = pathPoints(page, first.pathId);
+  // Populate through real Path context-menu callbacks, preserving actual saved
+  // poses instead of injecting DOM rows or application state.
   for (let count = 2; count <= 18; count++) {
-    await insert.click();
-    await expect(rows).toHaveCount(count);
+    await captureCurrent(page, first.pathId);
+    await expect(points).toHaveCount(count);
   }
-  const rowIds = await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-program-point-id')));
-  const list = page.getByRole('listbox', { name: 'MoveL 程序指令', exact: true });
-  expect(await list.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(10);
-  const listBox = (await list.boundingBox())!;
-  await page.mouse.move(listBox.x + listBox.width / 2, listBox.y + listBox.height / 2);
-  await page.mouse.wheel(0, -10000);
-  await expect.poll(() => list.evaluate(element => element.scrollTop)).toBe(0);
-  await page.mouse.wheel(0, 700);
-  await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
-  await rows.first().click();
-  await list.press('ControlOrMeta+a');
-  await page.getByRole('button', { name: '转为 Path', exact: true }).click();
-  await expect(objects.getByRole('button', { name: '选择路径 Path 1', exact: true })).toHaveClass(/selected/);
-  await expect(objects.locator('[data-object-kind="target"]')).toHaveCount(18);
-  await expect(rows.locator('.program-path-tag')).toHaveText(Array(18).fill('Path 1'));
-  expect(await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-program-point-id')))).toEqual(rowIds);
+  const pointIds = await points.evaluateAll(elements => elements.map(element => element.getAttribute('data-object-id')));
   const objectList = objects.locator('.object-panel-content');
   expect(await objectList.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(10);
   const objectBox = (await objectList.boundingBox())!;
   await page.mouse.move(objectBox.x + objectBox.width / 2, objectBox.y + objectBox.height / 2);
+  await page.mouse.wheel(0, -10000);
+  await expect.poll(() => objectList.evaluate(element => element.scrollTop)).toBe(0);
   await page.mouse.wheel(0, 700);
   await expect.poll(() => objectList.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
+  await noDocumentScroll(page);
+  await selectPath(page, first.pathId);
+  const generated = await generateSource(page, first.pathId);
+  expect(generated.match(/MoveL P\d+,/g)).toHaveLength(18);
+  const generatedName = (await moduleList(page).getByRole('option', { selected: true }).getAttribute('aria-label'))!;
+  await expect(objects).toHaveCount(0);
+  await expect(controls).toHaveCount(0);
+  await expect(page.getByRole('tablist', { name: '源码文件', exact: true })).toHaveCount(0);
+  // File creation is a user action too: a long list must scroll independently
+  // without bringing the old scene object inspector into the source workspace.
+  for (let count = 2; count <= 22; count++) await newSource(page, `layout_${count}.modx`);
+  const modules = moduleList(page), files = modules.getByRole('option');
+  await expect(files).toHaveCount(22);
+  const fileIds = await files.evaluateAll(elements => elements.map(element => element.getAttribute('data-source-file-id')));
+  expect(await modules.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(10);
+  const moduleBox = (await modules.boundingBox())!;
+  expect(moduleBox.x).toBeLessThan((await codeWorkspace(page).boundingBox())!.x);
+  await page.mouse.move(moduleBox.x + moduleBox.width / 2, moduleBox.y + moduleBox.height / 2);
+  await page.mouse.wheel(0, -10000);
+  await expect.poll(() => modules.evaluate(element => element.scrollTop)).toBe(0);
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => modules.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
+  await noDocumentScroll(page);
+  await files.last().press('Home');
+  await expect(files.first()).toHaveAttribute('aria-selected', 'true');
+  // Keyboard navigation reveals the first option, which may align its border
+  // with the list viewport and leave the list's own top padding scrolled away.
+  const moduleTopPadding = await modules.evaluate(element => parseFloat(getComputedStyle(element).paddingTop));
+  await expect.poll(() => modules.evaluate(element => element.scrollTop)).toBeLessThanOrEqual(moduleTopPadding + 1);
+  await expect(files.first()).toBeInViewport({ ratio: 1 });
+  await noDocumentScroll(page);
+  expect(await readSource(page)).toBe(generated);
+  const sourceScroller = codeWorkspace(page).locator('.cm-scroller');
+  expect(await sourceScroller.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(10);
+  const sourceBox = (await sourceScroller.boundingBox())!;
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.wheel(0, -10000);
+  await expect.poll(() => sourceScroller.evaluate(element => element.scrollTop)).toBe(0);
+  await page.mouse.wheel(0, 700);
+  await expect.poll(() => sourceScroller.evaluate(element => element.scrollTop)).toBeGreaterThan(10);
   await noDocumentScroll(page);
   await page.screenshot({ path: '/tmp/emulation-program-1000x720.png' });
   await openScene(page);
   await sceneSized(page);
   expect(await bodyJoints(page)).toEqual(originalJoints);
   await expect(objects.getByRole('button', { name: '选择路径 Path 1', exact: true })).toHaveClass(/selected/);
+  await expect(points).toHaveCount(18);
+  expect(await points.evaluateAll(elements => elements.map(element => element.getAttribute('data-object-id')))).toEqual(pointIds);
   await openProgram(page);
-  await expect(rows).toHaveCount(18);
-  await expect(list.locator('[aria-selected="true"]')).toHaveCount(18);
-  expect(await rows.evaluateAll(elements => elements.map(element => element.getAttribute('data-program-point-id')))).toEqual(rowIds);
+  await expect(files).toHaveCount(22);
+  await expect(files.filter({ hasText: generatedName })).toHaveAttribute('aria-selected', 'true');
+  expect(await files.evaluateAll(elements => elements.map(element => element.getAttribute('data-source-file-id')))).toEqual(fileIds);
+  expect(await readSource(page)).toBe(generated);
   await noDocumentScroll(page);
   expect(errors).toEqual([]);
 });
