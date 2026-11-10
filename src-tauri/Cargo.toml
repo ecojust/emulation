@@ -1,6 +1,6 @@
 [package]
 name = "emulation-desktop"
-version = "0.4.0"
+version = "0.4.1"
 description = "Native robot motion workspace"
 authors = ["ecojust"]
 edition = "2021"

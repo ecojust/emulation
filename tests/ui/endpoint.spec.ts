@@ -141,7 +141,7 @@ test('previewing an independent wrist solution preserves the saved target and mo
   await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveText(originalConfiguration!);
   await expect(scene(page)).toHaveAttribute('data-scene-paths', originalPath!);
   await expect(state).toHaveAttribute('data-run-phase', 'idle');
-  await expect(page.getByRole('button', { name: '用当前姿态更新点', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '用当前姿态更新点', exact: true })).toBeEnabled();
   await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-endpoint-preview.png' });
   await page.getByRole('button', { name: '退出预览', exact: true }).click();
@@ -170,6 +170,76 @@ test('previewing an independent wrist solution preserves the saved target and mo
   await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
   await expect(rows(page)).toHaveCount(0);
   await expectNoPointMotionActions(page);
+  expect(errors).toEqual([]);
+});
+
+test('explicitly updating a point saves its previewed wrist configuration without changing target poses, source or the underlying body, and survives reopening', async ({ page }) => {
+  const errors = observeBrowser(page);
+  await openWorkspace(page);
+  const projectId = (await page.locator('[data-project-id]').getAttribute('data-project-id'))!;
+  await page.getByRole('combobox', { name: '记录速度', exact: true }).selectOption('10');
+  const point = await captureCurrent(page);
+  const inspector = page.locator(`[data-target-point-id="${point.id}"]`);
+  const originalLocal = (await inspector.getAttribute('data-local-pose'))!;
+  const originalWorld = (await inspector.getAttribute('data-world-pose'))!;
+  const originalConfiguration = (await page.getByLabel('目标 robconf', { exact: true }).textContent())!;
+  await setJoint(page, 1, 12);
+  await expect.poll(async () => (await bodyJoints(page))[0]).toBe(12);
+  const second = await captureCurrent(page, point.pathId);
+  const secondTarget = await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue();
+  await selectPathForPoints(page, [point, second]);
+  const originalSource = await generateSource(page);
+
+  // A valid point candidate can be saved even while the underlying robot is
+  // at its singular mechanical zero, where ordinary teaching remains blocked.
+  await selectRobotObject(page);
+  await page.getByRole('button', { name: '机械零位', exact: true }).click();
+  const originalBody = [0, 0, 0, 0, 0, 0];
+  await expectBodyJoints(page, originalBody);
+  await selectPoint(page, point);
+  const update = page.getByRole('button', { name: '用当前姿态更新点', exact: true });
+  await expect(update).toBeDisabled();
+  await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
+  const candidate = await differentWrist(page);
+  const configuration = JSON.parse((await candidate.row.locator('.endpoint-solution-heading code').textContent())!) as number[];
+  expect(configuration).not.toEqual(JSON.parse(originalConfiguration));
+  await candidate.row.getByRole('button', { name: /^预览姿态 / }).click();
+  await expectBodyJoints(page, candidate.joints);
+  await expect(update).toBeEnabled();
+  await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveText(originalConfiguration);
+  await expect(inspector).toHaveAttribute('data-local-pose', originalLocal);
+  await expect(inspector).toHaveAttribute('data-world-pose', originalWorld);
+  await update.click();
+  await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
+  await expectBodyJoints(page, originalBody);
+  await expect(update).toBeDisabled();
+  await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveText('[' + configuration.join(', ') + ']');
+  await expect(inspector).toHaveAttribute('data-local-pose', originalLocal);
+  await expect(inspector).toHaveAttribute('data-world-pose', originalWorld);
+  await expect(page.getByLabel('目标速度', { exact: true })).toHaveText('10 mm/s');
+  expect(await pathPoints(page, point.pathId).evaluateAll(nodes => nodes.map(node => node.getAttribute('data-object-id')))).toEqual([point.id, second.id]);
+  await selectPoint(page, second);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(secondTarget);
+  await openProgram(page);
+  expect(await readSource(page)).toBe(originalSource);
+
+  await page.getByRole('button', { name: '返回主页', exact: true }).click();
+  await expect(page.getByRole('main', { name: '项目管理', exact: true })).toBeVisible();
+  await page.locator(`[data-project-card="${projectId}"] .project-card-open`).click();
+  await expect(page.locator('.scene-model-status')).toHaveAttribute('data-loaded-parts', '7');
+  await openProgram(page);
+  expect(await readSource(page)).toBe(originalSource);
+  await selectPoint(page, point);
+  await expectBodyJoints(page, originalBody);
+  await expect(inspector).toHaveAttribute('data-local-pose', originalLocal);
+  await expect(inspector).toHaveAttribute('data-world-pose', originalWorld);
+  await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveText('[' + configuration.join(', ') + ']');
+  await expect(page.getByLabel('目标速度', { exact: true })).toHaveText('10 mm/s');
+  // Positioning reads the persisted point's joint data, not the preview result.
+  await page.locator(`[data-object-kind="target"][data-object-id="${point.id}"]`).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '移动至此', exact: true }).click();
+  await expect(page.locator('[data-run-phase]')).toHaveAttribute('data-run-phase', 'complete');
+  await expectBodyJoints(page, candidate.joints);
   expect(errors).toEqual([]);
 });
 

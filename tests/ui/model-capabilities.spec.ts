@@ -33,7 +33,7 @@ async function dragTcp(page: Page) {
   await expect.poll(async () => Math.hypot(...(await bodyPose(page)).position.map((n, i) => n - pose.position[i]))).toBeGreaterThan(.1);
 }
 
-test('every downloadable model supports actual TCP jogging, joint frames, URDF parameters, immutable IK previews and endpoint mesh checks', async ({ page }) => {
+test('every downloadable model supports actual TCP jogging, joint frames, URDF parameters, immutable IK previews, explicit point updates and endpoint mesh checks', async ({ page }) => {
   const errors = observeBrowser(page); await routeModels(page); await openWorkspace(page);
   for (const model of catalog.models.filter(item => !item.bundledMotionModelId)) {
     await selectRobot(page, model.id);
@@ -47,7 +47,9 @@ test('every downloadable model supports actual TCP jogging, joint frames, URDF p
     await dragTcp(page);
     const point = await captureCurrent(page);
     const recorded = await page.locator('.target-inspector').getAttribute('data-world-pose');
+    const recordedLocal = await page.locator('.target-inspector').getAttribute('data-local-pose');
     const targetText = await page.locator('.target-robtarget').inputValue();
+    const originalTargetJoints = (await page.getByLabel('目标关节', { exact: true }).textContent())!.split(',').map(Number);
     await setJoint(page, 1, 21);
     await expect.poll(async () => (await bodyJoints(page))[0]).toBe(21);
     const committed = await bodyJoints(page);
@@ -57,6 +59,7 @@ test('every downloadable model supports actual TCP jogging, joint frames, URDF p
     await expect(rows.first()).not.toHaveAttribute('data-collision-state', /pending|error/);
     await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveCount(0);
     const preview = rows.last(), expectedJoints = JSON.parse((await preview.getAttribute('data-endpoint-joints'))!) as number[];
+    expect(Math.max(...expectedJoints.map((value, index) => Math.abs(value - originalTargetJoints[index])))).toBeGreaterThan(1);
     await preview.getByRole('button', { name: /^预览姿态/ }).scrollIntoViewIfNeeded();
     const beforeScroll = await page.locator('.control-panel').evaluate(element => element.scrollTop);
     await preview.getByRole('button', { name: /^预览姿态/ }).click();
@@ -64,8 +67,36 @@ test('every downloadable model supports actual TCP jogging, joint frames, URDF p
     expect(await page.locator('.control-panel').evaluate(element => element.scrollTop)).toBeGreaterThanOrEqual(beforeScroll - 2);
     await expect(page.locator('.target-inspector')).toHaveAttribute('data-world-pose', recorded!);
     await expect(page.locator('.target-robtarget')).toHaveValue(targetText);
+    await expect(page.getByRole('button', { name: '用当前姿态更新点', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '退出预览', exact: true }).click();
     await expect.poll(() => bodyJoints(page)).toEqual(committed);
+    // An explicit update chooses this model's candidate joints. The target's
+    // coordinate data and the real robot stay intact, without ABB robconf.
+    await preview.getByRole('button', { name: /^预览姿态/ }).click();
+    await expect.poll(async () => Math.max(...(await bodyJoints(page)).map((n, i) => Math.abs(n - expectedJoints[i])))).toBeLessThan(.00001);
+    await page.getByRole('button', { name: '用当前姿态更新点', exact: true }).click();
+    await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
+    await expect.poll(() => bodyJoints(page)).toEqual(committed);
+    await expect(page.locator('.target-inspector')).toHaveAttribute('data-target-point-id', point.id);
+    await expect(page.locator('.target-inspector')).toHaveAttribute('data-world-pose', recorded!);
+    await expect(page.locator('.target-inspector')).toHaveAttribute('data-local-pose', recordedLocal!);
+    if (model.brand === 'FANUC') {
+      // FANUC's P record contains joints, so explicit branch selection changes
+      // its three-decimal declaration while the Cartesian target stays fixed.
+      await expect(page.locator('.target-robtarget')).not.toHaveValue(targetText);
+      const declaration = await page.locator('.target-robtarget').inputValue();
+      const joints = [...declaration.matchAll(/\bJ([1-6])=(-?\d+(?:\.\d+)?) deg/g)];
+      expect(joints.map(match => Number(match[1]))).toEqual([1, 2, 3, 4, 5, 6]);
+      expect(Math.max(...joints.map((match, index) => Math.abs(Number(match[2]) - expectedJoints[index])))).toBeLessThan(.000501);
+    } else {
+      // Yaskawa's C record is Cartesian and retains the same target pose.
+      await expect(page.locator('.target-robtarget')).toHaveValue(targetText);
+    }
+    await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveCount(0);
+    await expect.poll(async () => {
+      const recordedJoints = (await page.getByLabel('目标关节', { exact: true }).textContent())!.split(',').map(Number);
+      return Math.max(...recordedJoints.map((value, i) => Math.abs(value - expectedJoints[i])));
+    }).toBeLessThan(.000001);
     await selectRobotObject(page);
   }
   expect(errors).toEqual([]);
