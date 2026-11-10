@@ -19,9 +19,11 @@
 
 正式安装包见 [最新 Release](https://github.com/ecojust/emulation/releases/latest)。每个平台附带源提交、CPU 架构和 SHA-256 清单；发布流程先检查同一源码提交的完整测试与实际安装结果，再校验上传文件。
 
-**v0.3.1 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.3.1/Emulation_0.3.1_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.3.1/Emulation_0.3.1_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.3.1)。本版修复客户端左侧对象树拖动无法挂接的问题。构建源为`63466ed`，两者完成实际安装、Path运行与转模块、本地语法Worker／编辑器、原生打磨规划／端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel版在本次发布时尚未完成完整安装与图形验收，因此暂不提供；后续进度见[桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)。
+**v0.4.0 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.4.0/Emulation_0.4.0_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.4.0/Emulation_0.4.0_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.4.0)。本版新增项目主页、真实3D封面和对象右键删除，补齐目录内四款FANUC／安川的TCP Jog、多解预览及实际网格检查；打磨规划保留各target的位置和姿态，选择连续关节配置。
 
-- macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
+构建源为`f96090a`，已通过[完整检查](https://github.com/ecojust/emulation/actions/runs/42832036375)及[ARM／Windows实际安装验证](https://github.com/ecojust/emulation/actions/runs/42832036275)，包括原生规划／端点／网格、GP7下载和缓存、真实封面及跨型号项目恢复。Intel托管环境未能创建WebGL2，未通过完整图形验收，本次未提供该安装包。
+
+- macOS 13+：当前提供 Apple Silicon（ARM64）安装包。使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
 - 两款 IRB 1100 网格随客户端打包；FANUC、Yaskawa 型号首次选择时下载，校验后缓存，之后可离线使用。运动求解与程序生成在本机执行。
 
