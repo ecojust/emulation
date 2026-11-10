@@ -22,7 +22,7 @@ use crate::types::{JointAngles, Mat4, MotionSample, Pose, Quaternion, RobConf, V
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub const MAX_TARGETS: usize = 64;
+pub const MAX_TARGETS: usize = 256;
 pub const MAX_RETURN_SAMPLES: usize = 8192;
 pub const MAX_IK_CALLS: usize = 32768;
 pub const MAX_INTERVAL_CHECKS: usize = 100000;

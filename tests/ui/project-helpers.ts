@@ -25,3 +25,15 @@ export async function openDefaultProject(page: Page) {
   await page.goto('/');
   return enterProject(page);
 }
+
+/** Project entry may intentionally stop at the download screen. Tests that
+ * need a rendered editor must also await model verification and mesh loading.
+ * Reopened projects can restore the program view, which hides the scene. */
+export async function waitForProjectScene(page: Page, expectedModelId?: string) {
+  const model = page.getByLabel('项目机器人型号', { exact: true });
+  await expect(model).toBeVisible({ timeout: 30_000 });
+  if (expectedModelId) await expect(model).toHaveAttribute('data-model-id', expectedModelId);
+  await page.getByRole('button', { name: '场景', exact: true }).click();
+  await expect(page.getByRole('region', { name: '机器人视口', exact: true })).toBeVisible();
+  await expect(page.locator('.scene-model-status')).toContainText('机器人模型已加载', { timeout: 30_000 });
+}

@@ -201,7 +201,7 @@ test('Path ownership, point deletion and independent generated modules survive e
   expect(errors).toEqual([]);
 });
 
-test('model switching isolates recorded programs and selections while returning restores the original points', async ({ page }) => {
+test('separate robot projects isolate recorded programs and selections while reopening restores original points', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const longPoint = await captureCurrent(page);

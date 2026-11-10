@@ -9,8 +9,10 @@ const home = (page: Page) => page.getByRole('main', { name: '项目管理', exac
 const objects = (page: Page, kind: string) => page.locator(`[data-object-kind="${kind}"]`);
 const card = (page: Page, id: string) => page.locator(`[data-project-card="${id}"]`);
 async function ready(page: Page) {
-  // Reopening a saved program view intentionally keeps the rendered scene hidden.
-  await expect(page.locator('.scene-model-status')).toHaveAttribute('data-loaded-parts', '7');
+  // Keep the restored view unchanged: this suite verifies final mesh loading
+  // and camera restoration while the scene is hidden behind the program editor.
+  await expect(page.getByLabel('项目机器人型号', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.scene-model-status')).toHaveAttribute('data-loaded-parts', '7', { timeout: 30_000 });
   await expect(bodyCanvas(page)).toHaveAttribute('data-camera-distance', /\d/);
 }
 async function returnHome(page: Page) {
@@ -81,14 +83,14 @@ test('home requires a name and a catalog robot, and stays inside the viewport', 
   await dialog.getByRole('combobox', { name: '项目机器人', exact: true }).selectOption('irb1100-4-0.475');
   await create.click();
   await ready(page);
-  await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toContainText('IRB 1100-4/0.475');
+  await expect(page.getByLabel('项目机器人型号', { exact: true })).toContainText('IRB 1100-4/0.475');
   await expect(page.locator('.project-context')).toHaveText('短臂工作站');
   const navigation = page.getByRole('navigation', { name: '项目导航', exact: true });
   const back = navigation.getByRole('button', { name: '返回主页', exact: true });
   await expect(back).toBeVisible();
   await expect(page.getByRole('button', { name: '返回主页', exact: true })).toHaveCount(1);
   await expect(page.locator('.header-right').getByRole('button', { name: '返回主页', exact: true })).toHaveCount(0);
-  const backBox = (await back.boundingBox())!, modelBox = (await page.getByRole('button', { name: '选择机器人型号', exact: true }).boundingBox())!;
+  const backBox = (await back.boundingBox())!, modelBox = (await page.getByLabel('项目机器人型号', { exact: true }).boundingBox())!;
   expect(backBox.x + backBox.width).toBeLessThanOrEqual(modelBox.x);
   await noDocumentScroll(page);
   await returnHome(page);
@@ -173,7 +175,7 @@ test('projects restore complete scenes and source independently, with new real c
     await page.reload();
     expect(await enterProject(page, '工位 A')).toBe(a);
     await expect.poll(() => lastMeshRequested).toBe(true);
-    await expect(page.locator('.scene-model-status')).toHaveAttribute('data-loaded-parts', '6');
+    await expect(page.locator('.scene-model-status')).toHaveAttribute('data-loaded-parts', '6', { timeout: 30_000 });
     await expect(codeWorkspace(page)).toBeVisible();
   } finally { releaseLastMesh(); }
   await ready(page);
@@ -303,7 +305,7 @@ test('generic project downloads stay centered, cancel in flight and retry failur
   await barrier.getByRole('button', { name: '重新加载模型', exact: true }).click();
   await ready(page);
   await expect(page.locator('canvas[data-urdf-model]')).toHaveAttribute('data-urdf-model', model.id);
-  await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toContainText(model.name);
+  await expect(page.getByLabel('项目机器人型号', { exact: true })).toContainText(model.name);
   await openCode(page); await expect(moduleList(page).getByRole('option')).toHaveCount(0);
   await returnHome(page); await imageSource(page, id);
   await page.reload(); await enterProject(page, 'GP7 下载重试'); await ready(page);

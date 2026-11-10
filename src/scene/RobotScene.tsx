@@ -13,6 +13,11 @@ import type { CollisionZone } from "../robot/collision";
 import type { PreparedUrdfModel, UrdfVisual } from "../catalog/urdf-types";
 import { forwardUrdfKinematics, urdfLinkMatrices, urdfOriginMatrix } from "../catalog/kinematics";
 import type { ProjectCamera } from "../projects/schema";
+import type { SceneSurface, SurfacePick } from '../surface/types';
+import { createSurfaceVisual, updateSurfaceVisual, disposeSurfaceVisual, createSurfaceRegionVisual,
+  updateSurfaceRegionVisual, pickSurface, surfaceDiagnostics,
+  type SurfaceVisual, type SurfaceRegionVisual, type SceneSurfaceRegion } from './surface-visuals';
+export type { SceneSurfaceRegion } from './surface-visuals';
 import "./scene.css";
 
 export interface ScenePath {
@@ -26,7 +31,7 @@ export interface SceneReferenceFrame { id: string; name: string; pose: Pose; sel
 /** Both poses are world poses, not flange or mounting offsets. */
 export interface SceneTool { id: string; name: string; pose: Pose; tcpPose: Pose; radiusMm: number; selected?: boolean }
 
-export interface RobotSceneHandle { camera(): ProjectCamera | null; capture(): Promise<{ thumbnail: string; camera: ProjectCamera }> }
+export interface RobotSceneHandle { camera(): ProjectCamera | null; capture(): Promise<{ thumbnail: string; camera: ProjectCamera }>; focusSurface(id: string): boolean }
 export interface RobotSceneProps {
   robotPresent?: boolean;
   initialCamera?: ProjectCamera | null;
@@ -62,6 +67,13 @@ export interface RobotSceneProps {
   onDangerZoneDrag?: (dragging: boolean) => void;
   scenePaths?: ScenePath[];
   selectedPointId?: string | null;
+  sceneSurfaces?: readonly SceneSurface[];
+  selectedSurfaceId?: string | null;
+  surfacePickingEnabled?: boolean;
+  surfacePickSurfaceId?: string | null;
+  surfaceRegion?: SceneSurfaceRegion | null;
+  onSurfacePick?: (point: SurfacePick) => void;
+  onSelectSurface?: (id: string) => void;
 }
 
 interface DangerVisual {
@@ -114,6 +126,10 @@ interface SceneState {
   draggingPointer: number | null;
   dangerZones: Map<string, DangerVisual>;
   scenePaths: Map<string, PathVisual>;
+  surfaces: Map<string, SurfaceVisual>;
+  surfaceRegion: SurfaceRegionVisual;
+  surfaceRegionSource: SceneSurfaceRegion | null;
+  surfacePickingEnabled: boolean;
   selectedPoint: THREE.Group;
   selectedPointCaption: THREE.Sprite;
   selectedPointText: string;
@@ -414,6 +430,77 @@ function updateScenePaths(state: SceneState, paths: ScenePath[] = [], selectedPo
   state.dirty = true;
 }
 
+function adjustSurfaceClipping(state: SceneState): void {
+  if (!state.surfaces.size) return;
+  let far = 12, radius = Infinity;
+  for (const visual of state.surfaces.values()) if (visual.root.visible) {
+    const bounds = new THREE.Box3().setFromObject(visual.root);
+    if (bounds.isEmpty()) continue;
+    const size = bounds.getSize(new THREE.Vector3()).length() / 2;
+    radius = Math.min(radius, Math.max(size, .01));
+    far = Math.max(far, state.camera.position.distanceTo(bounds.getCenter(new THREE.Vector3())) + size * 3);
+  }
+  const near = Math.min(.01, Math.max(.00001, radius / 1000));
+  if (near !== state.camera.near || Math.abs(far - state.camera.far) > .01) {
+    state.camera.near = near; state.camera.far = far; state.camera.updateProjectionMatrix();
+  }
+  const distance = state.camera.position.distanceTo(state.controls.target);
+  if (state.scene.fog instanceof THREE.Fog) {
+    state.scene.fog.near = Math.max(2.8, distance * 2);
+    state.scene.fog.far = Math.max(6, distance * 4);
+  }
+}
+
+function updateSurfaces(state: SceneState, props: RobotSceneProps): void {
+  const surfaces = props.sceneSurfaces ?? [];
+  const retained = new Set(surfaces.map(surface => surface.id));
+  for (const [id, visual] of state.surfaces) if (!retained.has(id)) {
+    disposeSurfaceVisual(visual); state.surfaces.delete(id);
+  }
+  for (const surface of surfaces) {
+    const selected = surface.id === props.selectedSurfaceId;
+    const visual = state.surfaces.get(surface.id);
+    if (visual) updateSurfaceVisual(visual, surface, selected);
+    else { const next = createSurfaceVisual(surface, selected); state.surfaces.set(surface.id, next); state.scene.add(next.root); }
+  }
+  state.surfaceRegionSource = props.surfaceRegion ?? null;
+  state.surfacePickingEnabled = Boolean(props.surfacePickingEnabled);
+  updateSurfaceRegionVisual(state.surfaceRegion, props.surfaceRegion, surfaces);
+  state.renderer.domElement.style.cursor = props.surfacePickingEnabled ? 'crosshair' : '';
+  adjustSurfaceClipping(state);
+  state.renderer.shadowMap.needsUpdate = true;
+  state.dirty = true;
+}
+
+function focusSurface(state: SceneState, id: string): boolean {
+  const visual = state.surfaces.get(id);
+  if (!visual?.root.visible) return false;
+  visual.root.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(visual.root);
+  if (bounds.isEmpty()) return false;
+  const center = bounds.getCenter(new THREE.Vector3()), radius = Math.max(.01, bounds.getSize(new THREE.Vector3()).length() / 2);
+  if (![...center.toArray(), radius].every(Number.isFinite)) return false;
+  state.finishDrag();
+  const distance = radius / Math.sin(THREE.MathUtils.degToRad(state.camera.fov / 2)) * 1.3 / Math.min(1, state.camera.aspect);
+  const direction = state.camera.position.clone().sub(state.controls.target);
+  if (direction.lengthSq() < 1e-10) direction.set(1, -1.3, .8);
+  state.controls.target.copy(center);
+  state.camera.position.copy(center).add(direction.normalize().multiplyScalar(distance));
+  state.camera.near = Math.min(.01, Math.max(.00001, radius / 1000));
+  state.camera.far = Math.max(12, distance + center.length() * 2 + radius * 8);
+  state.camera.updateProjectionMatrix();
+  state.controls.minDistance = Math.min(.2, Math.max(.001, radius / 8));
+  state.controls.maxDistance = Math.max(state.controls.maxDistance, distance * 6);
+  state.camera.lookAt(center); state.controls.update();
+  state.zoomTarget = state.camera.position.distanceTo(center);
+  if (state.scene.fog instanceof THREE.Fog) {
+    state.scene.fog.near = Math.max(2.8, distance * 2);
+    state.scene.fog.far = Math.max(6, distance * 4);
+  }
+  state.dirty = true;
+  return true;
+}
+
 function setView(state: SceneState, view: RobotSceneProps["view"]): void {
   if (state.genericFocus) {
     const focus = state.genericFocus;
@@ -619,6 +706,10 @@ function updateDiagnostics(state: SceneState): void {
     id: visual.source.id, name: visual.source.name, selected: Boolean(visual.source.selected), visible: visual.root.visible,
     points: visual.source.points.map(point => ({ id: point.id, name: point.name ?? point.id, position: point.pose.position, orientation: point.pose.orientation })),
   })));
+  canvas.dataset.sceneSurfaces = JSON.stringify(surfaceDiagnostics([...state.surfaces.values()], camera, rect));
+  canvas.dataset.surfacePicking = String(state.surfacePickingEnabled);
+  canvas.dataset.surfaceRegion = JSON.stringify(state.surfaceRegionSource);
+  canvas.dataset.surfaceRegionVisible = String(state.surfaceRegion.root.visible);
   canvas.dataset.selectedPointId = state.selectedPointId ?? "";
   canvas.dataset.selectedPointPose = state.selectedPoint.visible ? JSON.stringify({
     position: state.selectedPoint.position.toArray().map(value => value / SCALE),
@@ -638,8 +729,8 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
   const [generation, setGeneration] = useState(0);
   const [mounted, setMounted] = useState(false);
   const selectedZone = props.dangerZones?.find(zone => zone.id === props.selectedDangerZoneId);
-  const zoneTargetId = props.zoneManipulationEnabled && props.onDangerZoneMove && usableZone(selectedZone) ? selectedZone.id : null;
-  const tcpManipulationEnabled = props.robotPresent !== false && !props.zoneManipulationEnabled && Boolean(props.jogEnabled);
+  const zoneTargetId = !props.surfacePickingEnabled && props.zoneManipulationEnabled && props.onDangerZoneMove && usableZone(selectedZone) ? selectedZone.id : null;
+  const tcpManipulationEnabled = !props.surfacePickingEnabled && props.robotPresent !== false && !props.zoneManipulationEnabled && Boolean(props.jogEnabled);
   const gizmoMode = zoneTargetId ? "translate" : props.jogMode ?? "translate";
   const gizmoSpace = zoneTargetId ? "world" : props.jogSpace ?? "world";
   const gizmoResetRevision = zoneTargetId ? 0 : props.jogResetRevision;
@@ -775,9 +866,10 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     const helper = transform.getHelper();
     helper.visible = false;
     scene.add(helper);
+    const surfaceRegion = createSurfaceRegionVisual(); scene.add(surfaceRegion.root);
     const local: SceneState = { scene, camera, controls, renderer, robot, ghost, frames, tcp, flange, jointHighlight, selectedJointIndex: null, referenceFrames: new Map(), tools: new Map(), target, path, start, links: [], ghostLinks: [], zeroInverse: [], dirty: true,
       zoomTarget: 1, jogObject, zoneObject, manipulationTarget: "none", manipulatedZoneId: null, transform, finishDrag: () => {}, draggingPointer: null, dangerZones: new Map(),
-      scenePaths: new Map(), selectedPoint, selectedPointCaption, selectedPointText: "POINT", selectedPointId: null,
+      scenePaths: new Map(), surfaces: new Map(), surfaceRegion, surfaceRegionSource: null, surfacePickingEnabled: false, selectedPoint, selectedPointCaption, selectedPointText: "POINT", selectedPointId: null,
       genericLinks: [], genericFocus: null, genericFocusLocal: null, genericRadius: 1, genericModelId: null, genericJoints: [], robotJoints: [], grid, ground, key };
     const canvas = renderer.domElement;
     const poseFromJog = (): Pose => ({ position: jogObject.position.toArray().map(v => v / SCALE) as Pose["position"], orientation: [jogObject.quaternion.w, jogObject.quaternion.x, jogObject.quaternion.y, jogObject.quaternion.z] });
@@ -813,6 +905,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     local.finishDrag = finishDrag;
     const targetIsEnabled = () => {
       const current = latest.current;
+      if (current.surfacePickingEnabled) return false;
       if (local.manipulationTarget === "zone") {
         return Boolean(current.zoneManipulationEnabled && current.selectedDangerZoneId === local.manipulatedZoneId
           && current.onDangerZoneMove
@@ -820,11 +913,20 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       }
       return local.manipulationTarget === "tcp" && !current.zoneManipulationEnabled && Boolean(current.robotPresent !== false && current.jogEnabled);
     };
+    let surfacePointer: { id: number; x: number; y: number; moved: boolean; picking: boolean;
+      surfaceId: string | null; camera: THREE.Vector3; rotation: THREE.Quaternion; focus: THREE.Vector3 } | null = null;
+    const clearSurfacePointer = () => { surfacePointer = null; };
     const onPointerDown = (event: PointerEvent) => {
+      const current = latest.current;
+      surfacePointer = event.button === 0 && event.isPrimary && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+        && local.draggingPointer === null && (current.surfacePickingEnabled || current.onSelectSurface)
+        ? { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, picking: Boolean(current.surfacePickingEnabled),
+          surfaceId: current.surfacePickSurfaceId ?? null, camera: camera.position.clone(), rotation: camera.quaternion.clone(), focus: controls.target.clone() } : null;
       if (!targetIsEnabled() || (local.manipulationTarget === "tcp" && latest.current.jogPending) || !transform.enabled || event.button !== 0 || local.draggingPointer !== null) return;
       scene.updateMatrixWorld(true);
       transform.pointerHover(pointer(event));
       if (!transform.axis) return;
+      surfacePointer = null;
       event.preventDefault(); event.stopImmediatePropagation();
       freezeOrbit();
       transform.pointerDown(pointer(event));
@@ -836,6 +938,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       local.dirty = true;
     };
     const onPointerMove = (event: PointerEvent) => {
+      if (surfacePointer?.id === event.pointerId && Math.hypot(event.clientX - surfacePointer.x, event.clientY - surfacePointer.y) > 3) surfacePointer.moved = true;
       if (local.draggingPointer !== null) {
         if (event.pointerId !== local.draggingPointer) return;
         if (!targetIsEnabled()) { finishDrag(); return; }
@@ -847,12 +950,33 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       }
     };
     const onPointerUp = (event: PointerEvent) => {
+      const started = surfacePointer;
+      if (started?.id === event.pointerId) surfacePointer = null;
+      const current = latest.current;
+      if (event.type !== 'pointercancel' && event.button === 0 && started?.id === event.pointerId && !started.moved
+        && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && local.draggingPointer === null
+        && started.picking === Boolean(current.surfacePickingEnabled) && started.surfaceId === (current.surfacePickSurfaceId ?? null)
+        && Math.hypot(event.clientX - started.x, event.clientY - started.y) <= 3
+        && camera.position.distanceToSquared(started.camera) < 1e-14 && controls.target.distanceToSquared(started.focus) < 1e-14
+        && 1 - Math.abs(camera.quaternion.dot(started.rotation)) < 1e-12) {
+        const rect = canvas.getBoundingClientRect();
+        if (event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom) {
+          scene.updateMatrixWorld(true);
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), camera);
+          const hit = pickSurface(raycaster, [...local.surfaces.values()], current.surfacePickingEnabled ? current.surfacePickSurfaceId : null);
+          if (hit) {
+            if (current.surfacePickingEnabled) current.onSurfacePick?.(hit);
+            else current.onSelectSurface?.(hit.surfaceId);
+          }
+        }
+      }
       if (event.pointerId !== local.draggingPointer) return;
       event.preventDefault(); event.stopImmediatePropagation();
       finishDrag();
     };
-    const onLostCapture = (event: PointerEvent) => { if (event.pointerId === local.draggingPointer) finishDrag(); };
-    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && local.draggingPointer !== null) { event.preventDefault(); finishDrag(); } };
+    const onLostCapture = (event: PointerEvent) => { if (surfacePointer?.id === event.pointerId) surfacePointer = null; if (event.pointerId === local.draggingPointer) finishDrag(); };
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") { surfacePointer = null; if (local.draggingPointer !== null) { event.preventDefault(); finishDrag(); } } };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       if (!controls.enabled || local.draggingPointer !== null) return;
@@ -884,6 +1008,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     canvas.addEventListener("lostpointercapture", onLostCapture);
     canvas.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("blur", finishDrag);
+    window.addEventListener("blur", clearSurfacePointer);
     window.addEventListener("keydown", onEscape);
     state.current = local;
     setView(local, latest.current.view);
@@ -903,6 +1028,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     let raf = 0;
     const lost = (event: Event) => {
       event.preventDefault();
+      surfacePointer = null;
       finishDrag();
       contextLost = true;
       setGraphicsError("3D 图形上下文已中断，正在等待浏览器恢复。也可刷新页面重试。");
@@ -932,6 +1058,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
         }
         moved = controls.update() || moved;
       }
+      if (moved && local.surfaces.size) adjustSurfaceClipping(local);
       if (import.meta.env.DEV && (moved || local.dirty || now - diagnosticsAt > 120)) {
         diagnosticsAt = now;
         updateDiagnostics(local);
@@ -958,6 +1085,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       canvas.removeEventListener("lostpointercapture", onLostCapture);
       canvas.removeEventListener("wheel", onWheel);
       window.removeEventListener("blur", finishDrag);
+      window.removeEventListener("blur", clearSurfacePointer);
       window.removeEventListener("keydown", onEscape);
       transform.removeEventListener("change", onTransformChange);
       transform.removeEventListener("objectChange", onObjectChange);
@@ -1145,6 +1273,10 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
   }, [props.scenePaths, props.selectedPointId, mounted]);
 
   useEffect(() => {
+    if (state.current) updateSurfaces(state.current, props);
+  }, [props.sceneSurfaces, props.selectedSurfaceId, props.surfaceRegion, props.surfacePickingEnabled, mounted]);
+
+  useEffect(() => {
     const local = state.current;
     if (!local) return;
     local.finishDrag();
@@ -1201,17 +1333,23 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     if (!saved) return;
     local.controls.target.fromArray(saved.target);
     local.camera.position.fromArray(saved.position);
+    if (local.surfaces.size) {
+      const distance = local.camera.position.distanceTo(local.controls.target);
+      local.controls.maxDistance = Math.max(local.controls.maxDistance, distance * 6);
+      local.controls.minDistance = Math.min(local.controls.minDistance, distance / 2);
+      adjustSurfaceClipping(local);
+    }
     local.camera.lookAt(local.controls.target); local.controls.update();
     local.zoomTarget = local.camera.position.distanceTo(local.controls.target);
     local.dirty = true;
   }, [loaded, props.initialCamera, props.urdfModel]);
 
-  useImperativeHandle(ref, () => ({ camera() { const local = state.current; return local ? { position: local.camera.position.toArray() as Vec3, target: local.controls.target.toArray() as Vec3 } : null; }, async capture() {
+  useImperativeHandle(ref, () => ({ focusSurface(id) { return state.current ? focusSurface(state.current, id) : false; }, camera() { const local = state.current; return local ? { position: local.camera.position.toArray() as Vec3, target: local.controls.target.toArray() as Vec3 } : null; }, async capture() {
     const local = state.current;
     const expected = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? 7;
     if (!local || graphicsError || loadError || loaded !== expected) throw new Error(loadError || graphicsError || '机器人三维模型尚未加载完成，请稍后重试。');
     local.finishDrag();
-    updateRobot(local, latest.current); updateHierarchy(local, latest.current);
+    updateRobot(local, latest.current); updateHierarchy(local, latest.current); updateSurfaces(local, latest.current);
     const canvas = local.renderer.domElement;
     if (!canvas.width || !canvas.height || local.renderer.getContext().isContextLost()) throw new Error('三维画面不可用，无法保存场景封面。');
     const helper = local.transform.getHelper(), visible = helper.visible;

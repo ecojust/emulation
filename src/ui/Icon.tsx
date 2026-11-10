@@ -40,6 +40,7 @@ const shapes = {
   joint: <><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></>,
   flange: <><ellipse cx="12" cy="12" rx="7" ry="9"/><ellipse cx="12" cy="12" rx="3" ry="4"/><path d="M12 5v.01M12 19v.01M7 12h.01M17 12h.01"/></>,
   download: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></>,
+  import: <><path d="M14 3h6v18H4v-5M3 9h12m-4-4 4 4-4 4"/></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof shapes;

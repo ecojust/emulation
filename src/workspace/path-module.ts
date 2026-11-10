@@ -1,5 +1,5 @@
 import { getModelProgrammingProfile, getProgramDialect, type ProgramDialectId } from '../programming/profiles';
-import { resolveProgramPathPoints, type ProgramPath, type ProgramPoint } from './program';
+import { assertProgramPathReady, assertSurfacePathProgram, resolveProgramPathPoints, type ProgramPath, type ProgramPoint } from './program';
 import { renderProgramTemplate, type ProgramTemplateContext } from './program-templates';
 
 export interface PathModule {
@@ -43,6 +43,8 @@ export function createPathModule(
   const profile = getModelProgrammingProfile(modelId);
   const dialect = getProgramDialect(dialectId);
   if (!profile.dialectIds.includes(dialect.id)) throw new Error('所选语言版本不适用于当前机器人型号。');
+  assertProgramPathReady(path);
+  assertSurfacePathProgram(path, points);
   const pathPoints = resolveProgramPathPoints(path, points);
   if (!pathPoints.length) throw new Error('Path 为空，请先添加当前点再转换为程序。');
   const moduleName = uniqueModuleName(moduleBaseName(path.name), existingNames);

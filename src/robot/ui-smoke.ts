@@ -14,7 +14,7 @@ import { forwardGenericKinematics } from './generic-kinematics';
 import { inspectGenericEndpoint } from './generic-endpoint';
 import { solveGenericPoseMotion } from './generic-pose-motion';
 import { checkGenericCollisions, genericCollisionParts } from './generic-collision';
-import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel } from '../catalog/client';
+import { listModelCache, loadCatalogModel, MODEL_CATALOG } from '../catalog/client';
 
 let started = false;
 type DiagnosticsWindow = Window & {
@@ -98,7 +98,7 @@ function snapshot(resources: ResourceCheck[]) {
 }
 
 /** Only an explicit --ui-smoke-test launch enables this installed-app check. */
-export async function runNativeUiSmoke(request: PlanRequest, show: (result: PlanResult) => void, selectCatalogModel?: (model: LoadedCatalogModel) => void): Promise<void> {
+export async function runNativeUiSmoke(request: PlanRequest, show: (result: PlanResult) => void): Promise<void> {
   if (!isNativeUiSmoke() || started) return;
   started = true;
   const errors: string[] = [];
@@ -121,6 +121,41 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     if (!button) throw new Error(`Installed ${name} view is unavailable`);
     button.click();
     await waitForUi(() => button.getAttribute('aria-pressed') === 'true', `Installed ${name} view did not open`);
+  }
+  async function returnToProjectHome() {
+    const home = document.querySelector<HTMLButtonElement>('[aria-label="项目导航"] button[aria-label="返回主页"]');
+    if (!home || home.disabled) throw new Error('Installed workspace has no available return-home action');
+    home.click();
+    await waitForUi(() => Boolean(document.querySelector('main[aria-label="项目管理"]')), 'Installed project did not return home');
+  }
+  async function openProject(id: string) {
+    const card = [...document.querySelectorAll<HTMLElement>('[data-project-card]')].find(item => item.dataset.projectCard === id);
+    const open = card?.querySelector<HTMLButtonElement>('.project-card-open');
+    if (!open || open.disabled) throw new Error('Installed project home lost a saved project');
+    open.click();
+    await waitForUi(() => document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId === id
+      && document.querySelector('[data-loaded-parts]')?.getAttribute('data-loaded-parts') === '7', 'Installed project failed to reopen', 30_000);
+  }
+  async function createRobotProject(name: string, modelId: string) {
+    const home = document.querySelector('main[aria-label="项目管理"]');
+    const create = [...(home?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(button => button.textContent?.trim() === '新建项目');
+    if (!create || create.disabled) throw new Error('Installed project home has no available create action');
+    create.click();
+    await waitForUi(() => document.querySelector('.project-modal[role="dialog"] h2')?.textContent === '新建项目', 'Installed project create dialog did not open');
+    const dialog = document.querySelector('.project-modal[role="dialog"]')!;
+    const nameInput = dialog.querySelector<HTMLInputElement>('[aria-label="项目名称"]');
+    const robotSelect = dialog.querySelector<HTMLSelectElement>('[aria-label="项目机器人"]');
+    if (!nameInput || !robotSelect || ![...robotSelect.options].some(option => option.value === modelId)) throw new Error('Installed new project dialog lost the requested robot');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, name);
+    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(robotSelect, modelId);
+    robotSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    await waitForUi(() => dialog.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled === false, 'Installed project create form did not accept its inputs');
+    dialog.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+    await waitForUi(() => Boolean(document.querySelector('[data-project-id]')), 'Installed project was not created');
+    const id = document.querySelector<HTMLElement>('[data-project-id]')!.dataset.projectId!;
+    if (document.querySelector('[aria-label="选择机器人型号"]')) throw new Error('Installed project still exposes in-place robot replacement');
+    return id;
   }
   const moduleOptions = () => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="程序模块列表"] [role="option"]')];
   function assertSourceDoesNotRun() {
@@ -347,20 +382,21 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     nativeEvidence.pathModule = { name: moduleName, selected: true, sourceContainsMoveL: true, previousModulesPreserved: true, diagnostics: moduleDiagnostics.length };
     await changeView('场景');
     stage = 'catalog-download';
-    if (!selectCatalogModel) throw new Error('Catalog selection callback is unavailable');
+    const abbProjectId = document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId;
+    if (!abbProjectId) throw new Error('Installed ABB workspace has no persisted project identity');
     const entry = MODEL_CATALOG.find(model => model.brand === 'Yaskawa' && model.name.includes('GP7'));
     if (!entry) throw new Error('GP7 catalog entry is unavailable');
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), 60_000);
+    let solverModel: Awaited<ReturnType<typeof loadCatalogModel>> | null = null;
     try {
-      const loaded = await loadCatalogModel(entry.id, { signal: controller.signal, onProgress: progress => { catalogEvidence.progress = progress; } });
-      if (loaded.kind !== 'urdf' || loaded.model.geometries.size !== 7) throw new Error('Downloaded GP7 did not prepare all seven real meshes');
-      selectCatalogModel(loaded);
+      await returnToProjectHome();
+      catalogEvidence.projectId = await createRobotProject('Installed GP7 verification', entry.id);
       stage = 'catalog-render';
-      const renderUntil = performance.now() + 10_000;
+      const renderUntil = performance.now() + 60_000;
       const expectedPosition = [560, 0, 815];
       while (true) {
-        const modelTitle = document.querySelector('[aria-label="选择机器人型号"]')?.textContent;
+        const modelTitle = document.querySelector('[aria-label="项目机器人型号"]')?.textContent;
         const positions = [...document.querySelectorAll('[aria-label="当前 TCP"] [data-axis] strong')].map(node => Number(node.textContent));
         const mounted = document.querySelector('canvas')?.getAttribute('aria-label')?.includes(entry.name);
         const parts = document.querySelector('[data-loaded-parts="7"]');
@@ -368,18 +404,17 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
           catalogEvidence.modelId = entry.id; catalogEvidence.toolPositionMm = positions; catalogEvidence.parts = 7;
           break;
         }
-        if (performance.now() > renderUntil) throw new Error('Downloaded model did not render with its own GP7 tool coordinates');
+        if (performance.now() > renderUntil || controller.signal.aborted) throw new Error('Downloaded project did not render with its own GP7 tool coordinates');
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      // A second load proves reuse in this app process. Offline behavior is checked
-      // independently by transport tests that make every network request fail.
+      // The project loader performed the actual download and rendering. A
+      // second independent prepared model verifies cache reuse and native IK.
       stage = 'catalog-cache';
       const cache = await listModelCache(controller.signal);
       if (!cache[entry.id]) throw new Error('Native model cache did not retain the verified download');
       let downloadedAgain = false;
-      const cached = await loadCatalogModel(entry.id, { signal: controller.signal, onProgress: progress => { if (progress.phase === 'downloading') downloadedAgain = true; } });
-      if (cached.kind !== 'urdf') throw new Error('Native cached model returned the wrong kind');
-      cached.dispose();
+      const loaded = solverModel = await loadCatalogModel(entry.id, { signal: controller.signal, onProgress: progress => { catalogEvidence.progress = progress; if (progress.phase === 'downloading') downloadedAgain = true; } });
+      if (loaded.kind !== 'urdf' || loaded.model.geometries.size !== 7) throw new Error('Native cached model did not prepare all seven GP7 meshes');
       if (downloadedAgain) throw new Error('Complete native model cache unexpectedly downloaded again');
       catalogEvidence.cacheReused = true;
       stage = 'generic-native-motion';
@@ -422,9 +457,9 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       nativeEvidence.genericMesh = { hitParts: meshHit[0].collidingLinks.length, distantClear: true };
 
       const activeGl = document.querySelector<HTMLCanvasElement>('.robot-scene canvas')?.getContext('webgl2');
-      if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
+      if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after opening the GP7 project');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
-    } finally { clearTimeout(deadline); }
+    } finally { clearTimeout(deadline); if (solverModel?.kind === 'urdf') solverModel.dispose(); }
     stage = 'project-cover-and-persistence';
     const projectId = document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId;
     if (!projectId) throw new Error('Installed workspace has no persisted project identity');
@@ -455,22 +490,19 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       && document.querySelector('[data-loaded-parts]')?.getAttribute('data-loaded-parts') === '7', 'Installed persisted project failed to reopen', 30_000);
     await changeView('场景');
     await selectRobot();
-    await waitForUi(() => document.querySelector('[aria-label="选择机器人型号"]')?.textContent?.includes('GP7') === true
+    await waitForUi(() => document.querySelector('[aria-label="项目机器人型号"]')?.textContent?.includes('GP7') === true
       && nearTuple(currentJoints(), savedJoints, 1e-5) && nearTuple(currentPosition(), savedPosition, 0.02), 'Installed project did not restore the selected robot and pose');
-    // Use the live catalog UI, never the callback of the unmounted workspace.
-    document.querySelector<HTMLButtonElement>('[aria-label="选择机器人型号"]')!.click();
-    const catalogDialog = () => document.querySelector<HTMLDialogElement>('dialog.robot-catalog-dialog[open]');
-    await waitForUi(() => Boolean(catalogDialog()), 'Installed robot catalog did not reopen');
-    const abbCard = catalogDialog()!.querySelector('[data-catalog-model-id="irb1100-4-0.58"]');
-    const loadAbb = abbCard?.querySelector<HTMLButtonElement>('button[aria-label^="加载 "]');
-    if (!loadAbb || loadAbb.disabled) throw new Error('Installed robot catalog lost the bundled ABB model');
-    loadAbb.click();
-    await waitForUi(() => !catalogDialog(), 'Installed ABB project scene did not restore');
+    // Robot identity is fixed per project. Reopen the original ABB project
+    // through actual navigation, rather than replacing the GP7 scene in place.
+    await returnToProjectHome();
+    await openProject(abbProjectId);
+    if (document.querySelector('[aria-label="项目机器人型号"]')?.getAttribute('data-model-id') !== 'irb1100-4-0.58'
+      || document.querySelector('[aria-label="选择机器人型号"]')) throw new Error('Installed project robot identity is not fixed');
     await changeView('程序');
-    await waitForUi(() => moduleOptions().some(option => option.dataset.sourceFileId === moduleId), 'Installed project lost its ABB source module while saving another robot');
+    await waitForUi(() => moduleOptions().some(option => option.dataset.sourceFileId === moduleId), 'Installed ABB project lost its source module while saving the separate GP7 project');
     moduleOptions().find(option => option.dataset.sourceFileId === moduleId)!.click();
     await waitForUi(() => /\bMoveL\b/.test(document.querySelector('.robot-code-workspace .cm-content')?.textContent ?? ''), 'Installed project source content was not restored');
-    nativeEvidence.project = { id: projectId, actualCover: [cover.naturalWidth, cover.naturalHeight], coverColors: colors.size, restoredModel: 'yaskawa-gp7', restoredJoints: savedJoints, previousModelSourcePreserved: true };
+    nativeEvidence.project = { id: projectId, previousProjectId: abbProjectId, actualCover: [cover.naturalWidth, cover.naturalHeight], coverColors: colors.size, restoredModel: 'yaskawa-gp7', restoredJoints: savedJoints, previousModelSourcePreserved: true };
     await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path context-run and module workflow, WebView, native ABB/GP7 motion, framed TCP Jog, endpoint/mesh IPC, project cover and persistence, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });

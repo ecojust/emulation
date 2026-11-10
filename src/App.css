@@ -54,3 +54,16 @@
 @media(max-width:700px) {
   .topbar .project-breadcrumbs .project-context,.topbar .project-breadcrumbs .breadcrumb-project-separator { display:none }
 }
+
+/* Symmetric columns keep the workspace tabs at the window's actual center. */
+.topbar { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); column-gap:16px; position:relative }
+.topbar .brand { grid-column:1; grid-row:1; justify-self:start }
+.topbar .header-divider { display:none }
+.topbar .project-breadcrumbs { grid-column:1; grid-row:1; margin-left:180px; overflow:hidden }
+.topbar .workspace-view-switch { grid-column:2; grid-row:1; justify-self:center }
+.topbar .header-right { grid-column:3; grid-row:1; justify-self:end; display:flex; min-width:0; margin-left:0; gap:14px }
+.project-robot-model { display:flex; align-items:center; gap:7px; min-width:0; color:#52657e; font-size:11px; font-weight:600 }
+.project-robot-model>.ui-icon { flex:none }
+.project-robot-model>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+@media(max-width:1150px) { .topbar .project-breadcrumbs { margin-left:160px } .topbar .project-context { max-width:95px } }
+@media(max-width:850px) { .topbar .brand { display:none } .topbar .project-breadcrumbs { margin-left:0 } .topbar .header-right { display:flex } }

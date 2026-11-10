@@ -5,7 +5,7 @@ import { forwardGenericUnchecked, validateGenericChain } from './generic-kinemat
 import type { GrindingRequest, GrindingResult, GrindingSuccess } from './grinding-types';
 import type { Pose, Vec3 } from './types';
 
-export const GRINDING_LIMITS = { targets: 64, samples: 8192, ikCalls: 32768, intervalChecks: 100000, certDepth: 12, translationStepMm: 2, orientationStepDeg: 1, jointStepDeg: 15, beamWidth: 4, legRefinements: 3 } as const;
+export const GRINDING_LIMITS = { targets: 256, samples: 8192, ikCalls: 32768, intervalChecks: 100000, certDepth: 12, translationStepMm: 2, orientationStepDeg: 1, jointStepDeg: 15, beamWidth: 4, legRefinements: 3 } as const;
 export const finiteTuple = (value: unknown, length: number): value is number[] => Array.isArray(value) && value.length === length && Array.from(value).every(item => typeof item === 'number' && Number.isFinite(item));
 export function validateGrindingPose(pose: Pose): Pose {
   if (!pose || !finiteTuple(pose.position, 3) || pose.position.some(value => Math.abs(value) > 1e6)
@@ -25,7 +25,7 @@ export function validateGrindingRequest(value: GrindingRequest): GrindingRequest
     const stages = new Set(robot.bodies.map(body => robot.chain.steps.slice(0, body.stepIndex).filter(step => step.jointIndex !== null).length));
     if (stages.size !== 7) throw new Error('机器人几何包络必须包含基座和全部六轴刚体。');
   } else throw new Error('不支持的机器人规划类型。');
-  if (!Array.isArray(value.targets) || !value.targets.length || value.targets.length > GRINDING_LIMITS.targets) throw new Error('一次最多规划 64 个目标点。');
+  if (!Array.isArray(value.targets) || !value.targets.length || value.targets.length > GRINDING_LIMITS.targets) throw new Error('一次最多规划 256 个目标点。');
   if (!Number.isFinite(value.speedMmPerSecond) || value.speedMmPerSecond < 1 || value.speedMmPerSecond > 2000
     || !Number.isFinite(value.clearanceMm) || value.clearanceMm < 0 || value.clearanceMm > 1000
     || !Number.isFinite(value.toolRadiusMm) || value.toolRadiusMm < 0 || value.toolRadiusMm > 1000) throw new Error('速度、安全间距或工具半径超出范围。');
