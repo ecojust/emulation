@@ -19,7 +19,7 @@
 
 正式安装包见 [最新 Release](https://github.com/ecojust/emulation/releases/latest)。每个平台附带源提交、CPU 架构和 SHA-256 清单；发布流程先检查同一源码提交的完整测试与实际安装结果，再校验上传文件。
 
-**v0.2.1 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.2.1/Emulation_0.2.1_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.2.1/Emulation_0.2.1_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.2.1)。构建源为`b05a23e`，两者完成实际安装、本地语法Worker／编辑器、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel版尚无完整图形验收通过的正式包，本次暂不提供；后续进度见[桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)。
+**v0.2.2 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.2.2/Emulation_0.2.2_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.2.2/Emulation_0.2.2_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.2.2)。构建源为`46a5791`，两者完成实际安装、Path转模块、本地语法Worker／编辑器、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel版尚无完整图形验收通过的正式包，本次暂不提供；后续进度见[桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)。
 
 - macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
