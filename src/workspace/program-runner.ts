@@ -1,7 +1,7 @@
-import type { JointAngles, MotionSample } from '../robot/types';
+import type { JointAngles, MotionSample, Pose } from '../robot/types';
 import type { ProgramPoint } from './program';
 
-export interface PlannedLeg { path: MotionSample[]; durationSeconds: number }
+export interface PlannedLeg { path: MotionSample[]; durationSeconds: number; resolvedTarget?: { joints: JointAngles; pose: Pose } }
 export interface ProgramLeg extends PlannedLeg {
   pointId: string;
   lineNumber: number;
@@ -28,7 +28,7 @@ const near = (a: JointAngles, b: JointAngles, tolerance = PROGRAM_JOINT_TOLERANC
 function checkAbort(signal: AbortSignal) { if (signal.aborted) throw new DOMException('程序运行已取消', 'AbortError'); }
 
 function verifyLeg(value: PlannedLeg, from: JointAngles, target: ProgramPoint): PlannedLeg {
-  if (!value || !Array.isArray(value.path) || !value.path.length || value.path.length > 1601
+  if (!value || !Array.isArray(value.path) || !value.path.length || value.path.length > 20001
     || !Number.isFinite(value.durationSeconds) || value.durationSeconds < 0) throw new Error('运动规划返回了无效轨迹');
   let previous = -1;
   let previousJoints: JointAngles | undefined;
@@ -36,15 +36,21 @@ function verifyLeg(value: PlannedLeg, from: JointAngles, target: ProgramPoint): 
     if (!sample || !Number.isFinite(sample.t) || sample.t < 0 || sample.t > 1 || sample.t <= previous || !finiteJoints(sample.joints)
       || !sample.pose || !Array.isArray(sample.pose.position) || sample.pose.position.length !== 3
       || !Array.from(sample.pose.position).every(Number.isFinite) || !Array.isArray(sample.pose.orientation) || sample.pose.orientation.length !== 4
-      || !Array.from(sample.pose.orientation).every(Number.isFinite)) throw new Error('运动规划返回了无效采样');
+      || !Array.from(sample.pose.orientation).every(Number.isFinite) || Math.abs(Math.hypot(...sample.pose.orientation) - 1) > 1e-6) throw new Error('运动规划返回了无效采样');
     if (previousJoints && sample.joints.some((angle, index) => Math.abs(angle - previousJoints![index]) > 15 + 1e-8)) throw new Error('运动采样包含不连续的关节跳变');
     previous = sample.t;
     previousJoints = sample.joints;
   }
   const first = value.path[0], last = value.path.at(-1)!;
-  if (!near(first.joints, from) || !near(last.joints, target.joints)) throw new Error('轨迹没有连续连接已记录的关节姿态');
+  const targetJoints = value.resolvedTarget?.joints ?? target.joints;
+  if (value.resolvedTarget) {
+    const orientation = (q: readonly number[], p: readonly number[]) => Math.abs(q.reduce((sum, n, i) => sum + n * p[i], 0));
+    if (!finiteJoints(targetJoints) || Math.hypot(...last.pose.position.map((n, i) => n - target.pose.position[i])) > .2
+      || orientation(last.pose.orientation, target.pose.orientation) < Math.cos(.1 * Math.PI / 360)) throw new Error('变换后的轨迹没有到达目标工具位姿');
+  }
+  if (!near(first.joints, from) || !near(last.joints, targetJoints)) throw new Error('轨迹没有连续连接已记录的关节姿态');
   if (value.path.length > 1 && (Math.abs(first.t) > 1e-9 || Math.abs(last.t - 1) > 1e-9)) throw new Error('轨迹采样未覆盖完整运动段');
-  if (value.path.length === 1 && !near(from, target.joints)) throw new Error('单点轨迹不能代表非零运动');
+  if (value.path.length === 1 && !near(from, targetJoints)) throw new Error('单点轨迹不能代表非零运动');
   // A coincident target still occupies one display frame, so a one-point loop
   // never becomes a zero-duration busy loop. It does not invent robot motion.
   return { durationSeconds: Math.max(1 / 60, value.durationSeconds), path: value.path.map(sample => ({
@@ -73,7 +79,7 @@ export async function planProgramRun(options: {
   if (!points.length || points.length > MAX_POINTS || !finiteJoints(options.startJoints)) throw new Error('请选择包含 1 至 256 条指令的程序，并设置有效机器人姿态');
   const ids = new Set<string>();
   for (const point of points) {
-    if (!point || !point.id || ids.has(point.id) || !finiteJoints(point.joints)) throw new Error('程序包含无效或重复的目标点');
+    if (!point || !point.id || ids.has(point.id) || !finiteJoints(point.joints) || !point.pose || point.pose.position.length !== 3 || !point.pose.position.every(Number.isFinite) || point.pose.orientation.length !== 4 || !point.pose.orientation.every(Number.isFinite) || Math.abs(Math.hypot(...point.pose.orientation) - 1) > 1e-6) throw new Error('程序包含无效或重复的目标点');
     ids.add(point.id);
   }
   const total = points.length + Number(options.loop);

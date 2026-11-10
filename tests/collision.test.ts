@@ -501,3 +501,42 @@ describe('collision transport lifecycle', () => {
     await expect(next).resolves.toEqual(clearResults(request()));
   });
 });
+
+describe('endpoint meshes under a world robot-base transform', () => {
+  it('keeps world boxes axis-aligned while moving and rotating the actual robot meshes', async () => {
+    const c = Math.SQRT1_2, inputs: CollisionRequest[] = [];
+    for (const modelId of MODELS) {
+      const pose = { position: [800, -230, 100] as Vec3, orientation: [Math.cos(Math.PI / 8), 0, 0, Math.sin(Math.PI / 8)] as [number, number, number, number] };
+      const input: CollisionRequest = { modelId, basePose: pose, solutions: [{ id: 'zero', joints: zero }], zones: [
+        identified(zone([800 - 70 * c, -230 + 70 * c, 200], [4, 4, 4]), 'rotated-surface'),
+        identified(zone([800, -230 + 150 * c, 180], [4, 4, 4]), 'empty-corner'),
+        identified(zone([800, -230, 150]), 'inside-base'),
+        identified(zone([0, 70, 100], [4, 4, 4]), 'old-base-location'),
+      ] };
+      const result = await reference(input);
+      expect(result).toEqual([{ id: 'zero', collidingLinks: [0], uncertainLinks: [], zones: [
+        { zoneId: 'rotated-surface', collidingLinks: [0], uncertainLinks: [] },
+        { zoneId: 'inside-base', collidingLinks: [0], uncertainLinks: [] },
+      ] }]);
+      inputs.push(input);
+      const worldBoxes = linkBoundingBoxes(modelId, zero, pose), original = linkBoundingBoxes(modelId, zero);
+      for (let i = 0; i < worldBoxes.length; i++) {
+        const [x, y, z] = original[i].centerMm;
+        close(worldBoxes[i].centerMm, [800 + c * (x - y), -230 + c * (x + y), 100 + z]);
+      }
+    }
+    expect(native(inputs)).toEqual(await Promise.all(inputs.map(reference)));
+  });
+
+  it('retains omitted-base compatibility and rejects invalid base poses before checking even empty zones', async () => {
+    const input = request();
+    const explicit = { ...input, basePose: { position: [0, 0, 0] as Vec3, orientation: [1, 0, 0, 0] as [number, number, number, number] } };
+    expect(await reference(explicit)).toEqual(await reference(input));
+    for (const basePose of [
+      { position: [0, 0, 0], orientation: [0, 0, 0, 0] },
+      { position: [Infinity, 0, 0], orientation: [1, 0, 0, 0] },
+      { position: [1e6 + 1, 0, 0], orientation: [1, 0, 0, 0] },
+      { position: [0, 0, 0], orientation: [1, 0, 0] },
+    ]) expect(() => validateCollisionRequest({ ...input, zones: [], basePose } as unknown as CollisionRequest)).toThrow();
+  });
+});

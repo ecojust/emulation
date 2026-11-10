@@ -33,6 +33,11 @@ const shapes = {
   collapse: <path d="M3 8h5V3m8 0v5h5M8 21v-5H3m13 5v-5h5"/>,
   search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
   trash: <><path d="M3 6h18M8 6V3h8v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></>,
+  frame: <><path d="M6 18V4m0 14h14M6 18l8-8M3 7l3-3 3 3m8 8 3 3-3 3M11 10h3v3"/><circle cx="6" cy="18" r="2"/></>,
+  tool: <><path d="M14 4h6v6l-8 8-6-6Zm-8 8-3 3 6 6 3-3M17 7l-6 6"/></>,
+  base: <><path d="M3 18h18v3H3ZM6 18l2-8h8l2 8M9 10V4h6v6"/></>,
+  joint: <><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></>,
+  flange: <><ellipse cx="12" cy="12" rx="7" ry="9"/><ellipse cx="12" cy="12" rx="3" ry="4"/><path d="M12 5v.01M12 19v.01M7 12h.01M17 12h.01"/></>,
   download: <><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></>,
 } satisfies Record<string, ReactNode>;
 

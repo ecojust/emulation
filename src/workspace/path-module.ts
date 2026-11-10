@@ -1,6 +1,6 @@
 import { getModelProgrammingProfile, getProgramDialect, type ProgramDialectId } from '../programming/profiles';
 import { resolveProgramPathPoints, type ProgramPath, type ProgramPoint } from './program';
-import { renderProgramTemplate } from './program-templates';
+import { renderProgramTemplate, type ProgramTemplateContext } from './program-templates';
 
 export interface PathModule {
   readonly name: string;
@@ -38,6 +38,7 @@ export function createPathModule(
   points: readonly ProgramPoint[],
   dialectId: ProgramDialectId,
   existingNames: readonly string[],
+  context?: ProgramTemplateContext,
 ): PathModule {
   const profile = getModelProgrammingProfile(modelId);
   const dialect = getProgramDialect(dialectId);
@@ -45,6 +46,6 @@ export function createPathModule(
   const pathPoints = resolveProgramPathPoints(path, points);
   if (!pathPoints.length) throw new Error('Path 为空，请先添加当前点再转换为程序。');
   const moduleName = uniqueModuleName(moduleBaseName(path.name), existingNames);
-  const template = renderProgramTemplate(modelId, pathPoints, moduleName);
+  const template = renderProgramTemplate(modelId, pathPoints, moduleName, context);
   return Object.freeze({ name: `${moduleName}.${dialect.extensions[0]}`, text: template.code });
 }

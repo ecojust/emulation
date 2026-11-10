@@ -1,6 +1,7 @@
 import catalog from '../catalog/catalog.json';
 import { normalizeOrientation } from '../robot/rapid';
 import type { JointAngles, Pose, Quaternion, RobConf } from '../robot/types';
+import { composePose, normalizePose } from './frame-graph';
 
 export type ProgramBrand = 'ABB' | 'FANUC' | 'Yaskawa';
 export interface ProgramProfile {
@@ -27,6 +28,13 @@ export interface FormattedProgramPoint {
   orientationLabel: string;
   orientationValues: number[];
   configurationNote: string | null;
+}
+/** All values are relative to the simulated robot base, independent of scene world placement. */
+export interface ProgramTemplateContext {
+  /** Robot flange -> active TCP, including tool mounting and TCP transforms. */
+  readonly toolPose: Pose;
+  /** Robot base -> Path frame. ProgramPoint.pose remains Path-local TCP. */
+  readonly referencePose: Pose;
 }
 export interface ProgramTemplate {
   profile: ProgramProfile;
@@ -130,28 +138,79 @@ export function formatProgramPoint(modelId: string, point: ProgramTemplatePoint)
   };
 }
 
-export function renderProgramTemplate(modelId: string, points: readonly ProgramTemplatePoint[], name = 'EMULATE'): ProgramTemplate {
+function checkedContext(context?: ProgramTemplateContext): ProgramTemplateContext | null {
+  if (context === undefined) return null;
+  if (!context || typeof context !== 'object') throw new Error('模板坐标上下文必须包含工具和参考坐标系位姿。');
+  const value = { toolPose: normalizePose(context.toolPose), referencePose: normalizePose(context.referencePose) };
+  const identity = (pose: Pose) => pose.position.every(n => n === 0) && pose.orientation.slice(1).every(n => n === 0);
+  return identity(value.toolPose) && identity(value.referencePose) ? null : value;
+}
+const poseLiteral = (pose: Pose) => `[[${tuple(pose.position, 6)}],[${tuple(pose.orientation, 9)}]]`;
+/** Preserve simulation transforms without inventing controller frame/tool numbers. */
+function frameContextComments(context: ProgramTemplateContext): string[] {
+  return [
+    `REFERENCE_BASE_XYZ ${tuple(context.referencePose.position)}`,
+    `REFERENCE_BASE_Q ${tuple(context.referencePose.orientation, 9)}`,
+    `TOOL_FLANGE_XYZ ${tuple(context.toolPose.position)}`,
+    `TOOL_FLANGE_Q ${tuple(context.toolPose.orientation, 9)}`,
+    'XYZ mm; Q w,x,y,z; calibrate controller frames and tool.',
+  ];
+}
+
+export function renderProgramTemplate(modelId: string, points: readonly ProgramTemplatePoint[], name = 'EMULATE', context?: ProgramTemplateContext): ProgramTemplate {
   const profile = getProgramProfile(modelId);
   if (!/^[A-Za-z][A-Za-z0-9_]{0,7}$/.test(name)) throw new Error('仿真程序名称须以字母开头，由最多 8 个字母、数字或下划线组成。');
   if (new Set(points.map(point => point.pointName)).size !== points.length) throw new Error('程序点名称重复。');
-  const formatted = points.map(point => formatProgramPoint(modelId, point));
+  const frames = checkedContext(context);
+  // Yaskawa BASE Cartesian records must contain base TCP poses, not Path-local
+  // coordinates. FANUC joint targets already encode the solved base pose.
+  const coordinates = frames && profile.brand === 'Yaskawa' ? points.map(point => {
+    validatePoint(profile, point);
+    return { ...point, pose: composePose(frames.referencePose, point.pose) };
+  }) : points;
+  const formatted = coordinates.map(point => formatProgramPoint(modelId, point));
   const declarations = formatted.map(point => point.declaration).join('\n');
-  const motions = formatted.map(point => point.instruction);
+  const motions = formatted.map(point => profile.brand === 'ABB' && frames
+    ? point.instruction.replace('tool0\\WObj:=wobj0', 'SimTool\\WObj:=SimFrame') : point.instruction);
   let code: string;
   let unresolvedFields: string[];
   if (profile.brand === 'ABB') {
     code = `MODULE ${name}\n  ! Simulation template; validate motion before controller export.\n${declarations.split('\n').filter(Boolean).map(line => `  ${line}`).join('\n')}\n  PROC main()\n    ConfL \\On;\n${motions.map(line => `    ${line}`).join('\n')}\n  ENDPROC\nENDMODULE`;
-    unresolvedFields = [];
+    if (frames) {
+      const declarations = [
+        '! Tool load is an uncalibrated simulation placeholder; set before controller use.',
+        `PERS tooldata SimTool := [TRUE,${poseLiteral(frames.toolPose)},[0,[0,0,0],[1,0,0,0],0,0,0]];`,
+        `PERS wobjdata SimFrame := [FALSE,TRUE,"",${poseLiteral(frames.referencePose)},[[0,0,0],[1,0,0,0]]];`,
+      ];
+      code = code.replace('  PROC main()', declarations.map(line => `  ${line}`).join('\n') + '\n  PROC main()');
+    }
+    unresolvedFields = frames ? ['工具负载与坐标系现场标定'] : [];
   } else if (profile.brand === 'FANUC') {
     code = `/PROG ${name}\n/ATTR\nOWNER = MNEDITOR;\nCOMMENT = "SIMULATION TEMPLATE";\n/MN\n${motions.map((line, index) => `   ${index + 1}:${line}`).join('\n')}\n/POS\n${declarations}\n/END`;
+    if (frames) {
+      const comments = frameContextComments(frames).map(text => `! ${text} ;`);
+      // Include the resolved base TCP as documentation alongside joint records;
+      // UF/UT stay unresolved, rather than guessing controller slot numbers.
+      for (const point of points) {
+        const baseTcp = composePose(frames.referencePose, point.pose);
+        comments.push(`! ${point.pointName} BASE_TCP_XYZ ${tuple(baseTcp.position)} ;`, `! ${point.pointName} BASE_TCP_Q ${tuple(baseTcp.orientation, 9)} ;`);
+      }
+      const body = [...comments, ...motions].map((line, index) => `   ${index + 1}:${line}`).join('\n');
+      code = code.replace(/\/MN\n[\s\S]*?\n\/POS\n/, `/MN\n${body}\n/POS\n`);
+    }
     unresolvedFields = ['UF', 'UT', '控制器关节零位与耦合映射'];
   } else {
     code = `/JOB\n//NAME ${name}\n//POS\n///NPOS ${points.length},0,0,0,0,0\n///TOOL {{TOOL}}\n///POSTYPE BASE\n///RECTAN\n${declarations}\n//INST\n///COMM SIMULATION TEMPLATE\n///ATTR SC,RW,RJ\n///GROUP1 RB1\nNOP\n${motions.join('\n')}\nEND`;
+    if (frames) {
+      const comments = frameContextComments(frames).map(text => `'${text}`);
+      comments.push("'Positions below use robot BASE TCP coordinates.");
+      code = code.replace('NOP\n', comments.join('\n') + '\nNOP\n');
+    }
     unresolvedFields = ['TOOL', ...points.map(point => `RCONF_${point.pointName}`), '控制器相对作业支持与坐标标定'];
   }
   return {
     profile, code, exportable: false, unresolvedFields: Object.freeze(unresolvedFields),
-    notice: profile.brand === 'ABB' ? 'RAPID 仿真模板；运行前逐段验证，控制器导出仍仅支持单独验证的 ABB 运动段。'
+    notice: profile.brand === 'ABB' ? (frames ? 'RAPID 仿真模板；已写入工具与参考坐标系，工具负载与现场坐标仍须标定，未完成控制器验收。' : 'RAPID 仿真模板；运行前逐段验证，尚未完成控制器验收。')
       : `${profile.language} 仿真模板；待配置：${unresolvedFields.join('、')}。当前不支持此品牌的控制器文件导出。`,
   };
 }

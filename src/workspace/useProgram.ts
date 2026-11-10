@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { getProgramProfile } from './program-templates';
 import {
   captureProgramPointToPath, createProgramPath, createProgramStore, getProgramPathPoints, removeProgramPath,
-  removeProgramPoint, renameProgramPath, replaceRobotProgram, updateProgramPoint,
-  type ProgramPath, type ProgramPoint, type ProgramSnapshot, type RobotProgram,
+  removeProgramPoint, renameProgramPath, replaceRobotProgram, replaceProgramPathPoints, updateProgramPoint,
+  type PathPlanningSettings, type ProgramPath, type ProgramPoint, type ProgramSnapshot, type RobotProgram,
 } from './program';
 
 const NO_POINTS: readonly ProgramPoint[] = Object.freeze([]);
@@ -39,6 +39,9 @@ export function useProgram(modelId: string | null) {
     updatePoint(id: string, snapshot: ProgramSnapshot): ProgramPoint {
       const changed = updateProgramPoint(active(), id, snapshot);
       commit(changed.program); return changed.value;
+    },
+    replacePathPoints(pathId: string, snapshots: readonly ProgramSnapshot[], planning?: PathPlanningSettings): readonly ProgramPoint[] {
+      const changed = replaceProgramPathPoints(active(), pathId, snapshots, planning); commit(changed.program); return changed.value;
     },
     removePoint(id: string): void { commit(removeProgramPoint(active(), id)); },
     removePath(id: string): void { commit(removeProgramPath(active(), id)); },

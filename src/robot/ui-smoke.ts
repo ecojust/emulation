@@ -1,6 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { nativeDesktop, solveMotion } from './client';
-import type { PlanRequest, PlanResult } from './types';
+import type { PlanRequest, PlanResult, Pose } from './types';
+import type { GrindingRequest, GrindingResult } from './grinding-types';
+import { validateGrindingResult } from './grinding-validation';
+import { forwardKinematics, quaternionDistanceDeg } from './kinematics';
+import { getRobotModel } from './model';
+import { composePose } from '../workspace/frame-graph';
 import type { CollisionResult } from './collision-geometry';
 import { inspectEndpoint } from './endpoint-inspection';
 import { buildGenericChain } from './generic-motion-chain';
@@ -140,6 +145,32 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       || meshResult.zones.length !== 2 || meshResult.zones[0].zoneId !== 'surface' || meshResult.zones[1].zoneId !== 'contained'
       || meshResult.zones.some(zone => zone.collidingLinks.length !== 1 || zone.collidingLinks[0] !== 0 || zone.uncertainLinks.length)) throw new Error('Native triangle/containment inspection IPC failed real STL cases');
     nativeEvidence.meshCases = ['empty-corner-clear', 'surface-hit', 'contained-hit'];
+    stage = 'grinding-planner';
+    // Exercise the real desktop command with independent world and tool frames.
+    // These calls must not move the visible robot or replace the recorded target.
+    const grindingBase: Pose = { position: [250, -170, 80], orientation: [Math.cos(Math.PI / 8), 0, 0, Math.sin(Math.PI / 8)] };
+    const grindingTool: Pose = { position: [25, 5, 40], orientation: [Math.cos(Math.PI / 12), Math.sin(Math.PI / 12), 0, 0] };
+    const grindingStart = composePose(grindingBase, composePose(forwardKinematics(getRobotModel(request.modelId), request.startJoints).pose, grindingTool));
+    const grindingRequest: GrindingRequest = {
+      robot: { kind: 'abb', modelId: request.modelId }, basePose: grindingBase, toolPose: grindingTool, toolRadiusMm: 2,
+      startJoints: [...request.startJoints], orientation: grindingStart.orientation, speedMmPerSecond: 100, clearanceMm: 1,
+      allowDetours: false, zones: [], targets: [3, 6].map(offset => ({ position: [grindingStart.position[0] + offset, grindingStart.position[1], grindingStart.position[2]], orientation: [...grindingStart.orientation] })),
+    };
+    const grindingSnapshot = JSON.stringify(grindingRequest);
+    const grinding = validateGrindingResult(await invoke<GrindingResult>('plan_grinding_path', { requestId: crypto.randomUUID(), request: grindingRequest }), grindingRequest);
+    if (grinding.status !== 'success' || grinding.waypoints.length !== 2 || grinding.path.length < 3
+      || grinding.path[0].joints.some((q, i) => Math.abs(q - request.startJoints[i]) > 1e-7)
+      || grinding.path.some(sample => quaternionDistanceDeg(sample.pose.orientation, grindingStart.orientation) > 0.002)
+      || grinding.waypoints[0].kind !== 'transfer' || grinding.waypoints[1].kind !== 'process'
+      || JSON.stringify(grindingRequest) !== grindingSnapshot) throw new Error('Native grinding IPC did not preserve the TCP frames, start or target roles');
+    const blocked = await invoke<GrindingResult>('plan_grinding_path', { requestId: crypto.randomUUID(), request: { ...grindingRequest,
+      zones: [{ id: 'grinding-blocked', enabled: true, centerMm: grindingBase.position, sizeMm: [4000, 4000, 4000] }],
+    } });
+    if (blocked.status !== 'failure' || blocked.code !== 'collision' || 'path' in blocked) throw new Error('Native grinding IPC accepted an obstructed approach or returned a partial path');
+    nativeEvidence.grinding = { samples: grinding.path.length, waypoints: grinding.waypoints.length, checkedIntervals: grinding.checkedIntervals,
+      worldBase: grindingBase, flangeToTcp: grindingTool, fixedWorldDirection: true, startPreserved: true, blockedApproachRejected: true };
+    stage = 'bundled-model';
+
     // Check packaged files independently from rendering, so a missing GPU cannot
     // be misreported as a missing STL. Preserve each response in failure evidence.
     await Promise.all(['irb1100-4-0.58', 'irb1100-4-0.475'].flatMap(model => ['base_link', 'link_1', 'link_2', 'link_3', 'link_4', 'link_5', 'link_6'].map(async name => {
