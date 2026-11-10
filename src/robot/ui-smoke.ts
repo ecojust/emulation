@@ -15,6 +15,7 @@ import { inspectGenericEndpoint } from './generic-endpoint';
 import { solveGenericPoseMotion } from './generic-pose-motion';
 import { checkGenericCollisions, genericCollisionParts } from './generic-collision';
 import { listModelCache, loadCatalogModel, MODEL_CATALOG } from '../catalog/client';
+import { generateSurfacePath, type SurfaceRequest } from '../surface/generate';
 
 let started = false;
 type DiagnosticsWindow = Window & {
@@ -226,6 +227,48 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       || meshResult.zones.length !== 2 || meshResult.zones[0].zoneId !== 'surface' || meshResult.zones[1].zoneId !== 'contained'
       || meshResult.zones.some(zone => zone.collidingLinks.length !== 1 || zone.collidingLinks[0] !== 0 || zone.uncertainLinks.length)) throw new Error('Native triangle/containment inspection IPC failed real STL cases');
     nativeEvidence.meshCases = ['empty-corner-clear', 'surface-hit', 'contained-hit'];
+    stage = 'surface-generator';
+    // Use the production client and installed Tauri command, then check the
+    // simple plane independently of the generator's own reported metrics.
+    const surfaceRequest: SurfaceRequest = {
+      mesh: {
+        positions: [10, 20, 30, 30, 20, 30, 30, 40, 30, 10, 20, 30, 30, 40, 30, 10, 40, 30],
+        normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+      },
+      boundary: [
+        { triangleIndex: 0, barycentric: [1, 0, 0] },
+        { triangleIndex: 0, barycentric: [0, 1, 0] },
+        { triangleIndex: 0, barycentric: [0, 0, 1] },
+        { triangleIndex: 1, barycentric: [0, 0, 1] },
+      ],
+      controlIndices: [0, 1, 2, 3], sampling: { mode: 'spacing', u: 10, v: 10 },
+      normalSign: 1, maxNormalStepDeg: 5, maxPoints: 9,
+    };
+    const surfaceSnapshot = JSON.stringify(surfaceRequest);
+    const surface = await generateSurfacePath(surfaceRequest);
+    if (surface.status !== 'success') throw new Error(`Installed native surface command failed: ${surface.code}: ${surface.message}`);
+    if (surface.points.length !== 9 || JSON.stringify(surface.rowOffsets) !== '[0,3,6]'
+      || JSON.stringify(surfaceRequest) !== surfaceSnapshot) throw new Error('Installed native surface command changed its input or returned an invalid grid');
+    let surfacePositionErrorMm = 0, surfaceAnchorErrorMm = 0, surfaceSpacingErrorMm = 0;
+    for (const [index, point] of surface.points.entries()) {
+      const row = Math.floor(index / 3), column = row % 2 === 0 ? index % 3 : 2 - index % 3;
+      const expected = [10 + column * 10, 20 + row * 10, 30];
+      surfacePositionErrorMm = Math.max(surfacePositionErrorMm, Math.hypot(...point.pose.position.map((value, axis) => value - expected[axis])));
+      const anchored = [0, 1, 2].map(axis => point.anchor.barycentric.reduce((sum, weight, vertex) =>
+        sum + weight * surfaceRequest.mesh.positions[point.anchor.triangleIndex * 9 + vertex * 3 + axis], 0));
+      surfaceAnchorErrorMm = Math.max(surfaceAnchorErrorMm, Math.hypot(...anchored.map((value, axis) => value - point.pose.position[axis])));
+      const [w, x, y, z] = point.pose.orientation;
+      const toolZ = [2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)];
+      if (point.row !== row || Math.hypot(point.uv[0] - column / 2, point.uv[1] - row / 2) > 1e-6
+        || Math.hypot(point.normal[0], point.normal[1], point.normal[2] - 1) > 1e-6
+        || Math.hypot(toolZ[0], toolZ[1], toolZ[2] - 1) > 1e-6
+        || !samePhysicalOrientation(point.pose.orientation, surface.points[0].pose.orientation)) throw new Error('Installed native surface frames or serpentine ordering are invalid');
+      if (index > 0) surfaceSpacingErrorMm = Math.max(surfaceSpacingErrorMm,
+        Math.abs(Math.hypot(...point.pose.position.map((value, axis) => value - surface.points[index - 1].pose.position[axis])) - 10));
+    }
+    if (![surfacePositionErrorMm, surfaceAnchorErrorMm, surfaceSpacingErrorMm].every(error => Number.isFinite(error) && error < 1e-5)) throw new Error('Installed native surface anchors or spacing differ from the plane');
+    nativeEvidence.surfaceGeometry = { points: surface.points.length, rowOffsets: surface.rowOffsets,
+      positionErrorMm: surfacePositionErrorMm, anchorErrorMm: surfaceAnchorErrorMm, spacingErrorMm: surfaceSpacingErrorMm };
     stage = 'grinding-planner';
     // Exercise the real desktop command with independent world and tool frames.
     // These calls must not move the visible robot or replace the recorded target.
@@ -503,7 +546,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     moduleOptions().find(option => option.dataset.sourceFileId === moduleId)!.click();
     await waitForUi(() => /\bMoveL\b/.test(document.querySelector('.robot-code-workspace .cm-content')?.textContent ?? ''), 'Installed project source content was not restored');
     nativeEvidence.project = { id: projectId, previousProjectId: abbProjectId, actualCover: [cover.naturalWidth, cover.naturalHeight], coverColors: colors.size, restoredModel: 'yaskawa-gp7', restoredJoints: savedJoints, previousModelSourcePreserved: true };
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path context-run and module workflow, WebView, native ABB/GP7 motion, framed TCP Jog, endpoint/mesh IPC, project cover and persistence, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path context-run and module workflow, WebView, native ABB/GP7 motion, framed TCP Jog, endpoint/mesh/surface IPC, project cover and persistence, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });
   }

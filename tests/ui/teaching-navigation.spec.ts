@@ -22,7 +22,14 @@ async function dragWorldX(page: Page) {
   await page.mouse.move(handle.x + (handle.x - center.x) / length * 4, handle.y + (handle.y - center.y) / length * 4, { steps: 4 });
   await page.mouse.up();
   await expect(canvas).toHaveAttribute('data-jog-dragging', 'false');
-  await expect(page.getByRole('status', { name: '拖动状态', exact: true })).not.toContainText(/正在检查|已保持/);
+  await expect(page.getByRole('status', { name: '拖动状态', exact: true })).toHaveText('拖动控制柄调整当前 TCP；无效目标不会移动机器人。');
+  // React can show the completed solve before Three renders its last accepted
+  // joints. Wait for that frame before freezing the exact pose for teaching.
+  const acceptedJoints = await page.getByRole('spinbutton', { name: /^机器人关节 J[1-6]$/ })
+    .evaluateAll(inputs => inputs.map(input => Number((input as HTMLInputElement).value)));
+  expect(acceptedJoints).toHaveLength(6);
+  await expect.poll(async () => (await bodyJoints(page)).map(value => Number(value.toFixed(6))))
+    .toEqual(acceptedJoints);
   await expect.poll(async () => Math.abs((await bodyPose(page)).position[0] - before.position[0])).toBeGreaterThan(.5);
 }
 function poseError(actual: Pose, expected: Pose) {
