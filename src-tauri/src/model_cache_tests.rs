@@ -21,7 +21,10 @@ impl TemporaryDirectory {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        // Match ModelCache's canonical-root invariant, including macOS /var and
+        // /tmp aliases and Windows extended-path prefixes. The direct collision
+        // source fixtures below otherwise reject their own legitimate files.
+        Self(std::fs::canonicalize(path).unwrap())
     }
 }
 impl Drop for TemporaryDirectory {

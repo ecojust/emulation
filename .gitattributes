@@ -7,5 +7,7 @@ src/robot/link-bounds.json -text
 vendor/work-r-labs/model-notices/* -text
 tests/fixtures/catalog/* -text
 src/catalog/catalog.json -text
+# Generated JSON is checked byte-for-byte against LF generator output.
+src/catalog/generic-collision.json text eol=lf
 vendor/work-r-labs/model-notices/BSD-3-Clause-template.txt -whitespace
 vendor/work-r-labs/model-notices/yaskawa-*-package.xml -whitespace
