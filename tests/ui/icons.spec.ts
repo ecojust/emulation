@@ -122,8 +122,11 @@ test('module and CodeMirror SVG icons retain folding, completion, search and dia
   await expectSvg(file.locator('svg.module-file-dirty'));
   await expectSvg(page.getByLabel('当前模块', { exact: true }).getByLabel('已修改', { exact: true }).locator('svg'));
 
-  const marker = page.locator('.cm-foldGutter .robot-fold-marker').first();
+  // The gutter begins with an invisible width-measurement marker; interact
+  // with the real first source line rather than that non-interactive spacer.
+  const marker = page.locator('.cm-foldGutter .robot-fold-marker:visible').first();
   await expectControlIcon(marker);
+  await expect(marker.locator('svg')).toHaveAttribute('data-icon', 'chevron-down');
   await marker.click();
   const placeholder = codeEditor(page).locator('.cm-foldPlaceholder');
   await expectControlIcon(placeholder);

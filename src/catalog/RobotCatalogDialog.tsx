@@ -95,7 +95,7 @@ export default function RobotCatalogDialog({ currentModelId, onSelect, onClose }
       {cacheError && <p className="robot-catalog-message" role="status">缓存状态暂不可用，仍可选择型号加载。<button type="button" className="copy-button" disabled={Boolean(loadingId)} onClick={() => setCacheRevision(value => value + 1)}>重试缓存检查</button></p>}
       {loadingId && <div className="robot-catalog-progress" role="status" aria-label="模型加载进度"><div><strong>{selectedName}</strong><span>{progressLabel}{progress && progress.totalBytes > 0 ? ` · ${bytesText(progress.downloadedBytes)} / ${bytesText(progress.totalBytes)}` : ''}</span></div><progress aria-label="模型下载进度" max={Math.max(1, progress?.totalBytes ?? 1)} value={progress?.phase === 'downloading' ? progress.downloadedBytes : undefined}/><button type="button" className="copy-button" onClick={cancel}>取消加载</button></div>}
       {message && <p className={failedId ? 'robot-catalog-error' : 'robot-catalog-message'} role={failedId ? 'alert' : 'status'}>{message}{failedId && <button type="button" className="copy-button" onClick={() => void load(failedId)}>重试加载</button>}</p>}
-      <p className="robot-catalog-note">ABB 支持原生运动检查与单段模块导出；FANUC、安川支持直线仿真和品牌模板，控制器文件导出尚未适配。</p>
+      <p className="robot-catalog-note">目录内型号支持 Path 直线仿真和品牌模板；ABB 另支持端点逆解与干涉检查。模板尚未完成控制器验收。</p>
     </footer>
   </dialog>;
 }
