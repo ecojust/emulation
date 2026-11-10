@@ -19,7 +19,7 @@
 
 正式安装包见 [最新 Release](https://github.com/ecojust/emulation/releases/latest)。每个平台附带源提交、CPU 架构和 SHA-256 清单；发布流程先检查同一源码提交的完整测试与实际安装结果，再校验上传文件。
 
-**v0.4.0 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.4.0/Emulation_0.4.0_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.4.0/Emulation_0.4.0_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.4.0)。本版新增项目主页、真实3D封面和对象右键删除，补齐目录内四款FANUC／安川的TCP Jog、多解预览及实际网格检查；打磨规划保留各target的位置和姿态，选择连续关节配置。
+**v0.4.1 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.4.1/Emulation_0.4.1_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.4.1/Emulation_0.4.1_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.4.1)。本版支持显式保存预览的候选姿态，将返回主页移至左侧面包屑，并完善首次模型下载的进度、取消和重试界面。
 
 构建源为`f96090a`，已通过[完整检查](https://github.com/ecojust/emulation/actions/runs/42832036375)及[ARM／Windows实际安装验证](https://github.com/ecojust/emulation/actions/runs/42832036275)，包括原生规划／端点／网格、GP7下载和缓存、真实封面及跨型号项目恢复。Intel托管环境未能创建WebGL2，未通过完整图形验收，本次未提供该安装包。
 
