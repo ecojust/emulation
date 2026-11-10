@@ -1,3 +1,4 @@
+import { composePose, identityPose, relativePose } from "../workspace/frame-graph";
 import Icon from '../ui/Icon';
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -20,7 +21,18 @@ export interface ScenePath {
   selected?: boolean;
 }
 
+export interface SceneReferenceFrame { id: string; name: string; pose: Pose; selected?: boolean }
+/** Both poses are world poses, not flange or mounting offsets. */
+export interface SceneTool { id: string; name: string; pose: Pose; tcpPose: Pose; radiusMm: number; selected?: boolean }
+
 export interface RobotSceneProps {
+  /** World <- robot base. */
+  basePose?: Pose;
+  /** Flange <- active TCP, including tool mounting offset. */
+  toolPose?: Pose;
+  sceneFrames?: SceneReferenceFrame[];
+  sceneTools?: SceneTool[];
+  selectedJointIndex?: number | null;
   urdfModel?: PreparedUrdfModel;
   urdfJoints?: readonly number[];
   model: RobotModel;
@@ -65,6 +77,8 @@ interface PathVisual {
   source: ScenePath;
 }
 
+interface FrameVisual { root: THREE.Group; name: string }
+interface ToolVisual { root: THREE.Group; body: THREE.Mesh; tcp: THREE.Group; signature: string }
 interface SceneState {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -74,6 +88,11 @@ interface SceneState {
   ghost: THREE.Group;
   frames: THREE.Group;
   tcp: THREE.Group;
+  flange: THREE.Object3D;
+  jointHighlight: THREE.Group;
+  selectedJointIndex: number | null;
+  referenceFrames: Map<string, FrameVisual>;
+  tools: Map<string, ToolVisual>;
   target: THREE.Group;
   path: THREE.Line;
   start: THREE.Mesh;
@@ -97,6 +116,7 @@ interface SceneState {
   selectedPointId: string | null;
   genericLinks: { mesh: THREE.Mesh; link: string; visual: UrdfVisual }[];
   genericFocus: THREE.Vector3 | null;
+  genericFocusLocal: THREE.Vector3 | null;
   genericRadius: number;
   genericModelId: string | null;
   genericJoints: readonly number[];
@@ -194,6 +214,82 @@ function setPose(object: THREE.Object3D, pose: Pose): void {
   object.position.fromArray(pose.position).multiplyScalar(SCALE);
   const [w, x, y, z] = pose.orientation;
   object.quaternion.set(x, y, z, w).normalize();
+}
+
+function worldRobotPoses(props: RobotSceneProps): { flange: Pose; tcp: Pose } | null {
+  const flangeInBase = props.urdfModel
+    ? forwardUrdfKinematics(props.urdfModel.description, props.urdfJoints ?? props.urdfModel.description.homeJoints).toolPose
+    : forwardKinematics(props.model, props.joints).pose;
+  if (!flangeInBase) return null;
+  const flange = composePose(props.basePose ?? identityPose(), flangeInBase);
+  return { flange, tcp: composePose(flange, props.toolPose ?? identityPose()) };
+}
+
+function updateHierarchy(state: SceneState, props: RobotSceneProps): void {
+  const frames = props.sceneFrames ?? [], tools = props.sceneTools ?? [];
+  for (const [id, visual] of state.referenceFrames) if (!frames.some(frame => frame.id === id)) {
+    state.scene.remove(visual.root); disposeTree(visual.root); state.referenceFrames.delete(id);
+  }
+  for (const frame of frames) {
+    let visual = state.referenceFrames.get(frame.id);
+    if (visual && visual.name !== frame.name) {
+      state.scene.remove(visual.root); disposeTree(visual.root); state.referenceFrames.delete(frame.id); visual = undefined;
+    }
+    if (!visual) {
+      visual = { root: poseGroup(0x60896f, frame.name), name: frame.name };
+      state.referenceFrames.set(frame.id, visual); state.scene.add(visual.root);
+    }
+    setPose(visual.root, frame.pose);
+    visual.root.scale.setScalar(frame.selected ? 1.15 : 1);
+  }
+  for (const [id, visual] of state.tools) if (!tools.some(tool => tool.id === id)) {
+    state.scene.remove(visual.root); disposeTree(visual.root); state.tools.delete(id);
+  }
+  for (const tool of tools) {
+    const localTcp = relativePose(tool.pose, tool.tcpPose);
+    const end = new THREE.Vector3(...localTcp.position).multiplyScalar(SCALE), length = end.length();
+    const signature = JSON.stringify([tool.name, tool.radiusMm, Number(length.toFixed(9))]);
+    let visual = state.tools.get(tool.id);
+    if (!visual || visual.signature !== signature) {
+      if (visual) { state.scene.remove(visual.root); disposeTree(visual.root); }
+      const root = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(Math.max(tool.radiusMm, .001) * SCALE, length, 6, 12),
+        new THREE.MeshStandardMaterial({ color: 0x56a0b6, transparent: true, opacity: .55, roughness: .48, metalness: .25 }));
+      const tcp = new THREE.Group(); tcp.add(new THREE.AxesHelper(.045));
+      const caption = label(tool.name, '#386f80', .16); caption.position.set(0, 0, .05);
+      root.add(body, tcp, caption); state.scene.add(root);
+      visual = { root, body, tcp, signature }; state.tools.set(tool.id, visual);
+    }
+    setPose(visual.root, tool.pose); setPose(visual.tcp, localTcp);
+    visual.body.position.copy(end).multiplyScalar(.5);
+    visual.body.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), length > 1e-12 ? end.clone().normalize() : new THREE.Vector3(0, 1, 0));
+    (visual.body.material as THREE.MeshStandardMaterial).opacity = tool.selected ? .8 : .55;
+    (visual.body.material as THREE.MeshStandardMaterial).emissive.setHex(tool.selected ? 0x163b45 : 0);
+  }
+  state.dirty = true;
+}
+
+function updateJointHighlight(state: SceneState, props: RobotSceneProps): void {
+  const index = props.selectedJointIndex;
+  state.selectedJointIndex = typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 6 ? index : null;
+  state.jointHighlight.visible = state.selectedJointIndex !== null;
+  if (state.selectedJointIndex === null) return;
+  let position: THREE.Vector3, axis: THREE.Vector3;
+  if (props.urdfModel) {
+    const robot = props.urdfModel.description, joint = robot.actuatedJoints[state.selectedJointIndex];
+    const transforms = urdfLinkMatrices(robot, props.urdfJoints ?? robot.homeJoints);
+    const frame = transforms.get(joint.parent)!.clone().multiply(urdfOriginMatrix(joint.origin));
+    position = new THREE.Vector3().setFromMatrixPosition(frame);
+    axis = new THREE.Vector3(...joint.axis).transformDirection(frame);
+  } else {
+    const fk = forwardKinematics(props.model, props.joints);
+    position = new THREE.Vector3(...fk.jointOrigins[state.selectedJointIndex]).multiplyScalar(SCALE);
+    axis = new THREE.Vector3(...fk.jointAxes[state.selectedJointIndex]);
+  }
+  position.applyQuaternion(state.robot.quaternion).add(state.robot.position);
+  axis.applyQuaternion(state.robot.quaternion).normalize();
+  state.jointHighlight.position.copy(position);
+  state.jointHighlight.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
 }
 
 function createDangerVisual(id: string): DangerVisual {
@@ -329,12 +425,12 @@ function setView(state: SceneState, view: RobotSceneProps["view"]): void {
     state.dirty = true;
     return;
   }
-  const focus = new THREE.Vector3(0.13, 0, 0.31);
+  const focus = new THREE.Vector3(0.13, 0, 0.31).applyQuaternion(state.robot.quaternion).add(state.robot.position);
   state.controls.target.copy(focus);
   state.camera.up.set(0, 0, 1);
-  if (view === "top") state.camera.position.set(0.13, -0.001, 1.9);
-  else if (view === "front") state.camera.position.set(0.13, -1.85, 0.43);
-  else state.camera.position.set(0.95, -1.05, 0.85);
+  if (view === "top") state.camera.position.copy(focus).add(new THREE.Vector3(0, -.001, 1.59));
+  else if (view === "front") state.camera.position.copy(focus).add(new THREE.Vector3(0, -1.85, .12));
+  else state.camera.position.copy(focus).add(new THREE.Vector3(.82, -1.05, .54));
   state.camera.lookAt(focus);
   state.controls.update();
   state.zoomTarget = state.camera.position.distanceTo(state.controls.target);
@@ -342,6 +438,14 @@ function setView(state: SceneState, view: RobotSceneProps["view"]): void {
 }
 
 function updateRobot(state: SceneState, props: RobotSceneProps): void {
+  setPose(state.robot, props.basePose ?? identityPose());
+  setPose(state.ghost, props.basePose ?? identityPose());
+  const world = worldRobotPoses(props);
+  if (world) {
+    setPose(state.flange, world.flange); setPose(state.tcp, world.tcp);
+    if (state.draggingPointer === null && !props.jogPending) setPose(state.jogObject, world.tcp);
+  }
+  updateJointHighlight(state, props);
   if (props.urdfModel) {
     const description = props.urdfModel.description;
     const joints = props.urdfJoints ?? description.homeJoints;
@@ -351,16 +455,12 @@ function updateRobot(state: SceneState, props: RobotSceneProps): void {
         .scale(new THREE.Vector3(...visual.scale));
       mesh.matrixWorldNeedsUpdate = true;
     });
-    const tool = forwardUrdfKinematics(description, joints).toolPose;
-    state.tcp.visible = tool !== null;
-    if (tool) setPose(state.tcp, tool);
+    state.tcp.visible = world !== null;
+    if (state.genericFocusLocal) state.genericFocus = state.genericFocusLocal.clone().applyQuaternion(state.robot.quaternion).add(state.robot.position);
     state.genericJoints = [...joints];
     state.robotJoints = [...joints];
     state.frames.visible = false;
     state.ghost.visible = false;
-    state.target.visible = false;
-    state.path.visible = false;
-    state.start.visible = false;
     state.renderer.shadowMap.needsUpdate = true;
     state.dirty = true;
     return;
@@ -371,14 +471,12 @@ function updateRobot(state: SceneState, props: RobotSceneProps): void {
     link.matrix.copy(matrix(fk.frames[i]).multiply(state.zeroInverse[i]));
     link.matrixWorldNeedsUpdate = true;
   });
-  setPose(state.tcp, fk.pose);
   state.robotJoints = [...props.joints];
-  if (state.draggingPointer === null && !props.jogPending) setPose(state.jogObject, fk.pose);
   const tcpCaption = state.tcp.getObjectByName("pose-caption");
-  if (tcpCaption) tcpCaption.visible = !props.targetPose || Math.hypot(...fk.pose.position.map((value, i) => value - props.targetPose!.position[i])) > 5;
+  if (tcpCaption) tcpCaption.visible = !props.targetPose || Math.hypot(...world!.tcp.position.map((value, i) => value - props.targetPose!.position[i])) > 5;
   state.frames.visible = Boolean(props.showFrames);
   state.frames.children.forEach((frame, i) => {
-    frame.matrix.copy(matrix(fk.frames[i], true));
+    frame.matrix.compose(state.robot.position, state.robot.quaternion, new THREE.Vector3(1, 1, 1)).multiply(matrix(fk.frames[i], true));
     frame.matrixWorldNeedsUpdate = true;
   });
   const differs = props.endJoints?.some((angle, i) => Math.abs(angle - props.joints[i]) > 0.1);
@@ -411,6 +509,24 @@ function updateDiagnostics(state: SceneState): void {
   canvas.dataset.urdfVisualCount = state.genericLinks.length.toString();
   canvas.dataset.urdfJoints = JSON.stringify(state.genericJoints);
   canvas.dataset.robotJoints = JSON.stringify(state.robotJoints);
+  const actualPose = (object: THREE.Object3D): Pose => {
+    const p = object.getWorldPosition(new THREE.Vector3()), q = object.getWorldQuaternion(new THREE.Quaternion());
+    return { position: p.multiplyScalar(1000).toArray() as Vec3, orientation: [q.w, q.x, q.y, q.z] };
+  };
+  canvas.dataset.robotBasePose = canvas.dataset.baseWorldPose = JSON.stringify(actualPose(state.robot));
+  canvas.dataset.flangePose = JSON.stringify(actualPose(state.flange));
+  canvas.dataset.tcpWorldPose = state.tcp.visible ? JSON.stringify(actualPose(state.tcp)) : 'null';
+  canvas.dataset.sceneFrames = JSON.stringify([...state.referenceFrames].map(([id, visual]) => ({ id, pose: actualPose(visual.root) })));
+  canvas.dataset.sceneTools = JSON.stringify([...state.tools].map(([id, visual]) => ({ id, pose: actualPose(visual.root), tcpPose: actualPose(visual.tcp), radiusMm: (visual.body.geometry as THREE.CapsuleGeometry).parameters.radius * 1000 })));
+  canvas.dataset.selectedJointIndex = state.selectedJointIndex === null ? '' : String(state.selectedJointIndex);
+  canvas.dataset.selectedJointPose = state.jointHighlight.visible ? JSON.stringify(actualPose(state.jointHighlight)) : 'null';
+  const previewPositions = state.path.geometry.getAttribute('position');
+  const previewPoint = (index: number) => new THREE.Vector3().fromBufferAttribute(previewPositions, index)
+    .applyMatrix4(state.path.matrixWorld).multiplyScalar(1000).toArray();
+  canvas.dataset.previewPath = JSON.stringify({ visible: state.path.visible, count: previewPositions?.count ?? 0,
+    startMm: previewPositions?.count ? previewPoint(0) : null,
+    endMm: previewPositions?.count ? previewPoint(previewPositions.count - 1) : null });
+  canvas.dataset.previewTargetPose = state.target.visible ? JSON.stringify(actualPose(state.target)) : 'null';
   const bodyPosition = state.tcp.getWorldPosition(new THREE.Vector3());
   const bodyQuaternion = state.tcp.getWorldQuaternion(new THREE.Quaternion());
   canvas.dataset.robotPose = state.tcp.visible ? JSON.stringify({
@@ -586,7 +702,7 @@ export default function RobotScene(props: RobotSceneProps) {
       axisLabel.position.setComponent(i, 0.215);
       origin.add(axisLabel);
     });
-    const originLabel = label("WObj0 · 0, 0, 0", "#7a8597", 0.21);
+    const originLabel = label("世界原点 · 0, 0, 0", "#7a8597", 0.21);
     originLabel.position.set(-0.12, -0.15, 0.018);
     origin.add(originLabel);
     scene.add(origin);
@@ -602,10 +718,12 @@ export default function RobotScene(props: RobotSceneProps) {
       frames.add(axes);
     }
     scene.add(frames);
-    const tcp = poseGroup(0x426f98, "TCP · tool0");
+    const tcp = poseGroup(0x426f98, "TCP");
     const target = poseGroup(0xd33840, "TARGET");
     target.visible = false;
-    scene.add(tcp, target);
+    const flange = new THREE.Object3D();
+    const jointHighlight = poseGroup(0xd19137, 'AXIS'); jointHighlight.visible = false;
+    scene.add(tcp, target, flange, jointHighlight);
     const path = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xd64d53, dashSize: 0.014, gapSize: 0.009, transparent: true, opacity: 0.9 }));
     path.visible = false;
     path.renderOrder = 4;
@@ -613,7 +731,7 @@ export default function RobotScene(props: RobotSceneProps) {
     start.visible = false;
     scene.add(path, start);
     const jogObject = new THREE.Object3D();
-    jogObject.name = "Requested tool0 pose";
+    jogObject.name = "Requested world TCP pose";
     scene.add(jogObject);
     const zoneObject = new THREE.Object3D();
     zoneObject.name = "Selected danger zone center";
@@ -644,10 +762,10 @@ export default function RobotScene(props: RobotSceneProps) {
     const helper = transform.getHelper();
     helper.visible = false;
     scene.add(helper);
-    const local: SceneState = { scene, camera, controls, renderer, robot, ghost, frames, tcp, target, path, start, links: [], ghostLinks: [], zeroInverse: [], dirty: true,
+    const local: SceneState = { scene, camera, controls, renderer, robot, ghost, frames, tcp, flange, jointHighlight, selectedJointIndex: null, referenceFrames: new Map(), tools: new Map(), target, path, start, links: [], ghostLinks: [], zeroInverse: [], dirty: true,
       zoomTarget: 1, jogObject, zoneObject, manipulationTarget: "none", manipulatedZoneId: null, transform, finishDrag: () => {}, draggingPointer: null, dangerZones: new Map(),
       scenePaths: new Map(), selectedPoint, selectedPointCaption, selectedPointText: "POINT", selectedPointId: null,
-      genericLinks: [], genericFocus: null, genericRadius: 1, genericModelId: null, genericJoints: [], robotJoints: [], grid, ground, key };
+      genericLinks: [], genericFocus: null, genericFocusLocal: null, genericRadius: 1, genericModelId: null, genericJoints: [], robotJoints: [], grid, ground, key };
     const canvas = renderer.domElement;
     const poseFromJog = (): Pose => ({ position: jogObject.position.toArray().map(v => v / SCALE) as Pose["position"], orientation: [jogObject.quaternion.w, jogObject.quaternion.x, jogObject.quaternion.y, jogObject.quaternion.z] });
     // Three's public pointer methods consume normalized x/y/button objects.
@@ -675,7 +793,7 @@ export default function RobotScene(props: RobotSceneProps) {
       if (target === "zone") latest.current.onDangerZoneDrag?.(false);
       else if (target === "tcp") {
         latest.current.onJogEnd?.();
-        if (!latest.current.urdfModel && !latest.current.jogPending) setPose(jogObject, forwardKinematics(latest.current.model, latest.current.joints).pose);
+        if (!latest.current.jogPending) { const world = worldRobotPoses(latest.current); if (world) setPose(jogObject, world.tcp); }
       }
       local.dirty = true;
     };
@@ -856,9 +974,9 @@ export default function RobotScene(props: RobotSceneProps) {
     local.links = [];
     local.ghostLinks = [];
     local.genericLinks = [];
+    local.genericFocusLocal = null;
     local.robot.clear();
     local.ghost.clear();
-    const previousGeneric = local.genericModelId;
     local.genericModelId = props.urdfModel?.id ?? null;
     local.renderer.domElement.setAttribute("aria-label", props.urdfModel ? `${props.urdfModel.name} 三维模型场景` : "ABB IRB 1100 三维仿真场景");
     if (props.urdfModel) {
@@ -888,6 +1006,7 @@ export default function RobotScene(props: RobotSceneProps) {
       local.robot.updateMatrixWorld(true);
       const bounds = new THREE.Box3().setFromObject(local.robot);
       local.genericFocus = bounds.getCenter(new THREE.Vector3());
+      local.genericFocusLocal = local.genericFocus.clone().sub(local.robot.position).applyQuaternion(local.robot.quaternion.clone().invert());
       local.genericRadius = Math.max(0.15, bounds.getSize(new THREE.Vector3()).length() / 2);
       const extent = Math.max(1, local.genericRadius * 2);
       local.grid.scale.setScalar(extent);
@@ -923,7 +1042,7 @@ export default function RobotScene(props: RobotSceneProps) {
     local.key.position.set(0.5, -0.9, 2.1); local.key.target.position.set(0.12, 0, 0.3);
     Object.assign(local.key.shadow.camera, { left: -1.2, right: 1.2, top: 1.2, bottom: -1.2, far: 5 });
     local.key.shadow.camera.updateProjectionMatrix();
-    if (previousGeneric) setView(local, props.view);
+
     local.zeroInverse = forwardKinematics(props.model, [0, 0, 0, 0, 0, 0]).frames.map((frame: Mat4) => matrix(frame).invert());
     const loader = new STLLoader();
     const base = import.meta.env.BASE_URL;
@@ -959,6 +1078,7 @@ export default function RobotScene(props: RobotSceneProps) {
         local.ghostLinks.push(ghostLink);
       });
       updateRobot(local, latest.current);
+      setView(local, latest.current.view);
     }).catch(() => {
       if (cancelled) return;
       failed = true;
@@ -981,21 +1101,25 @@ export default function RobotScene(props: RobotSceneProps) {
   useEffect(() => {
     const local = state.current;
     if (local) updateRobot(local, props);
-  }, [props.model, props.joints, props.urdfModel, props.urdfJoints, props.endJoints, props.showFrames, props.targetPose, loaded]);
+  }, [props.model, props.joints, props.urdfModel, props.urdfJoints, props.endJoints, props.showFrames, props.targetPose, props.basePose, props.toolPose, props.selectedJointIndex, loaded]);
 
   useEffect(() => {
     const local = state.current;
     if (!local) return;
-    local.target.visible = !props.urdfModel && props.targetPose !== null;
+    local.target.visible = props.targetPose !== null;
     if (props.targetPose) setPose(local.target, props.targetPose);
     local.path.geometry.dispose();
     local.path.geometry = new THREE.BufferGeometry().setFromPoints(props.path.map((sample) => new THREE.Vector3(...sample.pose.position).multiplyScalar(SCALE)));
     local.path.computeLineDistances();
-    local.path.visible = !props.urdfModel && props.path.length > 1;
-    local.start.visible = !props.urdfModel && props.path.length > 1;
+    local.path.visible = props.path.length > 1;
+    local.start.visible = props.path.length > 1;
     if (props.path[0]) local.start.position.fromArray(props.path[0].pose.position).multiplyScalar(SCALE);
     local.dirty = true;
   }, [props.targetPose, props.path, props.urdfModel, mounted]);
+
+  useEffect(() => {
+    if (state.current) updateHierarchy(state.current, props);
+  }, [props.sceneFrames, props.sceneTools, mounted]);
 
   useEffect(() => {
     if (state.current) updateDangerZones(state.current, props.dangerZones, props.selectedDangerZoneId);
@@ -1020,7 +1144,7 @@ export default function RobotScene(props: RobotSceneProps) {
       local.transform.setSpace("world");
     } else if (tcpManipulationEnabled) {
       local.manipulationTarget = "tcp";
-      setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
+      const world = worldRobotPoses(props); if (world) setPose(local.jogObject, world.tcp);
       local.transform.attach(local.jogObject);
       local.transform.setMode(gizmoMode);
       local.transform.setSpace(gizmoSpace);
@@ -1044,9 +1168,9 @@ export default function RobotScene(props: RobotSceneProps) {
   useEffect(() => {
     const local = state.current;
     if (!local || props.urdfModel || local.draggingPointer !== null || props.jogPending) return;
-    setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
+    const world = worldRobotPoses(props); if (world) setPose(local.jogObject, world.tcp);
     local.dirty = true;
-  }, [props.jogPending, props.joints, props.urdfModel]);
+  }, [props.jogPending, props.joints, props.urdfModel, props.basePose, props.toolPose]);
 
   useEffect(() => {
     if (state.current) { state.current.finishDrag(); setView(state.current, props.view); }

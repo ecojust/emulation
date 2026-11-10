@@ -1,0 +1,28 @@
+.path-planning-dialog { width:min(760px,calc(100vw - 32px)); max-height:calc(100vh - 32px); padding:0; border:1px solid #d7e0ed; border-radius:12px; background:#fff; color:#526b89; box-shadow:0 18px 60px #132d4c30; overflow:hidden }
+.path-planning-dialog[open] { display:flex; flex-direction:column }
+.path-planning-dialog::backdrop { background:#172e4960 }
+.path-planning-dialog>header { display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; padding:18px 22px; border-bottom:1px solid #e5ebf4 }
+.path-planning-dialog h2 { margin:0 0 5px; font-size:18px; color:#344d6f }
+.path-planning-dialog h3 { margin:10px 0; font-size:12px }
+.path-planning-dialog p { margin:5px 0; font-size:11px; line-height:1.7 }
+.path-planning-dialog button { display:inline-flex; align-items:center; gap:6px; border:1px solid #d6e1ee; border-radius:5px; background:#f8fbff; color:#4b6c96; padding:7px 11px; font-size:11px; cursor:pointer }
+.path-planning-dialog button:disabled { opacity:.45; cursor:not-allowed }
+.path-planning-body { min-height:0; overflow:auto; overscroll-behavior:contain; padding:14px 22px }
+.path-planning-body textarea { display:block; width:100%; min-height:138px; resize:vertical; margin-top:7px; padding:10px; border:1px solid #d7e1ef; border-radius:5px; color:#43617f; background:#fbfdff; font:11px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
+.path-planning-body .field-label { margin-top:15px }
+.planning-orientation { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px }
+.planning-options { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px }
+.planning-orientation label,.planning-options label { min-width:0; font-size:11px }
+.planning-orientation input,.planning-options input { display:block; width:100%; margin-top:5px; padding:7px; border:1px solid #d7e1ef; border-radius:4px; color:#43617f; background:#fff; font-size:11px }
+.path-planning-body small { font-weight:400; color:#8b9aaf; font-size:10px }
+.planning-result { margin-top:13px; padding:9px 11px; background:#f0f7ff; border:1px solid #dce9f6; border-radius:5px }
+.planning-error { color:#a65748; background:#fff7f5; border-color:#efd8d2 }
+.path-planning-dialog>footer { display:flex; align-items:center; gap:9px; flex:0 0 auto; padding:13px 22px; border-top:1px solid #e5ebf4 }
+.path-planning-dialog>footer>div { margin-right:auto }
+
+.path-planning-dialog.is-preview { position:fixed; inset:auto 16px 18px auto; z-index:100; margin:0; width:min(320px,calc(100vw - 32px)); max-height:calc(100vh - 100px); box-shadow:0 8px 30px #132d4c26 }
+.path-planning-dialog.is-preview>header { padding:13px 15px }
+.path-planning-dialog.is-preview h2 { font-size:15px }
+.path-planning-dialog.is-preview .path-planning-body { padding:10px 15px; max-height:45vh }
+.path-planning-dialog.is-preview>footer { padding:11px 15px }
+.path-planning-dialog.is-preview .planning-result { margin-top:8px }

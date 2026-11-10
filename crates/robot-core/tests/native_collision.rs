@@ -26,6 +26,7 @@ fn named_zone(id: &str, zone: DangerZone) -> CollisionZone {
 
 fn request(model_id: &str, obstacle: DangerZone) -> CollisionRequest {
     CollisionRequest {
+        base_pose: None,
         model_id: model_id.into(),
         zones: vec![named_zone("zone-a", obstacle)],
         solutions: vec![CollisionCandidate {
@@ -491,4 +492,68 @@ fn multiple_zone_validation_rejects_duplicates_bad_disabled_zones_and_excessive_
         serde_json::from_value::<CollisionRequest>(serialized).unwrap(),
         input
     );
+}
+
+#[test]
+fn world_base_pose_moves_real_meshes_without_rotating_world_obstacles() {
+    use emulation_core::types::Pose;
+    let c = std::f64::consts::FRAC_1_SQRT_2;
+    for model_id in ["irb1100-4-0.58", "irb1100-4-0.475"] {
+        let mut input = request(
+            model_id,
+            zone([800. - 70. * c, -230. + 70. * c, 200.], [4.; 3]),
+        );
+        input.base_pose = Some(Pose {
+            position: [800., -230., 100.],
+            orientation: [
+                (std::f64::consts::PI / 8.).cos(),
+                0.,
+                0.,
+                (std::f64::consts::PI / 8.).sin(),
+            ],
+        });
+        input.zones.extend([
+            named_zone(
+                "empty-corner",
+                zone([800., -230. + 150. * c, 180.], [4.; 3]),
+            ),
+            named_zone("inside-base", zone([800., -230., 150.], [2.; 3])),
+            named_zone("old-location", zone([0., 70., 100.], [4.; 3])),
+        ]);
+        let results = check_collisions(&input, &AtomicBool::new(false)).unwrap();
+        assert_eq!(results[0].colliding_links, vec![0]);
+        assert!(results[0].uncertain_links.is_empty());
+        assert_eq!(
+            results[0]
+                .zones
+                .iter()
+                .map(|zone| zone.zone_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["zone-a", "inside-base"]
+        );
+    }
+}
+
+#[test]
+fn world_base_validation_preserves_legacy_identity_requests() {
+    use emulation_core::types::Pose;
+    let mut input = request("irb1100-4-0.58", zone([0., 0., 50.], [2.; 3]));
+    let original = check_collisions(&input, &AtomicBool::new(false)).unwrap();
+    input.base_pose = Some(Pose {
+        position: [0.; 3],
+        orientation: [1., 0., 0., 0.],
+    });
+    assert_eq!(
+        check_collisions(&input, &AtomicBool::new(false)).unwrap(),
+        original
+    );
+    input.zones.clear();
+    input.base_pose.as_mut().unwrap().orientation = [0.; 4];
+    assert!(check_collisions(&input, &AtomicBool::new(false)).is_err());
+    input.base_pose.as_mut().unwrap().orientation = [1., 0., 0., 0.];
+    input.base_pose.as_mut().unwrap().position[0] = 1_000_001.;
+    assert!(check_collisions(&input, &AtomicBool::new(false)).is_err());
+    let legacy: CollisionRequest =
+        serde_json::from_str(r#"{"modelId":"irb1100-4-0.58","zones":[],"solutions":[]}"#).unwrap();
+    assert!(legacy.base_pose.is_none());
 }

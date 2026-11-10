@@ -6,6 +6,7 @@ use emulation_core::{
     collision::{check_collisions, CollisionRequest, CollisionResult},
     endpoint_inspection::{inspect_endpoint_with_cancel, EndpointInspectionRequest},
     generic_planner::{plan_generic_move_l, GenericPlanRequest, GenericPlanResult},
+    grinding::{plan_grinding, GrindingRequest, GrindingResult},
     planner::plan_move_l_with_cancel,
     program::{export_program_with_cancel, ProgramExportRequest, ProgramFile},
     types::{IkSolution, PlanRequest, PlanResult},
@@ -23,6 +24,7 @@ use tokio::sync::oneshot;
 pub enum Work {
     Plan(PlanRequest),
     GenericPlan(GenericPlanRequest),
+    Grinding(GrindingRequest),
     Export(ProgramExportRequest),
     Collision(CollisionRequest),
     InspectEndpoint(EndpointInspectionRequest),
@@ -30,6 +32,7 @@ pub enum Work {
 pub enum Reply {
     Plan(PlanResult),
     GenericPlan(GenericPlanResult),
+    Grinding(GrindingResult),
     Export(ProgramFile),
     Collision(Vec<CollisionResult>),
     InspectEndpoint(Vec<IkSolution>),
@@ -108,6 +111,9 @@ impl Engine {
                         &request,
                         &job.cancelled,
                     ))),
+                    Work::Grinding(request) => {
+                        Ok(Reply::Grinding(plan_grinding(&request, &job.cancelled)))
+                    }
                     Work::Export(request) => export_program_with_cancel(&request, &job.cancelled)
                         .map(Reply::Export)
                         .map_err(|e| e.to_string()),
@@ -278,6 +284,147 @@ mod tests {
         }
     }
 
+    fn grinding_request() -> GrindingRequest {
+        use emulation_core::{grinding::GrindingRobot, types::Pose};
+        let motion = request();
+        let pose = forward_kinematics(
+            &get_robot_model(&motion.model_id).unwrap(),
+            &motion.start_joints,
+        )
+        .unwrap()
+        .pose;
+        let identity = Pose {
+            position: [0.; 3],
+            orientation: [1., 0., 0., 0.],
+        };
+        GrindingRequest {
+            robot: GrindingRobot::Abb {
+                model_id: motion.model_id,
+            },
+            base_pose: identity,
+            tool_pose: identity,
+            tool_radius_mm: 1.,
+            start_joints: motion.start_joints,
+            targets: vec![
+                Pose {
+                    position: [pose.position[0], 4., pose.position[2]],
+                    ..pose
+                },
+                Pose {
+                    position: [pose.position[0], 8., pose.position[2]],
+                    ..pose
+                },
+            ],
+            orientation: Some(pose.orientation),
+            zones: vec![],
+            clearance_mm: 1.,
+            speed_mm_per_second: 100.,
+            allow_detours: false,
+        }
+    }
+
+    #[test]
+    fn grinding_worker_preserves_result_type_and_recovers_after_invalid_input() {
+        let engine = Engine::new();
+        let mut invalid = grinding_request();
+        invalid.clearance_mm = -1.;
+        let result = engine
+            .submit("invalid-grinding".into(), Work::Grinding(invalid))
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(result,Reply::Grinding(GrindingResult::Failure(error)) if error.code=="invalid_input")
+        );
+        let request = grinding_request();
+        let result = engine
+            .submit("valid-grinding".into(), Work::Grinding(request.clone()))
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+        let Reply::Grinding(GrindingResult::Success(plan)) = result else {
+            panic!("expected verified native TCP path");
+        };
+        assert_eq!(plan.path[0].joints, request.start_joints);
+        assert_eq!(plan.waypoints.len(), 2);
+        assert!((plan.waypoints[1].pose.position[1] - 8.).abs() < 0.01);
+        assert!(plan.checked_intervals > 0);
+        assert_eq!(plan.waypoints[0].kind, "transfer");
+        assert_eq!(plan.waypoints[1].kind, "process");
+    }
+
+    #[test]
+    fn grinding_is_bounded_foreground_work_with_precancel_and_latest_request_wins() {
+        let active = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("inspection".into(), active.clone(), true)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        engine.cancel("precancel-grinding");
+        assert!(engine
+            .submit(
+                "precancel-grinding".into(),
+                Work::Grinding(grinding_request())
+            )
+            .is_err());
+        let first = engine
+            .submit("grinding-first".into(), Work::Grinding(grinding_request()))
+            .unwrap();
+        assert!(active.load(Ordering::Acquire));
+        let latest = engine
+            .submit("grinding-latest".into(), Work::Grinding(grinding_request()))
+            .unwrap();
+        assert!(first.blocking_recv().unwrap().is_err());
+        engine.cancel("grinding-first");
+        assert_eq!(
+            engine
+                .shared
+                .queue
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .id,
+            "grinding-latest"
+        );
+        engine.cancel("grinding-latest");
+        assert!(latest.blocking_recv().unwrap().is_err());
+        assert!(engine.shared.queue.lock().unwrap().pending.is_none());
+    }
+
+    #[test]
+    fn background_endpoint_does_not_cancel_active_grinding_but_new_motion_does() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("grinding-active".into(), cancelled.clone(), false)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let _background = engine
+            .submit(
+                "background-endpoint".into(),
+                Work::InspectEndpoint(endpoint_request()),
+            )
+            .unwrap();
+        assert!(!cancelled.load(Ordering::Acquire));
+        let _new = engine
+            .submit("new-motion".into(), Work::Plan(request()))
+            .unwrap();
+        assert!(cancelled.load(Ordering::Acquire));
+    }
+
     #[test]
     fn generic_foreground_work_uses_the_native_urdf_planner() {
         let engine = Engine::new();
@@ -413,6 +560,7 @@ mod tests {
             .submit(
                 "background-inspection".into(),
                 Work::Collision(CollisionRequest {
+                    base_pose: None,
                     model_id: motion.model_id,
                     zones: vec![CollisionZone {
                         id: "all-links".into(),
@@ -479,6 +627,7 @@ mod tests {
             .submit(
                 "obsolete-inspection".into(),
                 Work::Collision(CollisionRequest {
+                    base_pose: None,
                     model_id: "irb1100-4-0.58".into(),
                     zones: vec![CollisionZone {
                         id: "disabled".into(),
@@ -557,6 +706,7 @@ mod tests {
             .submit(
                 "mesh-inspection".into(),
                 Work::Collision(CollisionRequest {
+                    base_pose: None,
                     model_id: "irb1100-4-0.58".into(),
                     zones: vec![],
                     solutions: vec![],

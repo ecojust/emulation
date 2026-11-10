@@ -1,14 +1,14 @@
 import bounds from './link-bounds.json';
-import { forwardKinematics, jointsWithinLimits, multiplyMatrices } from './kinematics';
+import { forwardKinematics, jointsWithinLimits, multiplyMatrices, quaternionToMatrix } from './kinematics';
 import { getRobotModel } from './model';
-import type { JointAngles, Mat4, RobotId, Vec3 } from './types';
+import type { JointAngles, Mat4, Pose, RobotId, Vec3 } from './types';
 import { CONTACT_EPSILON_MM, inspectMeshZone, loadCollisionModel } from './collision-mesh';
 import type { CollisionMeshModel } from './collision-mesh';
 
 /** World-aligned warning volume, in millimetres. This is not a controller safety zone. */
 export interface DangerZone { enabled: boolean; centerMm: Vec3; sizeMm: Vec3 }
 export interface CollisionZone extends DangerZone { id: string }
-export interface CollisionRequest { modelId: RobotId; zones: CollisionZone[]; solutions: { id: string; joints: JointAngles }[] }
+export interface CollisionRequest { basePose?: Pose; modelId: RobotId; zones: CollisionZone[]; solutions: { id: string; joints: JointAngles }[] }
 export interface CollisionResult { id: string; collidingLinks: number[]; uncertainLinks: number[]; zones: { zoneId: string; collidingLinks: number[]; uncertainLinks: number[] }[] }
 /** Conservative box enclosing a complete rigid mesh; axes are world-space unit vectors. */
 export interface LinkBoundingBox { index: number; centerMm: Vec3; halfSizeMm: Vec3; axes: [Vec3, Vec3, Vec3] }
@@ -20,8 +20,17 @@ const finiteNumber = (value: unknown): value is number => typeof value === 'numb
 const vector = (value: unknown): value is Vec3 => Array.isArray(value) && value.length === 3 && Array.from(value).every(finiteNumber);
 const validId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && new TextEncoder().encode(value).length <= COLLISION_LIMITS.maximumIdBytes;
 
+function baseTransform(pose: Pose): Mat4 {
+  if (!pose || !vector(pose.position) || pose.position.some(value => Math.abs(value) > COLLISION_LIMITS.coordinateMm)
+    || !Array.isArray(pose.orientation) || pose.orientation.length !== 4 || !Array.from(pose.orientation).every(finiteNumber)) throw new Error('机器人基座位姿必须为有效的世界坐标与四元数');
+  const transform = quaternionToMatrix(pose.orientation);
+  [transform[3], transform[7], transform[11]] = pose.position;
+  return transform;
+}
+
 export function validateCollisionRequest(request: CollisionRequest): void {
   if (!request || typeof request.modelId !== 'string' || !Object.hasOwn(bounds.models, request.modelId)) throw new Error('干涉检测需要有效机器人型号');
+  if (request.basePose !== undefined) baseTransform(request.basePose);
   const model = getRobotModel(request.modelId);
   if (!Array.isArray(request.zones) || request.zones.length > COLLISION_LIMITS.maximumZones) throw new Error('干涉检测一次最多检查 64 个危险区');
   const zoneIds = new Set<string>();
@@ -60,7 +69,7 @@ function inverseRigid(frame: Mat4): Mat4 {
 }
 
 const zeroInverse = new Map<RobotId, Mat4[]>();
-function linkTransforms(modelId: RobotId, joints: JointAngles): Mat4[] {
+function linkTransforms(modelId: RobotId, joints: JointAngles, basePose?: Pose): Mat4[] {
   const model = getRobotModel(modelId);
   const fk = forwardKinematics(model, joints);
   let inverse = zeroInverse.get(modelId);
@@ -68,7 +77,8 @@ function linkTransforms(modelId: RobotId, joints: JointAngles): Mat4[] {
     inverse = forwardKinematics(model, model.homeJoints).frames.map(inverseRigid);
     zeroInverse.set(modelId, inverse);
   }
-  return fk.frames.map((frame, index) => multiplyMatrices(frame, inverse![index]));
+  const base = basePose === undefined ? null : baseTransform(basePose);
+  return fk.frames.map((frame, index) => { const local = multiplyMatrices(frame, inverse![index]); return base ? multiplyMatrices(base, local) : local; });
 }
 
 function boxesFromTransforms(modelId: RobotId, transforms: Mat4[]): LinkBoundingBox[] {
@@ -84,10 +94,10 @@ function boxesFromTransforms(modelId: RobotId, transforms: Mat4[]): LinkBounding
   });
 }
 
-/** Exactly the same F_i(q) inverse(F_i(0)) rigid placement used by the STL scene. */
-export function linkBoundingBoxes(modelId: RobotId, joints: JointAngles): LinkBoundingBox[] {
+/** Same worldBase * F_i(q) * inverse(F_i(0)) placement used by the STL scene. */
+export function linkBoundingBoxes(modelId: RobotId, joints: JointAngles, basePose?: Pose): LinkBoundingBox[] {
   if (!Object.hasOwn(bounds.models, modelId)) throw new Error('不支持的机器人型号');
-  return boxesFromTransforms(modelId, linkTransforms(modelId, joints));
+  return boxesFromTransforms(modelId, linkTransforms(modelId, joints, basePose));
 }
 
 /** 15-axis OBB/AABB separating-axis test. Contact counts as possible interference.
@@ -129,7 +139,7 @@ export async function checkCollisionReference(request: CollisionRequest, options
   const meshModel = await (options.loadModel ?? loadCollisionModel)(request.modelId);
   if (meshModel.modelId !== request.modelId || meshModel.links.length !== 7) throw new Error('三角网格与机器人型号不匹配');
   return request.solutions.map(solution => {
-    const transforms = linkTransforms(request.modelId, solution.joints);
+    const transforms = linkTransforms(request.modelId, solution.joints, request.basePose);
     const boxes = boxesFromTransforms(request.modelId, transforms);
     const zones = activeZones.flatMap(zone => {
       const collidingLinks: number[] = [], uncertainLinks: number[] = [];

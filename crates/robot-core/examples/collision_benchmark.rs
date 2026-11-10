@@ -63,6 +63,7 @@ fn cancel_after_one_ms(request: &CollisionRequest) -> serde_json::Value {
 
 fn main() {
     let base = CollisionRequest {
+        base_pose: None,
         model_id: "irb1100-4-0.58".into(),
         zones: vec![
             zone("empty-obb-corner", [75., 75., 80.], [4.; 3]),
@@ -77,6 +78,7 @@ fn main() {
     let base_cold = timed(&base);
     let base_warm = distribution(&base, 100);
     let ready = CollisionRequest {
+        base_pose: None,
         model_id: base.model_id.clone(),
         zones: vec![
             zone(

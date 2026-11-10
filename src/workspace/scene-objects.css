@@ -1,0 +1,26 @@
+.scene-object-tree { min-width:0 }
+.scene-object-tools { display:flex; flex-wrap:wrap; gap:4px; padding:0 2px 9px }
+.workspace-object-list .scene-object-tools>button { display:inline-flex; flex:1 1 36px; width:auto; min-width:30px; min-height:29px; align-items:center; justify-content:center; gap:1px; padding:4px; border:1px solid #e0e8f2; border-radius:5px; background:#fbfcfe; color:#70859e }
+.scene-world-target { display:flex; align-items:center; gap:7px; padding:8px 6px; margin:0 0 4px; border:1px solid transparent; border-radius:5px; color:#8c9caf; font-size:10px }
+.scene-tree-branch { min-width:0 }
+.scene-tree-branch>summary { display:flex; align-items:center; list-style:none; cursor:pointer }
+.scene-tree-branch>summary::-webkit-details-marker { display:none }
+.scene-tree-branch>summary>.summary-icon { margin:0 2px 0 0 }
+.workspace-object-list .scene-tree-branch>summary>button { flex:1; min-width:0; padding-left:4px }
+.scene-tree-children { margin-left:7px; padding-left:8px; border-left:1px solid #e9eef5; min-width:0 }
+.scene-object-tree [data-drop-active='true'] { border-color:#8ab3e3!important; background:#eaf3ff!important; outline:1px solid #8ab3e3; outline-offset:-1px }
+.scene-object-tree [draggable='true'] { cursor:grab }
+.scene-object-tree [draggable='true']:active { cursor:grabbing }
+.tree-drag-hint { padding:6px; border:1px solid #dce9f7; border-radius:5px; background:#f2f7fd }
+.scene-pose-editor { min-width:0; margin:16px 0; padding:0; border:0 }
+.scene-pose-editor>legend { color:#65768a; font-size:11px; font-weight:600; padding:0 0 9px }
+.scene-pose-editor .position-grid { margin:4px 0 11px }
+.scene-pose-editor .position-grid input { width:100%; min-width:0 }
+.scene-pose-editor .position-grid label { min-width:0 }
+.scene-pose-editor .pose-apply { margin-top:3px }
+.scene-attachment-control { display:block; margin:14px 0 }
+.scene-attachment-control>span { display:block; color:#65768a; font-size:11px; margin-bottom:6px }
+.scene-attachment-control select { width:100%; min-width:0; padding:7px 8px; border:1px solid #dce4ed; border-radius:5px; background:#fff; color:#5e7188; font-size:11px }
+.frame-inspector .field-label>input,.tool-inspector .field-label>input { display:block; width:100%; min-width:0; padding:7px 8px; border:1px solid #dce4ed; border-radius:5px; margin-top:6px; color:#5e7188; background:#fff }
+.scene-frame-readout code { display:block; font-size:10px; color:#60768f; line-height:1.7; overflow-wrap:anywhere }
+.scene-frame-readout h4 { margin:10px 0 4px; color:#8a99ad; font-size:10px; font-weight:400 }

@@ -28,3 +28,10 @@
 .section-number { display:inline-flex; align-items:center; justify-content:center; padding:3px }
 .collision-legend>span { display:inline-flex; gap:4px; align-items:center; margin-right:8px }
 .collision-legend>span:first-child { color:#c16254 }
+
+.path-frame-details { margin:12px 0; border-block:1px solid #e6edf4; padding:10px 0 }
+.path-frame-details>summary { display:flex; align-items:center; justify-content:space-between; list-style:none; cursor:pointer; font-size:11px; color:#64809e }
+.path-frame-details>summary::-webkit-details-marker { display:none }
+.path-frame-details[open]>summary>svg { transform:rotate(90deg) }
+.base-inspector,.flange-inspector,.joint-inspector { min-width:0 }
+.path-inspector>.copy-button { display:inline-flex; align-items:center; gap:6px }

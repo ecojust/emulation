@@ -3,19 +3,22 @@ import { COLLISION_LIMITS, type CollisionZone } from '../robot/collision';
 import type { Vec3 } from '../robot/types';
 
 export type WorkspaceView = 'scene' | 'program';
-export type WorkspaceSelection = { kind: 'robot' } | { kind: 'zone'; id: string } | { kind: 'path'; id: string } | { kind: 'target'; id: string };
+export type WorkspaceSelection = { kind: 'robot' } | { kind: 'base' } | { kind: 'flange' } | { kind: 'joint'; index: number } | { kind: 'zone' | 'path' | 'target' | 'frame' | 'tool'; id: string };
 export interface WorkspaceOptions {
   modelKey?: string;
   pathIds?: readonly string[];
   targetIds?: readonly string[];
+  frameIds?: readonly string[];
+  toolIds?: readonly string[];
 }
 const ROBOT_SELECTION: WorkspaceSelection = Object.freeze({ kind: 'robot' });
 export function sanitizeWorkspaceSelection(selection: WorkspaceSelection, scope: {
-  zoneIds: readonly string[]; pathIds?: readonly string[]; targetIds?: readonly string[];
+  zoneIds: readonly string[]; pathIds?: readonly string[]; targetIds?: readonly string[]; frameIds?: readonly string[]; toolIds?: readonly string[];
 }, previousModelKey?: string, modelKey?: string): WorkspaceSelection {
-  if (previousModelKey !== modelKey && (selection.kind === 'path' || selection.kind === 'target')) return ROBOT_SELECTION;
-  if (selection.kind === 'robot') return selection;
-  const ids = selection.kind === 'zone' ? scope.zoneIds : selection.kind === 'path' ? scope.pathIds : scope.targetIds;
+  if (previousModelKey !== modelKey && selection.kind !== 'zone') return ROBOT_SELECTION;
+  if (selection.kind === 'robot' || selection.kind === 'base' || selection.kind === 'flange') return selection;
+  if (selection.kind === 'joint') return Number.isInteger(selection.index) && selection.index >= 0 && selection.index < 6 ? selection : ROBOT_SELECTION;
+  const ids = selection.kind === 'zone' ? scope.zoneIds : selection.kind === 'path' ? scope.pathIds : selection.kind === 'frame' ? scope.frameIds : selection.kind === 'tool' ? scope.toolIds : scope.targetIds;
   return ids?.includes(selection.id) ? selection : ROBOT_SELECTION;
 }
 export interface DangerZoneDraft {
@@ -41,7 +44,7 @@ export function useWorkspace(options: WorkspaceOptions = {}) {
   const [zones, setZones] = useState<DangerZoneDraft[]>(() => [firstZone()]);
   const [selectionState, setSelectionState] = useState<{ modelKey?: string; selection: WorkspaceSelection }>(() => ({ modelKey: options.modelKey, selection: ROBOT_SELECTION }));
   const nextZoneNumber = useRef(2);
-  const scope = { zoneIds: zones.map(zone => zone.id), pathIds: options.pathIds, targetIds: options.targetIds };
+  const scope = { zoneIds: zones.map(zone => zone.id), pathIds: options.pathIds, targetIds: options.targetIds, frameIds: options.frameIds, toolIds: options.toolIds };
   const selection = sanitizeWorkspaceSelection(selectionState.selection, scope, selectionState.modelKey, options.modelKey);
   const selectedZoneId = selection.kind === 'zone' ? selection.id : null;
   const selectedZone = zones.find(zone => zone.id === selectedZoneId) ?? null;
@@ -53,7 +56,7 @@ export function useWorkspace(options: WorkspaceOptions = {}) {
   function selectObject(next: WorkspaceSelection) {
     // Creation and selection may be batched in one event. Validate against the
     // next render's committed object lists, not the caller's previous lists.
-    const value: WorkspaceSelection = next.kind === 'robot' ? ROBOT_SELECTION : Object.freeze({ kind: next.kind, id: next.id });
+    const value: WorkspaceSelection = next.kind === 'robot' ? ROBOT_SELECTION : Object.freeze({ ...next });
     setSelectionState({ modelKey: options.modelKey, selection: value });
   }
   /** Kept while callers migrate to discriminated object selection. */

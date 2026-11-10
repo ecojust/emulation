@@ -4,9 +4,9 @@
 #[path = "collision_mesh.rs"]
 mod mesh;
 use crate::kinematics::{forward_kinematics, joints_within_limits};
-use crate::math::{dot, multiply_matrices, sub, IDENTITY};
+use crate::math::{dot, multiply_matrices, quaternion_to_matrix, sub, IDENTITY};
 use crate::model::get_robot_model;
-use crate::types::{JointAngles, Mat4, RobotModel, Vec3};
+use crate::types::{JointAngles, Mat4, Pose, RobotModel, Vec3};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -55,6 +55,9 @@ pub struct CollisionCandidate {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CollisionRequest {
+    /// World <- robot base. Omitted in legacy requests means the world origin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_pose: Option<Pose>,
     pub model_id: String,
     pub zones: Vec<CollisionZone>,
     pub solutions: Vec<CollisionCandidate>,
@@ -362,6 +365,23 @@ pub fn check_collisions(
     if request.zones.len() > MAX_COLLISION_ZONES {
         return Err("一次最多检查 64 个危险区域。".into());
     }
+    let base_transform = match &request.base_pose {
+        None => IDENTITY,
+        Some(pose) => {
+            if pose
+                .position
+                .iter()
+                .any(|value| !value.is_finite() || value.abs() > MAX_ZONE_COORDINATE_MM)
+            {
+                return Err("机器人基座世界坐标超出有效范围。".into());
+            }
+            let mut transform = quaternion_to_matrix(&pose.orientation)?;
+            for row in 0..3 {
+                transform[row * 4 + 3] = pose.position[row];
+            }
+            transform
+        }
+    };
     let mut zone_ids = HashSet::with_capacity(request.zones.len());
     let mut active_zones = Vec::with_capacity(request.zones.len());
     for zone in &request.zones {
@@ -399,7 +419,8 @@ pub fn check_collisions(
         let mut uncertain_union = [false; 7];
         let mut zones = Vec::new();
         if !active_zones.is_empty() {
-            let transforms = link_transforms(model, &solution.joints)?;
+            let transforms = link_transforms(model, &solution.joints)?
+                .map(|local| multiply_matrices(&base_transform, &local));
             let boxes = boxes_for_transforms(model, &transforms);
             for (zone_id, zone) in &active_zones {
                 if cancel.load(Ordering::Relaxed) {

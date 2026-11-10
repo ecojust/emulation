@@ -4,6 +4,7 @@ use emulation_core::{
     collision::{CollisionRequest, CollisionResult},
     endpoint_inspection::EndpointInspectionRequest,
     generic_planner::{GenericPlanRequest, GenericPlanResult},
+    grinding::{GrindingRequest, GrindingResult},
     program::ProgramExportRequest,
     types::{IkSolution, PlanRequest, PlanResult},
 };
@@ -141,6 +142,22 @@ async fn solve_motion(
     match reply {
         Reply::Plan(result) => Ok(result),
         _ => Err("原生计算返回了错误的结果类型".into()),
+    }
+}
+
+#[tauri::command]
+async fn plan_grinding_path(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: GrindingRequest,
+) -> Result<GrindingResult, String> {
+    match engine
+        .submit(request_id, Work::Grinding(request))?
+        .await
+        .map_err(|_| "路径规划未完成")??
+    {
+        Reply::Grinding(result) => Ok(result),
+        _ => Err("原生路径规划返回类型错误".into()),
     }
 }
 
@@ -329,6 +346,7 @@ fn main() {
             open_robot_sources,
             save_robot_source,
             solve_generic_motion,
+            plan_grinding_path,
             check_collisions,
             inspect_endpoint,
             cancel_motion,

@@ -6,6 +6,8 @@ export interface ProgramSnapshot {
   joints: JointAngles;
   configuration: RobConf | null;
   speedMmPerSecond: number;
+  /** Motion role: transfer moves are not surface-processing strokes. */
+  motionRole?: 'process' | 'transfer';
 }
 export interface ProgramPoint extends ProgramSnapshot {
   readonly id: string;
@@ -14,11 +16,13 @@ export interface ProgramPoint extends ProgramSnapshot {
   readonly pathId: string;
   readonly revision: number;
 }
+export interface PathPlanningSettings { readonly kind: 'grinding'; readonly clearanceMm: number }
 export interface ProgramPath {
   readonly id: string;
   readonly name: string;
   /** Point references in this Path’s capture order. */
   readonly pointIds: readonly string[];
+  readonly planning?: PathPlanningSettings;
 }
 export interface RobotProgram {
   readonly modelId: string;
@@ -68,7 +72,8 @@ function cloneSnapshot(modelId: string, snapshot: ProgramSnapshot): ProgramSnaps
   const joints: JointAngles = [...snapshot.joints]; Object.freeze(joints);
   const configuration: RobConf | null = snapshot.configuration ? [...snapshot.configuration] : null;
   if (configuration) Object.freeze(configuration);
-  return { pose, joints, configuration, speedMmPerSecond: snapshot.speedMmPerSecond };
+  if (snapshot.motionRole !== undefined && !['process', 'transfer'].includes(snapshot.motionRole)) throw new Error('路径点的运动用途无效。');
+  return { pose, joints, configuration, speedMmPerSecond: snapshot.speedMmPerSecond, ...(snapshot.motionRole ? { motionRole: snapshot.motionRole } : {}) };
 }
 function checkNewId(program: RobotProgram, id: string): void {
   if (!id.trim() || id.length > 128 || program.points.some(point => point.id === id) || program.paths.some(path => path.id === id)) throw new Error('程序对象标识必须非空且唯一。');
@@ -76,8 +81,8 @@ function checkNewId(program: RobotProgram, id: string): void {
 function update(program: RobotProgram, patch: Partial<Omit<RobotProgram, 'modelId' | 'revision'>>): RobotProgram {
   return Object.freeze({ ...program, ...patch, revision: program.revision + 1 });
 }
-function pathObject(id: string, name: string, pointIds: readonly string[]): ProgramPath {
-  return Object.freeze({ id, name, pointIds: Object.freeze([...pointIds]) });
+function pathObject(id: string, name: string, pointIds: readonly string[], planning?: PathPlanningSettings): ProgramPath {
+  return Object.freeze({ id, name, pointIds: Object.freeze([...pointIds]), ...(planning ? { planning: Object.freeze({ ...planning }) } : {}) });
 }
 function pathName(name: string): string {
   const trimmed = name.trim();
@@ -99,7 +104,7 @@ export function captureProgramPointToPath(program: RobotProgram, pathId: string,
   checkNewId(program, id);
   if (!Number.isSafeInteger(program.nextPointNumber) || program.nextPointNumber < 1 || program.nextPointNumber > 99999) throw new Error('程序点编号已超出 P001 至 P99999 范围。');
   const point: ProgramPoint = Object.freeze({ ...cloneSnapshot(program.modelId, snapshot), id, pointName: `P${String(program.nextPointNumber).padStart(3, '0')}`, kind: 'MoveL', pathId, revision: 0 });
-  const paths = program.paths.map(item => item.id === pathId ? pathObject(item.id, item.name, [...item.pointIds, point.id]) : item);
+  const paths = program.paths.map(item => item.id === pathId ? pathObject(item.id, item.name, [...item.pointIds, point.id], item.planning) : item);
   return { program: update(program, { points: Object.freeze([...program.points, point]), paths: Object.freeze(paths), nextPointNumber: program.nextPointNumber + 1 }), value: point };
 }
 
@@ -131,7 +136,7 @@ export function updateProgramPoint(program: RobotProgram, id: string, snapshot: 
 export function removeProgramPoint(program: RobotProgram, id: string): RobotProgram {
   if (!program.points.some(point => point.id === id)) return program;
   const paths = program.paths.map(path => path.pointIds.includes(id)
-    ? pathObject(path.id, path.name, path.pointIds.filter(pointId => pointId !== id)) : path);
+    ? pathObject(path.id, path.name, path.pointIds.filter(pointId => pointId !== id), path.planning) : path);
   return update(program, { points: Object.freeze(program.points.filter(point => point.id !== id)), paths: Object.freeze(paths) });
 }
 
@@ -146,5 +151,19 @@ export function renameProgramPath(program: RobotProgram, id: string, name: strin
   if (!program.paths.some(path => path.id === id)) throw new Error('Path 已不存在。');
   const nextName = pathName(name);
   if (program.paths.find(path => path.id === id)!.name === nextName) return program;
-  return update(program, { paths: Object.freeze(program.paths.map(path => path.id === id ? pathObject(path.id, nextName, path.pointIds) : path)) });
+  return update(program, { paths: Object.freeze(program.paths.map(path => path.id === id ? pathObject(path.id, nextName, path.pointIds, path.planning) : path)) });
+}
+
+/** Validate the entire replacement before committing; failed planning never partly rewrites a Path. */
+export function replaceProgramPathPoints(program: RobotProgram, pathId: string, snapshots: readonly ProgramSnapshot[], planning?: PathPlanningSettings): ProgramChange<readonly ProgramPoint[]> {
+  const path = program.paths.find(item => item.id === pathId);
+  if (!path) throw new Error('路径已不存在。');
+  if (!snapshots.length || snapshots.length > 256) throw new Error('路径需包含1至256个目标点。');
+  if (planning && (planning.kind !== 'grinding' || !Number.isFinite(planning.clearanceMm) || planning.clearanceMm < 0 || planning.clearanceMm > 1000)) throw new Error('路径规划间距无效。');
+  snapshots.forEach(snapshot => cloneSnapshot(program.modelId, snapshot));
+  let changed = update(program, { points: Object.freeze(program.points.filter(point => point.pathId !== pathId)),
+    paths: Object.freeze(program.paths.map(item => item.id === pathId ? pathObject(item.id, item.name, [], planning) : item)) });
+  const points: ProgramPoint[] = [];
+  for (const snapshot of snapshots) { const next = captureProgramPointToPath(changed, pathId, snapshot); changed = next.program; points.push(next.value); }
+  return { program: changed, value: Object.freeze(points) };
 }
