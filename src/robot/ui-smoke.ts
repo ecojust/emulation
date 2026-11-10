@@ -3,7 +3,7 @@ import { nativeDesktop, solveMotion } from './client';
 import type { JointAngles, PlanRequest, PlanResult, Pose } from './types';
 import type { GrindingRequest, GrindingResult } from './grinding-types';
 import { validateGrindingResult } from './grinding-validation';
-import { forwardKinematics, quaternionDistanceDeg } from './kinematics';
+import { forwardKinematics, normalizeQuaternion, quaternionDistanceDeg } from './kinematics';
 import { getRobotModel } from './model';
 import { composePose } from '../workspace/frame-graph';
 import type { CollisionResult } from './collision-geometry';
@@ -22,6 +22,13 @@ type DiagnosticsWindow = Window & {
   __EMULATION_UI_DIAGNOSTICS__?: { consoleErrors: string[]; events: string[] };
 };
 interface ResourceCheck { resource: string; status?: number; bytes?: number; error?: string }
+/** Compare physical rotations directly; acos(dot) loses precision near equality. */
+function samePhysicalOrientation(actual: Pose['orientation'], expected: Pose['orientation']): boolean {
+  const a = normalizeQuaternion(actual), b = normalizeQuaternion(expected);
+  return Math.min(Math.hypot(...a.map((value, index) => value - b[index])),
+    Math.hypot(...a.map((value, index) => value + b[index]))) <= 1e-12;
+}
+
 export function isNativeUiSmoke(): boolean {
   return nativeDesktop && Boolean((window as DiagnosticsWindow).__EMULATION_UI_SMOKE__);
 }
@@ -202,11 +209,11 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const grinding = validateGrindingResult(await invoke<GrindingResult>('plan_grinding_path', { requestId: crypto.randomUUID(), request: grindingRequest }), grindingRequest);
     if (grinding.status !== 'success' || grinding.waypoints.length !== 2 || grinding.path.length < 3
       || grinding.path[0].joints.some((q, i) => Math.abs(q - request.startJoints[i]) > 1e-7)
-      || quaternionDistanceDeg(grinding.path[0].pose.orientation, grindingStart.orientation) > 1e-6
+      || !samePhysicalOrientation(grinding.path[0].pose.orientation, grindingStart.orientation)
       || quaternionDistanceDeg(grindingRequest.targets[0].orientation, grindingRequest.targets[1].orientation) < .1
       || grinding.waypoints.some((point, index) => point.targetIndex !== index
         || point.pose.position.some((value, axis) => value !== grindingRequest.targets[index].position[axis])
-        || quaternionDistanceDeg(point.pose.orientation, grindingRequest.targets[index].orientation) > 1e-6
+        || !samePhysicalOrientation(point.pose.orientation, grindingRequest.targets[index].orientation)
         || point.configuration?.[3] !== grinding.waypoints[0].configuration?.[3])
       || grinding.path.some((sample, index) => index > 0 && sample.joints.some((q, axis) => Math.abs(q - grinding.path[index - 1].joints[axis]) > 15.00001))
       || grinding.waypoints[0].kind !== 'transfer' || grinding.waypoints[1].kind !== 'process'
@@ -452,12 +459,13 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       && nearTuple(currentJoints(), savedJoints, 1e-5) && nearTuple(currentPosition(), savedPosition, 0.02), 'Installed project did not restore the selected robot and pose');
     // Use the live catalog UI, never the callback of the unmounted workspace.
     document.querySelector<HTMLButtonElement>('[aria-label="选择机器人型号"]')!.click();
-    await waitForUi(() => Boolean(document.querySelector('[role="dialog"][aria-label="机器人模型目录"]')), 'Installed robot catalog did not reopen');
-    const abbCard = document.querySelector('[data-catalog-model-id="irb1100-4-0.58"]');
-    const loadAbb = [...abbCard!.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim().startsWith('加载 '));
-    if (!loadAbb) throw new Error('Installed robot catalog lost the bundled ABB model');
+    const catalogDialog = () => document.querySelector<HTMLDialogElement>('dialog.robot-catalog-dialog[open]');
+    await waitForUi(() => Boolean(catalogDialog()), 'Installed robot catalog did not reopen');
+    const abbCard = catalogDialog()!.querySelector('[data-catalog-model-id="irb1100-4-0.58"]');
+    const loadAbb = abbCard?.querySelector<HTMLButtonElement>('button[aria-label^="加载 "]');
+    if (!loadAbb || loadAbb.disabled) throw new Error('Installed robot catalog lost the bundled ABB model');
     loadAbb.click();
-    await waitForUi(() => !document.querySelector('[role="dialog"][aria-label="机器人模型目录"]'), 'Installed ABB project scene did not restore');
+    await waitForUi(() => !catalogDialog(), 'Installed ABB project scene did not restore');
     await changeView('程序');
     await waitForUi(() => moduleOptions().some(option => option.dataset.sourceFileId === moduleId), 'Installed project lost its ABB source module while saving another robot');
     moduleOptions().find(option => option.dataset.sourceFileId === moduleId)!.click();
