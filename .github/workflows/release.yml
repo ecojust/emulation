@@ -1,0 +1,72 @@
+name: Publish verified desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full master commit verified by both workflows
+        required: true
+        type: string
+      desktop_run_id:
+        description: Native run on that master commit with ARM and Windows jobs successful
+        required: true
+        type: string
+      check_run_id:
+        description: Successful Check robot simulation run on that master commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_DESKTOP_RUN_ID: ${{ inputs.desktop_run_id }}
+      RELEASE_CHECK_RUN_ID: ${{ inputs.check_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Verify release guard tests
+        run: node --test scripts/desktop/release-node-checks.mjs
+      - name: Validate source and successful platform jobs
+        id: verified
+        run: node scripts/desktop/release.mjs validate
+      - uses: actions/download-artifact@v4
+        with:
+          name: emulation-${{ steps.verified.outputs.version }}-macOS-arm64
+          path: release-input/macOS-arm64
+          run-id: ${{ inputs.desktop_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: emulation-${{ steps.verified.outputs.version }}-Windows-x64
+          path: release-input/Windows-x64
+          run-id: ${{ inputs.desktop_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        if: steps.verified.outputs.intel_verified == 'true'
+        with:
+          name: emulation-${{ steps.verified.outputs.version }}-macOS-x64
+          path: release-input/macOS-x64
+          run-id: ${{ inputs.desktop_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify bytes, upload draft assets, and publish
+        run: node scripts/desktop/release.mjs publish

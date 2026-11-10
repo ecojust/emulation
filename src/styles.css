@@ -1432,7 +1432,7 @@ h1 {
   border-radius:5px
 }
 
-.endpoint-applied {
+.endpoint-previewed {
   background:#eef4fb;
   box-shadow:inset 2px 0 #668bb0
 }
@@ -1449,7 +1449,7 @@ h1 {
   color:#76889c
 }
 
-.endpoint-solution-heading .endpoint-apply {
+.endpoint-solution-heading .endpoint-preview {
   margin-left:auto;
   height:23px;
   padding:0 7px;

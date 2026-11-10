@@ -21,6 +21,79 @@ struct UiSmoke {
 }
 
 #[tauri::command]
+async fn open_robot_sources(
+    app: tauri::AppHandle,
+    language_id: String,
+) -> Result<Option<Vec<emulation_desktop::source_files::SourceTextFile>>, String> {
+    use emulation_desktop::source_files::*;
+    let suffixes = extensions(&language_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(paths) = app
+            .dialog()
+            .file()
+            .add_filter("Robot source", suffixes)
+            .blocking_pick_files()
+        else {
+            return Ok(None);
+        };
+        if paths.len() > MAX_SOURCE_FILES {
+            return Err("一次最多导入32个源文件".into());
+        }
+        let mut files = Vec::new();
+        let mut total = 0;
+        for selected in paths {
+            let path = selected.into_path().map_err(|_| "请选择本机源文件")?;
+            let file = read_source(&path, &language_id)?;
+            total += file.text.len();
+            if total > MAX_IMPORT_BYTES {
+                return Err("导入内容超过4 MiB限制".into());
+            }
+            files.push(file);
+        }
+        Ok(Some(files))
+    })
+    .await
+    .map_err(|_| "源文件选择未能完成")?
+}
+
+#[tauri::command]
+async fn save_robot_source(
+    app: tauri::AppHandle,
+    request: emulation_desktop::source_files::SaveSourceRequest,
+) -> Result<Option<emulation_desktop::source_files::SavedSource>, String> {
+    use emulation_desktop::source_files::*;
+    validate_name(&request.language_id, &request.file_name)?;
+    validate_text(&request.text)?;
+    let suffixes = extensions(&request.language_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(selected) = app
+            .dialog()
+            .file()
+            .add_filter("Robot source", suffixes)
+            .set_file_name(&request.file_name)
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let path = selected.into_path().map_err(|_| "请选择本机保存路径")?;
+        if path.extension().is_none() {
+            return Err("请在保存对话框中保留源文件扩展名，避免改变已确认的目标路径".into());
+        }
+        write_source(&path, &request.language_id, &request.text)?;
+        Ok(Some(SavedSource {
+            file_name: path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .ok_or("文件名无效")?
+                .to_owned(),
+            path: path.to_string_lossy().into_owned(),
+        }))
+    })
+    .await
+    .map_err(|_| "源文件保存未能完成")?
+}
+
+#[tauri::command]
 async fn preview_program(
     engine: State<'_, Arc<Engine>>,
     request_id: String,
@@ -253,6 +326,8 @@ fn main() {
         .manage(UiSmoke { enabled: ui_smoke })
         .invoke_handler(tauri::generate_handler![
             solve_motion,
+            open_robot_sources,
+            save_robot_source,
             solve_generic_motion,
             check_collisions,
             inspect_endpoint,

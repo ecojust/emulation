@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Local robot workspace. Files are saved only through the native module export dialog.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "description": "Local robot workspace with source file dialogs and a draft-aware close action.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-destroy"
+  ]
 }

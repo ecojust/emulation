@@ -15,7 +15,14 @@ function notices() {
       for (const name of readdirSync(new URL("vendor/work-r-labs/model-notices/", import.meta.url))) {
         this.emitFile({ type: "asset", fileName: `third-party/work-r-labs/model-notices/${name}`, source: read(`vendor/work-r-labs/model-notices/${name}`) });
       }
-      const packages = ["react", "react-dom", "scheduler", "three", "three-mesh-bvh"];
+      const includeLanguageNotices = (source: string, target: string) => {
+        for (const entry of readdirSync(new URL(source, import.meta.url), { withFileTypes: true })) {
+          if (entry.isDirectory()) includeLanguageNotices(`${source}/${entry.name}`, `${target}/${entry.name}`);
+          else this.emitFile({ type: "asset", fileName: `${target}/${entry.name}`, source: read(`${source}/${entry.name}`) });
+        }
+      };
+      includeLanguageNotices("vendor/robot-languages", "third-party/robot-languages");
+      const packages = ["react", "react-dom", "scheduler", "three", "three-mesh-bvh", "@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/streamparser", "@codemirror/autocomplete", "@codemirror/commands", "@codemirror/search", "@codemirror/lint", "@lezer/highlight", "@lezer/common", "@lezer/lr", "@marijn/find-cluster-break", "crelt", "style-mod", "w3c-keyname"];
       const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n")
         + `\n\n@tauri-apps/api (MIT option)\n${"=".repeat(60)}\n${read("node_modules/@tauri-apps/api/LICENSE-MIT")}`;
       this.emitFile({ type: "asset", fileName: "THIRD_PARTY_NOTICES.txt", source });

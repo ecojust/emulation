@@ -3,6 +3,7 @@ import type { RobotCatalog, RobotCatalogModel } from '../../src/catalog/types';
 import type { Pose } from '../../src/robot/types';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
 import { bodyJoints, captureCurrent, checkedSegment, expectCopyState, openProgram, openScene, readRapid, selectRobot } from './workspace-helpers';
+import { chooseCompletion, codeEditor, generateSource, newSource, openTeach, readSource, replaceSource } from './programming-helpers';
 
 test.setTimeout(90_000);
 let catalog: RobotCatalog;
@@ -198,9 +199,9 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
     const editor = page.getByRole('region', { name: /程序编辑区$/ });
     await expect(editor.getByRole('option')).toHaveCount(1);
     await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveCount(0);
-    const label = model.brand === 'FANUC' ? 'FANUC LS 程序模板' : 'Yaskawa INFORM 程序模板';
-    await editor.locator('details.program-template').locator('summary').click();
-    const code = await page.getByRole('textbox', { name: label, exact: true }).inputValue();
+    const code = await generateSource(page);
+    await expect(page.getByRole('button', { name: '运行源码', exact: true })).toBeDisabled();
+    await openTeach(page);
     const row = editor.getByRole('option');
     await expect(row).toHaveAttribute('data-program-point-name', point.name);
     if (model.brand === 'FANUC') {
@@ -219,9 +220,42 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
       expect(code).toContain('///RCONF {{RCONF_P001}}');
       expect(code).not.toMatch(/MoveL|robconf|robtarget/);
     }
-    await expect(editor.locator('.program-template-notice')).toContainText('不支持此品牌的控制器文件导出');
     await expect(page.getByRole('button', { name: '复制此 MoveL', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '导出此 MoveL', exact: true })).toHaveCount(0);
+    if (model.id === 'fanuc-crx10ia-l') {
+      await newSource(page, 'lexical.ls', `/PROG LEXICAL\n/ATTR\nOWNER=MNEDITOR;\nCOMMENT="QA";\n/MN\n: ! lexical note ;\n: -- second note ;\n1: J P[1] 10% FINE;\n/POS\nP[1]{\nGP1: UF:0,UT:0,CONFIG:'N U T,0,0,0',\nX=400mm,Y=0mm,Z=500mm,W=0deg,P=90deg,R=0deg\n};\n/END`);
+      const editorContent = codeEditor(page);
+      const doubleQuoted = editorContent.locator('span').filter({ hasText: /^"QA"$/ });
+      const singleQuoted = editorContent.locator('span').filter({ hasText: /^'N U T,0,0,0'$/ });
+      await expect(doubleQuoted).toBeVisible();
+      await expect(singleQuoted).toBeVisible();
+      expect(await singleQuoted.evaluate(element => getComputedStyle(element).color)).toBe(await doubleQuoted.evaluate(element => getComputedStyle(element).color));
+      for (const text of ['! lexical note ;', '-- second note ;']) {
+        const comment = editorContent.locator('span').filter({ hasText: new RegExp('^' + text + '$') });
+        await expect(comment).toBeVisible();
+        expect(await comment.evaluate(element => getComputedStyle(element).fontStyle)).toBe('italic');
+      }
+      expect(await editorContent.locator('span').filter({ hasText: /^J$/ }).evaluate(element => getComputedStyle(element).fontStyle)).not.toBe('italic');
+      // Exercise a real multiword catalog entry, including replacement of the
+      // full partially typed phrase and documentation from a middle token.
+      await replaceSource(page, 'COL GUA');
+      await editorContent.press('ControlOrMeta+End');
+      await chooseCompletion(page, 'COL GUARD ADJUST');
+      expect(await readSource(page)).toBe('COL GUARD ADJUST sensitivity');
+      await editorContent.press('ArrowRight');
+      await editorContent.locator('span').filter({ hasText: /GUARD/ }).first().hover();
+      const hover = page.locator('.cm-tooltip-hover .robot-code-tooltip');
+      await expect(hover.locator('strong')).toHaveText('COL GUARD ADJUST');
+      await expect(hover.locator('dt').filter({ hasText: /sensitivity/ })).toBeVisible();
+      await page.getByRole('button', { name: '程序', exact: true }).hover();
+      await expect(hover).toBeHidden();
+    }
+    if (model.id === 'yaskawa-gp7') {
+      await newSource(page, 'completion.jbi', '+SF');
+      await codeEditor(page).press('ControlOrMeta+End');
+      await chooseCompletion(page, '+SFTON3D');
+      expect(await readSource(page)).toBe('+SFTON3D');
+    }
     await openScene(page);
     await noDocumentScroll(page);
   }

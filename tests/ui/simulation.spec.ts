@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { forwardKinematics } from '../../src/robot/kinematics';
+import { codeEditor, downloadSource, generateSource, sourceTabs } from './programming-helpers';
 import { getRobotModel } from '../../src/robot/model';
 import { bodyJoints, bodyPose, captureCurrent, checkedSegment, expectBodyJoints, expectCopyState, makePath, observeBrowser, openProgram, openScene, openWorkspace, programRows, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
 
@@ -65,9 +66,13 @@ test('real context capture and reversed multiselection create ordered Path objec
   await page.screenshot({ path: '/tmp/emulation-object-path.png' });
   await page.screenshot({ path: 'docs/images/workspace.png' });
   await openProgram(page);
-  const template = page.locator('details.program-template');
-  if ((await template.getAttribute('open')) === null) await template.locator('summary').click();
-  await expect(page.getByRole('textbox', { name: 'ABB RAPID 程序模板', exact: true })).toHaveValue(/CONST robtarget P001/);
+  expect(await generateSource(page)).toMatch(/CONST robtarget P001/);
+  await expect(sourceTabs(page).getByRole('tab', { name: 'EMULATE.modx', exact: true })).toHaveAttribute('aria-selected', 'true');
+  const exported = await downloadSource(page);
+  expect(exported.name).toBe('EMULATE.modx');
+  expect(exported.bytes.toString('utf8')).toMatch(/^MODULE EMULATE\n/);
+  await codeEditor(page).press('ControlOrMeta+Home');
+  await expect(codeEditor(page).locator('span').filter({ hasText: /^MODULE$/ }).first()).toBeVisible();
   await page.screenshot({ path: 'docs/images/program-workspace.png' });
   expect(errors).toEqual([]);
 });
