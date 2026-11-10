@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectCopyState, selectPathForPoints, observeBrowser, openProgram, openScene, openWorkspace, pathPoints, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
+import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectNoPointMotionActions, runPathFromMenu, selectPathForPoints, observeBrowser, openProgram, openScene, openWorkspace, pathPoints, scene, selectPoint, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
 import { generateSource, readSource } from './programming-helpers';
 
 test.setTimeout(90_000);
@@ -66,34 +66,59 @@ async function readyRow(page: Page) {
   return rows(page).nth(index);
 }
 
-test('previewing an independent wrist solution preserves the saved target, program and checked motion, then restores the exact playback pose', async ({ page }) => {
+test('previewing an independent wrist solution preserves the saved target and module and restores the exact stopped Path pose', async ({ page }) => {
   test.setTimeout(120_000);
+  await page.clock.install();
   const errors = observeBrowser(page);
   await openWorkspace(page);
+  await page.getByRole('combobox', { name: '记录速度', exact: true }).selectOption('10');
   const point = await captureCurrent(page);
-  await selectPathForPoints(page, [point]);
-  const originalSource = await generateSource(page);
-  await openScene(page);
-  await setJoint(page, 1, 3);
-  await selectPoint(page, point);
-  await page.getByRole('button', { name: '检查到此点的 MoveL', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '此 MoveL 已通过运动学检查', exact: true })).toBeVisible();
-  await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
-  const progress = page.getByRole('slider', { name: '路径进度', exact: true });
-  // Use the real range keyboard controls to preview from a paused interior
-  // sample, so resetting either the checked segment or its cursor is observable.
-  await progress.press('Home');
-  for (let i = 0; i < 3; i++) await progress.press('PageUp');
-  const originalProgress = await progress.inputValue();
-  expect(Number(originalProgress)).toBeGreaterThan(0);
-  expect(Number(originalProgress)).toBeLessThan(100);
-  await expect.poll(async () => (await bodyJoints(page))[0]).toBeLessThan(2.99);
-  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  const originalBody = await bodyJoints(page);
   const originalTarget = await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue();
   const originalConfiguration = await page.getByLabel('目标 robconf', { exact: true }).textContent();
+  await setJoint(page, 1, 12);
+  const second = await captureCurrent(page, point.pathId);
+  await selectPathForPoints(page, [point, second]);
+  const originalSource = await generateSource(page);
+  await openScene(page);
+  await page.getByRole('checkbox', { name: '循环运行', exact: true }).check();
+  await runPathFromMenu(page, point.pathId, { keyboard: true });
+  const state = page.locator('[data-run-phase]');
+  await expect(state).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
+  const stop = page.getByRole('button', { name: '停止运行', exact: true });
+  await stop.focus();
+  // The real Path must reach an interior pose before it is stopped. The clock
+  // controls only this observation window, not the planner or the captured data.
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 10_000));
+  await page.clock.runFor(32);
+  for (let i = 0; i < 100; i++) {
+    const q = (await bodyJoints(page))[0];
+    if (q > 4 && q < 8) break;
+    await page.clock.runFor(100);
+  }
+  expect((await bodyJoints(page))[0]).toBeGreaterThan(4);
+  expect((await bodyJoints(page))[0]).toBeLessThan(8);
+  await stop.press('Enter');
+  await expect(state).toHaveAttribute('data-run-phase', 'idle');
+  await bodyCanvas(page).evaluate(element => {
+    const scope = window as unknown as { endpointStoppedFrames: number[][] };
+    scope.endpointStoppedFrames = [];
+    const sample = () => {
+      scope.endpointStoppedFrames.push(JSON.parse(element.getAttribute('data-robot-joints')!));
+      if (scope.endpointStoppedFrames.length < 15) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await page.clock.runFor(320);
+  const stopped = await page.evaluate(() => (window as unknown as { endpointStoppedFrames: number[][] }).endpointStoppedFrames);
+  expect(stopped).toHaveLength(15);
+  for (const frame of stopped.slice(3)) expect(Math.max(...frame.map((value, i) => Math.abs(value - stopped.at(-1)![i])))).toBeLessThan(1e-7);
+  await page.clock.resume();
+  await selectPoint(page, point);
+  await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
+  const originalBody = await bodyJoints(page);
+  expect(originalBody[0]).toBeGreaterThan(4);
+  expect(originalBody[0]).toBeLessThan(8);
   const originalPath = await scene(page).getAttribute('data-scene-paths');
-  const originalRapid = await readRapid(page);
   const candidate = await differentWrist(page);
   const preview = candidate.row.getByRole('button', { name: /^预览姿态 / });
   await preview.click();
@@ -104,24 +129,21 @@ test('previewing an independent wrist solution preserves the saved target, progr
   await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(originalTarget);
   await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveText(originalConfiguration!);
   await expect(scene(page)).toHaveAttribute('data-scene-paths', originalPath!);
-  await expect(progress).toHaveValue(originalProgress);
-  expect(await readRapid(page)).toBe(originalRapid);
-  await expectCopyState(page, true);
+  await expect(state).toHaveAttribute('data-run-phase', 'idle');
   await expect(page.getByRole('button', { name: '用当前姿态更新点', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '检查到此点的 MoveL', exact: true })).toBeDisabled();
+  await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-endpoint-preview.png' });
   await page.getByRole('button', { name: '退出预览', exact: true }).click();
   await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
   await expect(preview).toHaveAttribute('aria-pressed', 'false');
   await expectBodyJoints(page, originalBody);
-  await expect(progress).toHaveValue(originalProgress);
-  expect(await readRapid(page)).toBe(originalRapid);
-  await expectCopyState(page, true);
+  await expect(scene(page)).toHaveAttribute('data-scene-paths', originalPath!);
   await openProgram(page);
   expect(await readSource(page)).toBe(originalSource);
   await openScene(page);
-  await expect(pathPoints(page)).toHaveCount(1);
+  await expect(pathPoints(page)).toHaveCount(2);
   await expect(pathPoints(page).first()).toHaveAttribute('data-object-id', point.id);
+  await expect(pathPoints(page).last()).toHaveAttribute('data-object-id', second.id);
   await selectRobotObject(page);
   for (let i = 0; i < 6; i++) {
     const draft = Number(await page.getByRole('spinbutton', { name: `机器人关节 J${i + 1}`, exact: true }).inputValue());
@@ -136,7 +158,7 @@ test('previewing an independent wrist solution preserves the saved target, progr
   await expectBodyJoints(page, [0, 20, -30, 0, 40, 0]);
   await expect(page.getByRole('status', { name: '端点预览', exact: true })).toHaveCount(0);
   await expect(rows(page)).toHaveCount(0);
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   expect(errors).toEqual([]);
 });
 
@@ -225,7 +247,7 @@ test('actual mesh detection removes an OBB false positive, finds surface and sol
     if (fixture.state === 'hit') await expect(selected.getByLabel('干涉', { exact: true })).toHaveAttribute('title', /基座/);
     if (fixture.state === 'clear' || fixture.state === 'uncertain') await page.screenshot({ path: `/tmp/emulation-mesh-${fixture.state}.png` });
   }
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   expect(errors).toEqual([]);
 });
 

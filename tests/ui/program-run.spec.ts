@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
 import { generateSource, openCode } from './programming-helpers';
 import type { Pose } from '../../src/robot/types';
-import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, createPath, expectBodyJoints, expectCopyState, selectPathForPoints, observeBrowser, openScene, openWorkspace, pathObjects, pathPoints, selectPath, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
+import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, createPath, expectBodyJoints, expectNoPointMotionActions, runPathFromMenu, selectPathForPoints, observeBrowser, openScene, openWorkspace, pathObjects, pathPoints, selectPath, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
 
 test.setTimeout(120_000);
 const ready = [0, 20, -30, 0, 40, 0];
@@ -45,7 +45,7 @@ async function run(page: Page, loop = false, pathId?: string) {
   await selectPath(page, pathId ?? (await pathObjects(page).first().getAttribute('data-object-id'))!);
   await page.getByRole('checkbox', { name: '循环运行', exact: true }).setChecked(loop);
   await startSampling(page);
-  await page.getByRole('button', { name: '运行 Path', exact: true }).click();
+  await runPathFromMenu(page, pathId ?? (await pathObjects(page).first().getAttribute('data-object-id'))!, { keyboard: loop });
   await expect(page.locator('[data-active-view]')).toHaveAttribute('data-active-view', 'scene');
 }
 async function assertStopped(page: Page, from: number[], to: number[], keyboard = false, controlledClock = false) {
@@ -79,7 +79,7 @@ function deviation(position: number[], from: number[], to: number[]) {
   return { t, error: Math.hypot(...position.map((value, i) => value - from[i] - t * delta[i])) };
 }
 
-test('Run Path plans every ABB line before switching to ordered Cartesian playback and locks edits without engine badges', async ({ page }) => {
+test('the context menu runs its own Path despite another selection and plans every ABB line before switching to ordered Cartesian playback and locks edits without engine badges', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const first = await recordJoint1(page, 6), second = await recordJoint1(page, 12);
@@ -95,7 +95,11 @@ test('Run Path plans every ABB line before switching to ordered Cartesian playba
   const start = await bodyPose(page);
   await expect(page.getByText('浏览器参考引擎', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Rust 原生引擎', { exact: true })).toHaveCount(0);
-  await run(page);
+  await selectPath(page, otherPath);
+  await expect(page.locator(`[data-object-kind="path"][data-object-id="${otherPath}"]`)).toHaveClass(/selected/);
+  await startSampling(page);
+  await runPathFromMenu(page, first.pathId);
+  await expect(runState(page)).toHaveAttribute('data-run-path-id', first.pathId);
   await expect(runState(page)).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
   await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '程序', exact: true })).toBeDisabled();
@@ -142,6 +146,13 @@ test('Loop closes from the last point to the first without replaying approach an
   await expect(page.getByRole('button', { name: '转换为程序', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '删除 Path', exact: true })).toBeDisabled();
   await expect(page.getByRole('checkbox', { name: '循环运行', exact: true })).toBeDisabled();
+  await activePath.press('Shift+F10');
+  const menu = page.getByRole('menu', { name: 'Path 右键菜单', exact: true });
+  await expect(menu).toBeVisible();
+  for (const name of ['运行', '添加当前点到 Path', '转换为程序', '删除 Path']) await expect(menu.getByRole('menuitem', { name, exact: true })).toBeDisabled();
+  await menu.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(activePath).toBeFocused();
   await pathPoints(page, first.pathId).first().focus();
   await page.keyboard.press('Delete');
   await expect(pathPoints(page, first.pathId)).toHaveCount(2);
@@ -191,7 +202,7 @@ test('a later singular MoveL rejects the whole run before any successful earlier
   const samples = await stopSampling(page);
   expect(samples.some(sample => sample.phase === 'running')).toBe(false);
   for (const sample of samples) expect(Math.max(...sample.joints.map((value, i) => Math.abs(value - ready[i])))).toBeLessThan(1e-7);
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-program-rejected.png' });
   expect(errors).toEqual([]);
 });
@@ -225,8 +236,7 @@ test('a Path point context menu positions the recorded joints with stoppable vie
   await page.getByRole('menuitem', { name: '移动至此', exact: true }).click();
   await expectBodyJoints(page, point.joints, .001);
   await expect(runState(page)).not.toHaveAttribute('data-run-phase', 'positioning');
-  await expectCopyState(page, false);
-  await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
+  await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-point-positioning.png' });
   expect(errors).toEqual([]);
 });

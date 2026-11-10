@@ -1,7 +1,9 @@
+import Icon, { type IconName } from '../ui/Icon';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export interface SceneMenuAction {
   label: string;
+  icon?: IconName;
   disabled?: boolean;
   title?: string;
   onSelect: () => void;
@@ -46,6 +48,6 @@ export default function SceneObjectMenu({ x, y, label, trigger, actions, onClose
       buttons[next].focus({ preventScroll: true });
     }}>
     {actions.map(action => <button key={action.label} type="button" role="menuitem" disabled={action.disabled} title={action.title}
-      onClick={() => { close(true); action.onSelect(); }}>{action.label}</button>)}
+      onClick={() => { close(true); action.onSelect(); }}>{action.icon && <Icon name={action.icon} size={14}/>}<span>{action.label}</span></button>)}
   </div>;
 }

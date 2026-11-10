@@ -1,3 +1,4 @@
+import Icon from '../ui/Icon';
 import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import type { SourceDocument } from '../programming/documents';
 import './module-list.css';
@@ -49,8 +50,8 @@ export default function ModuleList({ files, activeFileId, onSelectFile, disabled
         aria-label={file.name} aria-selected={selectedId === file.id} disabled={disabled}
         tabIndex={file.id === focusId ? 0 : -1} data-source-file-id={file.id} data-source-dirty={file.dirty}
         title={file.name + (file.dirty ? ' · 已修改' : '')} onClick={() => onSelectFile(file.id)}>
-        <span className="module-file-icon" aria-hidden="true">{'{}'}</span><span className="module-file-name">{file.name}</span>
-        {file.dirty && <span className="module-file-dirty" aria-hidden="true">●</span>}
+        <Icon name="file" size={15} className="module-file-icon"/><span className="module-file-name">{file.name}</span>
+        {file.dirty && <Icon name="dot" size={9} className="module-file-dirty"/>}
       </button>)}
     </div>
     {!files.length && <p className="module-list-empty">还没有模块文件。可新建、导入模块，或在场景中将 Path 转换成程序。</p>}

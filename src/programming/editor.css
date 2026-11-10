@@ -2,7 +2,7 @@
 .robot-code-filebar { display:flex; flex:0 0 auto; min-width:0; align-items:center; border-block:1px solid #e3e9f1; background:#f5f8fc }
 .robot-code-current-file { display:flex; align-items:center; gap:8px; min-width:0; max-width:100%; padding:10px 12px; color:#315d92; font:11px ui-monospace,SFMono-Regular,Consolas,monospace }
 .robot-code-current-file>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-.robot-code-current-file>i { flex:0 0 auto; color:#a78c53; font-size:7px; font-style:normal }
+.robot-code-current-file>i { display:inline-flex; flex:0 0 auto; color:#a78c53; font-style:normal }
 .robot-code-tools { display:flex; flex-wrap:wrap; align-items:center; gap:6px; flex:0 0 auto; padding:8px 12px; border-bottom:1px solid #e7ecf3 }
 .robot-code-tools button,.robot-code-panel-tabs button,.robot-code-reference-actions button { min-height:27px; border:1px solid #dbe4ef; border-radius:5px; padding:4px 8px; background:#fff; color:#5c7697; font-size:10px; cursor:pointer }
 .robot-code-tools button:hover:not(:disabled),.robot-code-reference-actions button:hover:not(:disabled) { background:#f0f6fe; border-color:#b4cce7 }
@@ -26,8 +26,15 @@
 .robot-code-surface .cm-tooltip-autocomplete>ul { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:11px }
 .robot-code-surface .cm-tooltip-autocomplete>ul>li[aria-selected] { color:#2d5d92; background:#e8f2ff }
 .robot-code-surface .cm-completionDetail { color:#8797ac; font-size:10px }
+.robot-code-surface .robot-editor-icon { display:inline-block; flex:0 0 auto; vertical-align:middle; pointer-events:none }
+.robot-code-surface .robot-completion-icon { display:inline-flex; width:20px; align-items:center; justify-content:center; vertical-align:middle; color:#7892af }
+.robot-code-surface .robot-fold-marker { display:inline-flex; align-items:center; vertical-align:middle }
+.robot-code-surface .cm-foldPlaceholder { display:inline-flex; align-items:center; vertical-align:middle; padding:0 2px; background:#edf2f8; border:1px solid #d7e1ed; color:#6d839d }
+.robot-code-surface .cm-tooltip-autocomplete .cm-completionListIncompleteTop::before,
+.robot-code-surface .cm-tooltip-autocomplete .cm-completionListIncompleteBottom::after { content:''; height:16px; background:currentColor; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='1.5'/%3E%3Ccircle cx='12' cy='12' r='1.5'/%3E%3Ccircle cx='19' cy='12' r='1.5'/%3E%3C/svg%3E") center/16px 16px no-repeat }
 .robot-code-surface .cm-panels { background:#f5f8fc; color:#58708e; border-color:#dfe7f1 }
 .robot-code-surface .cm-search { padding:6px 8px; font-size:11px }
+.robot-code-surface .cm-search button[name='close'],.robot-code-surface .cm-panel-lint button[name='close'] { display:inline-flex; align-items:center; justify-content:center; color:inherit }
 .robot-code-surface .cm-search input { border:1px solid #ccd9e8; border-radius:3px; background:#fff; color:#4b607b; min-width:0 }
 .robot-code-tooltip { max-width:450px; padding:10px 12px; font:11px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif }
 .robot-code-tooltip>strong { display:block; color:#3a628e; margin-bottom:5px }
@@ -53,7 +60,9 @@
 .robot-code-diagnostics .diagnostic-location { flex:0 0 auto; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#8e9bae; font-family:ui-monospace,SFMono-Regular,Consolas,monospace }
 .robot-code-reference-search { display:block; width:100%; min-height:28px; border:1px solid #d9e3ef; border-radius:5px; padding:5px 8px; background:#fff; color:#4e6686; font-size:11px }
 .robot-code-language-notes { margin:0 0 8px; color:#8291a6; font-size:10px; line-height:1.6 }
-.robot-code-language-notes summary { cursor:pointer; color:#7289a5 }
+.robot-code-language-notes summary { display:flex; align-items:center; gap:4px; list-style:none; cursor:pointer; color:#7289a5 }
+.robot-code-language-notes summary::-webkit-details-marker { display:none }
+.robot-code-language-notes[open]>summary>.ui-icon { transform:rotate(90deg) }
 .robot-code-language-notes ul { padding-left:17px; margin:6px 0 }
 .robot-code-language-notes a { display:block; color:#6687ae; overflow-wrap:anywhere }
 .robot-code-source-link { display:block; margin:5px 0 }

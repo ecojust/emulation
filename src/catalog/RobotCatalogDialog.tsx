@@ -1,3 +1,4 @@
+import Icon from '../ui/Icon';
 import { useEffect, useRef, useState } from 'react';
 import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel, type ModelProgress } from './client';
 import './catalog.css';
@@ -79,8 +80,8 @@ export default function RobotCatalogDialog({ currentModelId, onSelect, onClose }
   const progressLabel = progress?.phase === 'preparing' ? '正在解析模型与网格' : progress?.phase === 'downloading' ? '正在下载模型' : '正在检查模型缓存';
   const selectedName = MODEL_CATALOG.find(model => model.id === loadingId)?.name;
   return <dialog ref={dialog} className="robot-catalog-dialog" aria-labelledby="robot-catalog-title" onCancel={event => { event.preventDefault(); close(); }}>
-    <header className="robot-catalog-heading"><div><span className="eyebrow">ROBOT LIBRARY</span><h2 id="robot-catalog-title">机器人模型目录</h2><p>选择型号后加载完整模型。首次使用需要下载，后续使用本机缓存。</p></div><button type="button" className="icon-button" aria-label="关闭模型目录" onClick={close}>×</button></header>
-    <label className="robot-catalog-search">搜索型号<input type="search" aria-label="搜索机器人型号" placeholder="品牌或型号" value={query} onChange={event => setQuery(event.target.value)}/></label>
+    <header className="robot-catalog-heading"><div><span className="eyebrow">ROBOT LIBRARY</span><h2 id="robot-catalog-title">机器人模型目录</h2><p>选择型号后加载完整模型。首次使用需要下载，后续使用本机缓存。</p></div><button type="button" className="icon-button" aria-label="关闭模型目录" onClick={close}><Icon name="close" size={18}/></button></header>
+    <label className="robot-catalog-search"><Icon name="search" size={16}/>搜索型号<input type="search" aria-label="搜索机器人型号" placeholder="品牌或型号" value={query} onChange={event => setQuery(event.target.value)}/></label>
     <div className="robot-catalog-list">
       {brands.map(brand => {
         const entries = MODEL_CATALOG.filter(model => model.brand === brand && (!search || `${model.brand} ${model.name}`.toLocaleLowerCase().includes(search)));
