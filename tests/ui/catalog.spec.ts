@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import type { RobotCatalog, RobotCatalogModel } from '../../src/catalog/types';
 import type { Pose } from '../../src/robot/types';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
-import { expectCopyState, readRapid, selectRobot } from './workspace-helpers';
+import { bodyJoints, captureCurrent, checkedSegment, expectCopyState, openProgram, openScene, readRapid, selectRobot } from './workspace-helpers';
 
 test.setTimeout(90_000);
 let catalog: RobotCatalog;
@@ -46,7 +46,8 @@ async function expectModel(page: Page, model: RobotCatalogModel, count: number) 
   await expect(current(page)).toContainText(model.name);
   await expect(genericCanvas(page)).toHaveAttribute('data-urdf-model', model.id);
   await expect(genericCanvas(page)).toHaveAttribute('data-urdf-visual-count', String(count));
-  await expect(page.getByRole('status', { name: '型号能力', exact: true })).toContainText('尚未适配');
+  await expect(page.getByRole('status', { name: '型号能力', exact: true })).toContainText('直线运动仿真');
+  await expect(page.getByRole('status', { name: '型号能力', exact: true })).toContainText('控制器文件导出尚未适配');
 }
 async function toolPose(page: Page): Promise<Pose> {
   return JSON.parse((await genericCanvas(page).getAttribute('data-urdf-tool-pose'))!);
@@ -65,7 +66,7 @@ test('the title opens a bounded searchable model catalog with honest brand avail
   const kuka = picker(page).getByRole('region', { name: 'KUKA 机器人', exact: true });
   await expect(kuka).toContainText(/暂无.*KUKA.*可下载资源|暂无可加载型号/);
   await expect(kuka.getByRole('button', { name: /^加载 / })).toHaveCount(0);
-  for (const model of downloads) await expect(entry(page, model.id)).toContainText('URDF 关节调整与正运动学');
+  for (const model of downloads) await expect(entry(page, model.id)).toContainText('URDF 正运动学 / 直线仿真');
   const bounds = (await picker(page).boundingBox())!;
   expect(bounds.x).toBeGreaterThanOrEqual(0);
   expect(bounds.y).toBeGreaterThanOrEqual(0);
@@ -98,10 +99,9 @@ test('cancelling an in-progress verified asset download retains the current robo
   });
   try {
     await open(page);
-    await page.getByRole('button', { name: '求解 MoveL', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '运动学可达', exact: true })).toBeVisible();
+    const point = await checkedSegment(page);
     const program = await readRapid(page);
-    const originalJoints = await page.getByLabel('当前关节姿态', { exact: true }).locator('strong').allTextContents();
+    const originalJoints = await bodyJoints(page);
     await showPicker(page);
     await entry(page, model.id).getByRole('button', { name: /^加载 / }).click();
     await expect.poll(() => reached).toBe(true);
@@ -116,7 +116,8 @@ test('cancelling an in-progress verified asset download retains the current robo
     await page.getByRole('button', { name: '关闭模型目录', exact: true }).click();
     await expect(current(page)).toContainText('IRB 1100-4/0.58');
     expect(await readRapid(page)).toBe(program);
-    expect(await page.getByLabel('当前关节姿态', { exact: true }).locator('strong').allTextContents()).toEqual(originalJoints);
+    expect(await bodyJoints(page)).toEqual(originalJoints);
+    await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
     await expectCopyState(page, true);
     expect(errors).toEqual([]);
   } finally { cancelled = true; release(); }
@@ -138,8 +139,7 @@ test('a corrupt asset cannot replace the robot, retry succeeds, and verified bro
     await realBytes(route);
   });
   await open(page);
-  await page.getByRole('button', { name: '求解 MoveL', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '运动学可达', exact: true })).toBeVisible();
+  await checkedSegment(page);
   const program = await readRapid(page);
   await showPicker(page);
   await entry(page, model.id).getByRole('button', { name: /^加载 / }).click();
@@ -163,7 +163,7 @@ test('a corrupt asset cannot replace the robot, retry succeeds, and verified bro
   expect(errors).toEqual([]);
 });
 
-test('all four real downloadable robots render their own geometry and FK while unsupported motion stays unavailable', async ({ page }) => {
+test('all four downloadable robots render their own geometry, FK and brand-specific templates without controller export', async ({ page }) => {
   test.setTimeout(120_000);
   const errors = observe(page);
   await routeAssets(page);
@@ -179,13 +179,14 @@ test('all four real downloadable robots render their own geometry and FK while u
     const expected = anchors[model.id];
     await selectRobot(page, model.id);
     await expectModel(page, model, expected.visuals);
-    await expect(page.getByRole('spinbutton', { name: /^模型关节 / })).toHaveCount(6);
+    await expect(page.getByRole('heading', { name: '机器人属性', exact: true })).toBeVisible();
+    await expect(page.getByRole('spinbutton', { name: /^机器人关节 J/ })).toHaveCount(6);
     await expect.poll(async () => Math.max(...(await toolPose(page)).position.map((value, i) => Math.abs(value - expected.xyz[i])))).toBeLessThan(.001);
-    await expect(page.getByRole('button', { name: '求解 MoveL', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '检查到此点的 MoveL', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
     const before = await genericCanvas(page).screenshot();
-    await page.getByRole('spinbutton', { name: /^模型关节 / }).first().fill('30');
+    await page.getByRole('spinbutton', { name: '机器人关节 J1', exact: true }).fill('30');
     await expect.poll(async () => JSON.parse((await genericCanvas(page).getAttribute('data-urdf-joints'))!)[0]).toBe(30);
     const angle = expected.sign * Math.PI / 6, [x, y, z] = expected.xyz;
     const rotated = [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle), z];
@@ -193,18 +194,41 @@ test('all four real downloadable robots render their own geometry and FK while u
     for (const [index, axis] of ['X', 'Y', 'Z'].entries()) await expect(page.getByLabel('当前 TCP', { exact: true }).locator(`[data-axis="${axis}"] strong`)).toHaveText(rotated[index].toFixed(2));
     expect((await genericCanvas(page).screenshot()).equals(before)).toBe(false);
     await page.screenshot({ path: `/tmp/emulation-catalog-${model.id}.png` });
-    await page.getByRole('button', { name: '程序', exact: true }).click();
-    await expect(page.getByRole('region', { name: '程序输出', exact: true })).toContainText('控制器程序尚未适配');
-    await expect(page.getByRole('button', { name: '复制 MoveL', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /导出 .*模块/ })).toHaveCount(0);
-    await page.getByRole('button', { name: '场景', exact: true }).click();
+    const point = await captureCurrent(page);
+    const editor = page.getByRole('region', { name: /程序编辑区$/ });
+    await expect(editor.getByRole('option')).toHaveCount(1);
+    await expect(page.getByLabel('目标 robconf', { exact: true })).toHaveCount(0);
+    const label = model.brand === 'FANUC' ? 'FANUC LS 程序模板' : 'Yaskawa INFORM 程序模板';
+    await editor.locator('details.program-template').locator('summary').click();
+    const code = await page.getByRole('textbox', { name: label, exact: true }).inputValue();
+    const row = editor.getByRole('option');
+    await expect(row).toHaveAttribute('data-program-point-name', point.name);
+    if (model.brand === 'FANUC') {
+      await expect(row).toHaveAccessibleName('L P[1]');
+      expect(code).toContain('L P[1] 100mm/sec FINE');
+      expect(code).toContain('P[1]{');
+      expect(code).toContain('J1=30 deg');
+      expect(code).toContain('{{UF}}');
+      expect(code).toContain('{{UT}}');
+      expect(code).not.toMatch(/MoveL|robconf|robtarget/);
+    } else {
+      await expect(row).toHaveAccessibleName('MOVL C00000');
+      expect(code).toContain('MOVL C00000 V=100');
+      expect(code).toContain('C00000=');
+      expect(code).toContain('///TOOL {{TOOL}}');
+      expect(code).toContain('///RCONF {{RCONF_P001}}');
+      expect(code).not.toMatch(/MoveL|robconf|robtarget/);
+    }
+    await expect(editor.locator('.program-template-notice')).toContainText('不支持此品牌的控制器文件导出');
+    await expect(page.getByRole('button', { name: '复制此 MoveL', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '导出此 MoveL', exact: true })).toHaveCount(0);
+    await openScene(page);
     await noDocumentScroll(page);
   }
   await selectRobot(page, 'irb1100-4-0.58');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toBeEnabled();
-  await page.getByRole('button', { name: '求解 MoveL', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '运动学可达', exact: true })).toBeVisible();
+  await checkedSegment(page);
   await expectCopyState(page, true);
   expect(errors).toEqual([]);
 });

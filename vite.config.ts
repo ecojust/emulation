@@ -15,7 +15,7 @@ function notices() {
       for (const name of readdirSync(new URL("vendor/work-r-labs/model-notices/", import.meta.url))) {
         this.emitFile({ type: "asset", fileName: `third-party/work-r-labs/model-notices/${name}`, source: read(`vendor/work-r-labs/model-notices/${name}`) });
       }
-      const packages = ["react", "react-dom", "scheduler", "three"];
+      const packages = ["react", "react-dom", "scheduler", "three", "three-mesh-bvh"];
       const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n")
         + `\n\n@tauri-apps/api (MIT option)\n${"=".repeat(60)}\n${read("node_modules/@tauri-apps/api/LICENSE-MIT")}`;
       this.emitFile({ type: "asset", fileName: "THIRD_PARTY_NOTICES.txt", source });

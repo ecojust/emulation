@@ -157,11 +157,30 @@ pub fn solve_ik_candidates(
     pose: &Pose,
     seed: &JointAngles,
 ) -> Vec<RawCandidate> {
+    solve_ik_candidates_cancellable(model, pose, seed, &mut || false)
+        .expect("a non-cancellable IK query cannot be cancelled")
+}
+
+fn check_ik_cancelled(cancelled: &mut impl FnMut() -> bool) -> Result<(), String> {
+    if cancelled() {
+        Err("端点逆解检查已取消".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn solve_ik_candidates_cancellable(
+    model: &RobotModel,
+    pose: &Pose,
+    seed: &JointAngles,
+    cancelled: &mut impl FnMut() -> bool,
+) -> Result<Vec<RawCandidate>, String> {
+    check_ik_cancelled(cancelled)?;
     if pose.position.iter().chain(seed).any(|v| !v.is_finite()) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let Ok(target_rotation) = quaternion_to_matrix(&pose.orientation) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let g = &model.geometry;
     let wrist = [
@@ -176,7 +195,7 @@ pub fn solve_ik_candidates(
     let cosine = (rho * rho + vertical * vertical - g.upper_arm_mm.powi(2) - lower * lower)
         / (2. * g.upper_arm_mm * lower);
     if !cosine.is_finite() || !(-1. - 1e-10..=1. + 1e-10).contains(&cosine) {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let elbow_angle = cosine.clamp(-1., 1.).acos();
     let shoulder_base = if rho < 1e-8 {
@@ -191,6 +210,7 @@ pub fn solve_ik_candidates(
         equivalent_angles(angle, model.limits[i].min_deg, model.limits[i].max_deg)
     };
     for shoulder in [shoulder_base, shoulder_base + PI] {
+        check_ik_cancelled(cancelled)?;
         let horizontal = wrist[0] * shoulder.cos() + wrist[1] * shoulder.sin();
         for bend in [elbow_angle, -elbow_angle] {
             let shoulder_angle = FRAC_PI_2 - vertical.atan2(horizontal)
@@ -234,6 +254,7 @@ pub fn solve_ik_candidates(
                             for &q4 in values(*a4, 3).iter() {
                                 for &q5 in values(*a5, 4).iter() {
                                     for &q6 in values(*a6, 5).iter() {
+                                        check_ik_cancelled(cancelled)?;
                                         let joints = [q1, q2, elbow, q4, q5, q6];
                                         let key = joints.map(|v| (v * 1e6).round() as i64);
                                         if seen.contains(&key) {
@@ -273,16 +294,35 @@ pub fn solve_ik_candidates(
             }
         }
     }
+    check_ik_cancelled(cancelled)?;
     candidates.sort_unstable_by(|a, b| {
         a.score
             .total_cmp(&b.score)
             .then_with(|| lexical_joints(&a.joints, &b.joints))
     });
-    candidates
+    check_ik_cancelled(cancelled)?;
+    Ok(candidates)
 }
 
 pub fn inverse_kinematics(model: &RobotModel, pose: &Pose, seed: &JointAngles) -> Vec<IkSolution> {
-    solve_ik_candidates(model, pose, seed)
+    candidates_to_solutions(solve_ik_candidates(model, pose, seed))
+}
+
+/// Endpoint-only inspection can be interrupted without returning a partial set of branches.
+pub fn inverse_kinematics_cancellable(
+    model: &RobotModel,
+    pose: &Pose,
+    seed: &JointAngles,
+    mut cancelled: impl FnMut() -> bool,
+) -> Result<Vec<IkSolution>, String> {
+    let candidates = solve_ik_candidates_cancellable(model, pose, seed, &mut cancelled)?;
+    let result = candidates_to_solutions(candidates);
+    check_ik_cancelled(&mut cancelled)?;
+    Ok(result)
+}
+
+fn candidates_to_solutions(candidates: Vec<RawCandidate>) -> Vec<IkSolution> {
+    candidates
         .into_iter()
         .filter_map(|candidate| {
             let configuration = candidate.configuration?;

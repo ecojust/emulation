@@ -1,6 +1,9 @@
 //! JSON-lines diagnostic executable. This is a test/benchmark bridge, not a desktop sidecar.
 use emulation_core::{
     collision::{check_collisions, CollisionRequest},
+    endpoint_inspection::{inspect_endpoint, EndpointInspectionRequest},
+    generic_kinematics::{forward_generic_kinematics, GenericChain},
+    generic_planner::{plan_generic_move_l, GenericPlanRequest},
     kinematics, model, planner,
     types::{JointAngles, PlanRequest, Pose},
 };
@@ -29,6 +32,16 @@ enum Command {
     Collision {
         request: CollisionRequest,
     },
+    Inspect {
+        request: EndpointInspectionRequest,
+    },
+    GenericFk {
+        chain: GenericChain,
+        joints: JointAngles,
+    },
+    GenericPlan {
+        request: GenericPlanRequest,
+    },
 }
 
 fn execute(command: Command) -> Result<Value, String> {
@@ -52,6 +65,17 @@ fn execute(command: Command) -> Result<Value, String> {
         }
         Command::Collision { request } => {
             serde_json::to_value(check_collisions(&request, &AtomicBool::new(false))?)
+                .map_err(|e| e.to_string())
+        }
+        Command::Inspect { request } => {
+            serde_json::to_value(inspect_endpoint(&request)?).map_err(|e| e.to_string())
+        }
+        Command::GenericFk { chain, joints } => {
+            serde_json::to_value(forward_generic_kinematics(&chain, &joints)?)
+                .map_err(|e| e.to_string())
+        }
+        Command::GenericPlan { request } => {
+            serde_json::to_value(plan_generic_move_l(&request, &AtomicBool::new(false)))
                 .map_err(|e| e.to_string())
         }
     }

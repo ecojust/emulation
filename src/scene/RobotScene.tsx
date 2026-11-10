@@ -6,11 +6,18 @@ import { normalizeWheelDelta, smoothDistance } from "./smooth-zoom";
 import { createValidatedRenderer } from "./webgl-context";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
 import { forwardKinematics } from "../robot/kinematics";
-import type { JointAngles, Mat4, MotionSample, Pose, RobotModel } from "../robot/types";
+import type { JointAngles, Mat4, MotionSample, Pose, RobotModel, Vec3 } from "../robot/types";
 import type { CollisionZone } from "../robot/collision";
 import type { PreparedUrdfModel, UrdfVisual } from "../catalog/urdf-types";
 import { forwardUrdfKinematics, urdfLinkMatrices, urdfOriginMatrix } from "../catalog/kinematics";
 import "./scene.css";
+
+export interface ScenePath {
+  id: string;
+  name: string;
+  points: { id: string; name?: string; pose: Pose }[];
+  selected?: boolean;
+}
 
 export interface RobotSceneProps {
   urdfModel?: PreparedUrdfModel;
@@ -33,6 +40,11 @@ export interface RobotSceneProps {
   onJogEnd?: () => void;
   dangerZones?: (CollisionZone & { name?: string })[];
   selectedDangerZoneId?: string;
+  zoneManipulationEnabled?: boolean;
+  onDangerZoneMove?: (id: string, centerMm: Vec3) => void;
+  onDangerZoneDrag?: (dragging: boolean) => void;
+  scenePaths?: ScenePath[];
+  selectedPointId?: string | null;
 }
 
 interface DangerVisual {
@@ -42,6 +54,14 @@ interface DangerVisual {
   edges: THREE.LineSegments<THREE.EdgesGeometry, THREE.LineBasicMaterial>;
   caption: THREE.Sprite;
   text: string;
+}
+
+interface PathVisual {
+  root: THREE.Group;
+  line: THREE.Line<THREE.BufferGeometry, THREE.LineDashedMaterial>;
+  points: THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>;
+  signature: string;
+  source: ScenePath;
 }
 
 interface SceneState {
@@ -62,15 +82,24 @@ interface SceneState {
   dirty: boolean;
   zoomTarget: number;
   jogObject: THREE.Object3D;
+  zoneObject: THREE.Object3D;
+  manipulationTarget: "tcp" | "zone" | "none";
+  manipulatedZoneId: string | null;
   transform: TransformControls;
-  finishJog: () => void;
+  finishDrag: () => void;
   draggingPointer: number | null;
   dangerZones: Map<string, DangerVisual>;
+  scenePaths: Map<string, PathVisual>;
+  selectedPoint: THREE.Group;
+  selectedPointCaption: THREE.Sprite;
+  selectedPointText: string;
+  selectedPointId: string | null;
   genericLinks: { mesh: THREE.Mesh; link: string; visual: UrdfVisual }[];
   genericFocus: THREE.Vector3 | null;
   genericRadius: number;
   genericModelId: string | null;
   genericJoints: readonly number[];
+  robotJoints: readonly number[];
   grid: THREE.GridHelper;
   ground: THREE.Mesh;
   key: THREE.DirectionalLight;
@@ -79,6 +108,18 @@ interface SceneState {
 const SCALE = 0.001;
 const PARTS = ["base_link", "link_1", "link_2", "link_3", "link_4", "link_5", "link_6"];
 const AXIS_COLORS = [0xe35454, 0x46a88a, 0x557bd1];
+const MAX_SCENE_COORDINATE_MM = 1e6;
+
+function usableZone(zone: CollisionZone | undefined): zone is CollisionZone {
+  return Boolean(zone?.enabled && zone.centerMm.length === 3 && zone.sizeMm.length === 3
+    && zone.centerMm.every(value => Number.isFinite(value) && Math.abs(value) <= MAX_SCENE_COORDINATE_MM)
+    && zone.sizeMm.every(value => Number.isFinite(value) && value > 0 && value <= MAX_SCENE_COORDINATE_MM));
+}
+
+function validScenePose(pose: Pose): boolean {
+  return pose.position.length === 3 && pose.position.every(value => Number.isFinite(value) && Math.abs(value) <= MAX_SCENE_COORDINATE_MM)
+    && pose.orientation.length === 4 && pose.orientation.every(Number.isFinite) && Math.hypot(...pose.orientation) > 0;
+}
 
 /** Robot matrices use row-major millimetres; Three matrices are column-major. */
 function matrix(value: Mat4, metres = false): THREE.Matrix4 {
@@ -188,8 +229,7 @@ function updateDangerZones(state: SceneState, zones: RobotSceneProps["dangerZone
       state.dangerZones.set(zone.id, visual);
       state.scene.add(visual.root);
     }
-    const valid = zone.enabled && zone.centerMm.length === 3 && zone.sizeMm.length === 3
-      && zone.centerMm.every(Number.isFinite) && zone.sizeMm.every(value => Number.isFinite(value) && value > 0);
+    const valid = usableZone(zone);
     visual.root.visible = Boolean(valid);
     if (valid) {
       visual.root.position.fromArray(zone.centerMm).multiplyScalar(SCALE);
@@ -209,6 +249,66 @@ function updateDangerZones(state: SceneState, zones: RobotSceneProps["dangerZone
     visual.mesh.material.opacity = selected ? 0.16 : 0.08;
     visual.edges.material.opacity = selected ? 0.95 : 0.55;
     visual.edges.material.color.setHex(selected ? 0xec2938 : 0xc75a62);
+  }
+  state.dirty = true;
+}
+
+function updateScenePaths(state: SceneState, paths: ScenePath[] = [], selectedPointId?: string | null): void {
+  const retained = new Set(paths.map(path => path.id));
+  for (const [id, visual] of state.scenePaths) if (!retained.has(id)) {
+    state.scene.remove(visual.root);
+    disposeTree(visual.root);
+    state.scenePaths.delete(id);
+  }
+  let selected: ScenePath["points"][number] | undefined;
+  for (const path of paths) {
+    let visual = state.scenePaths.get(path.id);
+    if (!visual) {
+      const root = new THREE.Group();
+      const geometry = new THREE.BufferGeometry();
+      const line = new THREE.Line(geometry, new THREE.LineDashedMaterial({
+        color: 0x507aa5, dashSize: 0.018, gapSize: 0.012, transparent: true, opacity: 0.65, depthWrite: false,
+      }));
+      const points = new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0x507aa5, size: 6, sizeAttenuation: false, depthWrite: false }));
+      line.renderOrder = 5; points.renderOrder = 6;
+      root.add(line, points);
+      visual = { root, line, points, signature: "", source: path };
+      state.scenePaths.set(path.id, visual);
+      state.scene.add(root);
+    }
+    visual.root.name = `Path ${path.name}`;
+    visual.source = path;
+    const valid = path.points.every(point => validScenePose(point.pose));
+    visual.root.visible = valid && path.points.length > 0;
+    const signature = JSON.stringify(path.points.map(point => point.pose.position));
+    if (valid && signature !== visual.signature) {
+      visual.line.geometry.dispose(); // Shared by line and point markers.
+      const geometry = new THREE.BufferGeometry().setFromPoints(path.points.map(point => new THREE.Vector3(...point.pose.position).multiplyScalar(SCALE)));
+      visual.line.geometry = geometry;
+      visual.points.geometry = geometry;
+      visual.line.computeLineDistances();
+      visual.signature = signature;
+    }
+    visual.line.visible = path.points.length > 1;
+    visual.line.material.color.setHex(path.selected ? 0x2c6fa5 : 0x7892ac);
+    visual.line.material.opacity = path.selected ? 0.95 : 0.5;
+    visual.points.material.color.setHex(path.selected ? 0x2c6fa5 : 0x7892ac);
+    if (valid) selected ??= path.points.find(point => point.id === selectedPointId);
+  }
+  state.selectedPoint.visible = Boolean(selected);
+  state.selectedPointId = selected?.id ?? null;
+  if (selected) {
+    setPose(state.selectedPoint, selected.pose);
+    const text = Array.from(selected.name?.trim() || selected.id).slice(0, 28).join("");
+    if (text !== state.selectedPointText) {
+      state.selectedPoint.remove(state.selectedPointCaption);
+      disposeTree(state.selectedPointCaption);
+      const caption = label(text, "#94631d", 0.15);
+      caption.position.set(0, 0, 0.066);
+      state.selectedPoint.add(caption);
+      state.selectedPointCaption = caption;
+      state.selectedPointText = text;
+    }
   }
   state.dirty = true;
 }
@@ -254,6 +354,7 @@ function updateRobot(state: SceneState, props: RobotSceneProps): void {
     state.tcp.visible = tool !== null;
     if (tool) setPose(state.tcp, tool);
     state.genericJoints = [...joints];
+    state.robotJoints = [...joints];
     state.frames.visible = false;
     state.ghost.visible = false;
     state.target.visible = false;
@@ -270,6 +371,7 @@ function updateRobot(state: SceneState, props: RobotSceneProps): void {
     link.matrixWorldNeedsUpdate = true;
   });
   setPose(state.tcp, fk.pose);
+  state.robotJoints = [...props.joints];
   if (state.draggingPointer === null && !props.jogPending) setPose(state.jogObject, fk.pose);
   const tcpCaption = state.tcp.getObjectByName("pose-caption");
   if (tcpCaption) tcpCaption.visible = !props.targetPose || Math.hypot(...fk.pose.position.map((value, i) => value - props.targetPose!.position[i])) > 5;
@@ -307,6 +409,13 @@ function updateDiagnostics(state: SceneState): void {
   canvas.dataset.urdfModel = state.genericModelId ?? "";
   canvas.dataset.urdfVisualCount = state.genericLinks.length.toString();
   canvas.dataset.urdfJoints = JSON.stringify(state.genericJoints);
+  canvas.dataset.robotJoints = JSON.stringify(state.robotJoints);
+  const bodyPosition = state.tcp.getWorldPosition(new THREE.Vector3());
+  const bodyQuaternion = state.tcp.getWorldQuaternion(new THREE.Quaternion());
+  canvas.dataset.robotPose = state.tcp.visible ? JSON.stringify({
+    position: bodyPosition.toArray().map(value => value / SCALE),
+    orientation: [bodyQuaternion.w, bodyQuaternion.x, bodyQuaternion.y, bodyQuaternion.z],
+  }) : "null";
   canvas.dataset.urdfToolPose = state.genericModelId && state.tcp.visible ? JSON.stringify({
     position: state.tcp.position.toArray().map(v => v / SCALE),
     orientation: [state.tcp.quaternion.w, state.tcp.quaternion.x, state.tcp.quaternion.y, state.tcp.quaternion.z],
@@ -315,17 +424,23 @@ function updateDiagnostics(state: SceneState): void {
     const bounds = new THREE.Box3().setFromObject(state.robot);
     canvas.dataset.urdfBounds = JSON.stringify({ min: bounds.min.toArray(), max: bounds.max.toArray() });
   } else delete canvas.dataset.urdfBounds;
-  canvas.dataset.jogDragging = String(state.draggingPointer !== null);
+  canvas.dataset.gizmoTarget = state.manipulationTarget;
+  canvas.dataset.zoneId = state.manipulatedZoneId ?? "";
+  canvas.dataset.zoneDragging = String(state.draggingPointer !== null && state.manipulationTarget === "zone");
+  canvas.dataset.zonePositionMm = JSON.stringify(state.zoneObject.position.toArray().map(value => value / SCALE));
+  canvas.dataset.orbitEnabled = String(controls.enabled);
+  canvas.dataset.jogDragging = String(state.draggingPointer !== null && state.manipulationTarget === "tcp");
   canvas.dataset.jogMode = transform.mode;
   canvas.dataset.jogSpace = transform.space;
-  canvas.dataset.jogAxis = transform.axis ?? "";
+  canvas.dataset.jogAxis = state.manipulationTarget === "tcp" ? transform.axis ?? "" : "";
+  canvas.dataset.zoneAxis = state.manipulationTarget === "zone" ? transform.axis ?? "" : "";
   canvas.dataset.jogPose = JSON.stringify({ position: jogObject.position.toArray().map(v => v / SCALE), orientation: [jogObject.quaternion.w, jogObject.quaternion.x, jogObject.quaternion.y, jogObject.quaternion.z] });
   const handles: Record<string, { x: number; y: number }> = {};
   if (transform.enabled && transform.getHelper().visible) {
     const gizmo = transform.getHelper().children.find(child => (child as TransformControlsGizmo).isTransformControlsGizmo) as TransformControlsGizmo | undefined;
     const picker = gizmo?.picker[transform.mode];
     const raycaster = new THREE.Raycaster();
-    const origin = jogObject.position.clone().project(camera);
+    const origin = (state.manipulationTarget === "zone" ? state.zoneObject : jogObject).position.clone().project(camera);
     if (picker) for (const axis of ["X", "Y", "Z"]) {
       const meshes = picker.children.filter(child => child.name === axis && child.visible) as THREE.Mesh[];
       for (const mesh of meshes) {
@@ -357,7 +472,8 @@ function updateDiagnostics(state: SceneState): void {
       }
     }
   }
-  canvas.dataset.jogHandles = JSON.stringify(handles);
+  canvas.dataset.jogHandles = JSON.stringify(state.manipulationTarget === "tcp" ? handles : {});
+  canvas.dataset.zoneHandles = JSON.stringify(state.manipulationTarget === "zone" ? handles : {});
   const dangerZones = [...state.dangerZones].map(([id, visual]) => {
     if (!visual.root.visible) return { id, enabled: false };
     const bounds = new THREE.Box3().setFromObject(visual.body);
@@ -369,6 +485,15 @@ function updateDiagnostics(state: SceneState): void {
   canvas.dataset.dangerZones = JSON.stringify(dangerZones);
   // Retain the single-zone diagnostic alias for existing read-only tooling.
   canvas.dataset.dangerZone = JSON.stringify(dangerZones[0] ?? { enabled: false });
+  canvas.dataset.scenePaths = JSON.stringify([...state.scenePaths.values()].map(visual => ({
+    id: visual.source.id, name: visual.source.name, selected: Boolean(visual.source.selected), visible: visual.root.visible,
+    points: visual.source.points.map(point => ({ id: point.id, name: point.name ?? point.id, position: point.pose.position, orientation: point.pose.orientation })),
+  })));
+  canvas.dataset.selectedPointId = state.selectedPointId ?? "";
+  canvas.dataset.selectedPointPose = state.selectedPoint.visible ? JSON.stringify({
+    position: state.selectedPoint.position.toArray().map(value => value / SCALE),
+    orientation: [state.selectedPoint.quaternion.w, state.selectedPoint.quaternion.x, state.selectedPoint.quaternion.y, state.selectedPoint.quaternion.z],
+  }) : "null";
 }
 
 export default function RobotScene(props: RobotSceneProps) {
@@ -382,6 +507,12 @@ export default function RobotScene(props: RobotSceneProps) {
   const [compatibilityGraphics, setCompatibilityGraphics] = useState(false);
   const [generation, setGeneration] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const selectedZone = props.dangerZones?.find(zone => zone.id === props.selectedDangerZoneId);
+  const zoneTargetId = props.zoneManipulationEnabled && props.onDangerZoneMove && usableZone(selectedZone) ? selectedZone.id : null;
+  const tcpManipulationEnabled = !props.zoneManipulationEnabled && !props.urdfModel && Boolean(props.jogEnabled);
+  const gizmoMode = zoneTargetId ? "translate" : props.jogMode ?? "translate";
+  const gizmoSpace = zoneTargetId ? "world" : props.jogSpace ?? "world";
+  const gizmoResetRevision = zoneTargetId ? 0 : props.jogResetRevision;
 
   useEffect(() => {
     const element = host.current;
@@ -483,6 +614,23 @@ export default function RobotScene(props: RobotSceneProps) {
     const jogObject = new THREE.Object3D();
     jogObject.name = "Requested tool0 pose";
     scene.add(jogObject);
+    const zoneObject = new THREE.Object3D();
+    zoneObject.name = "Selected danger zone center";
+    scene.add(zoneObject);
+    const selectedPoint = new THREE.Group();
+    selectedPoint.name = "Selected Path point";
+    const pointAxes = new THREE.AxesHelper(0.06);
+    for (const material of Array.isArray(pointAxes.material) ? pointAxes.material : [pointAxes.material]) material.depthTest = false;
+    pointAxes.renderOrder = 22;
+    const selectedMarker = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3()]), new THREE.PointsMaterial({
+      color: 0xe1a13a, size: 11, sizeAttenuation: false, depthTest: false, depthWrite: false,
+    }));
+    selectedMarker.renderOrder = 23;
+    const selectedPointCaption = label("POINT", "#94631d", 0.15);
+    selectedPointCaption.position.set(0, 0, 0.066);
+    selectedPoint.add(pointAxes, selectedMarker, selectedPointCaption);
+    selectedPoint.visible = false;
+    scene.add(selectedPoint);
     const transform = new TransformControls(camera, renderer.domElement);
     // Route gizmo events in capture phase so OrbitControls never starts the same drag.
     transform.disconnect();
@@ -496,8 +644,9 @@ export default function RobotScene(props: RobotSceneProps) {
     helper.visible = false;
     scene.add(helper);
     const local: SceneState = { scene, camera, controls, renderer, robot, ghost, frames, tcp, target, path, start, links: [], ghostLinks: [], zeroInverse: [], dirty: true,
-      zoomTarget: 1, jogObject, transform, finishJog: () => {}, draggingPointer: null, dangerZones: new Map(),
-      genericLinks: [], genericFocus: null, genericRadius: 1, genericModelId: null, genericJoints: [], grid, ground, key };
+      zoomTarget: 1, jogObject, zoneObject, manipulationTarget: "none", manipulatedZoneId: null, transform, finishDrag: () => {}, draggingPointer: null, dangerZones: new Map(),
+      scenePaths: new Map(), selectedPoint, selectedPointCaption, selectedPointText: "POINT", selectedPointId: null,
+      genericLinks: [], genericFocus: null, genericRadius: 1, genericModelId: null, genericJoints: [], robotJoints: [], grid, ground, key };
     const canvas = renderer.domElement;
     const poseFromJog = (): Pose => ({ position: jogObject.position.toArray().map(v => v / SCALE) as Pose["position"], orientation: [jogObject.quaternion.w, jogObject.quaternion.x, jogObject.quaternion.y, jogObject.quaternion.z] });
     // Three's public pointer methods consume normalized x/y/button objects.
@@ -514,20 +663,33 @@ export default function RobotScene(props: RobotSceneProps) {
       local.zoomTarget = camera.position.distanceTo(controls.target);
       controls.enabled = false;
     };
-    const finishJog = () => {
+    const finishDrag = () => {
       const id = local.draggingPointer;
       if (id === null) return;
+      const target = local.manipulationTarget;
       local.draggingPointer = null;
       transform.pointerUp({ button: 0 } as PointerEvent);
       if (canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id);
       controls.enabled = true;
-      latest.current.onJogEnd?.();
-      if (!latest.current.urdfModel && !latest.current.jogPending) setPose(jogObject, forwardKinematics(latest.current.model, latest.current.joints).pose);
+      if (target === "zone") latest.current.onDangerZoneDrag?.(false);
+      else if (target === "tcp") {
+        latest.current.onJogEnd?.();
+        if (!latest.current.urdfModel && !latest.current.jogPending) setPose(jogObject, forwardKinematics(latest.current.model, latest.current.joints).pose);
+      }
       local.dirty = true;
     };
-    local.finishJog = finishJog;
+    local.finishDrag = finishDrag;
+    const targetIsEnabled = () => {
+      const current = latest.current;
+      if (local.manipulationTarget === "zone") {
+        return Boolean(current.zoneManipulationEnabled && current.selectedDangerZoneId === local.manipulatedZoneId
+          && current.onDangerZoneMove
+          && usableZone(current.dangerZones?.find(zone => zone.id === local.manipulatedZoneId)));
+      }
+      return local.manipulationTarget === "tcp" && !current.zoneManipulationEnabled && !current.urdfModel && Boolean(current.jogEnabled);
+    };
     const onPointerDown = (event: PointerEvent) => {
-      if (!latest.current.jogEnabled || latest.current.jogPending || !transform.enabled || event.button !== 0 || local.draggingPointer !== null) return;
+      if (!targetIsEnabled() || (local.manipulationTarget === "tcp" && latest.current.jogPending) || !transform.enabled || event.button !== 0 || local.draggingPointer !== null) return;
       scene.updateMatrixWorld(true);
       transform.pointerHover(pointer(event));
       if (!transform.axis) return;
@@ -537,15 +699,17 @@ export default function RobotScene(props: RobotSceneProps) {
       if (!transform.dragging) { controls.enabled = true; return; }
       local.draggingPointer = event.pointerId;
       canvas.setPointerCapture(event.pointerId);
-      latest.current.onJogStart?.();
+      if (local.manipulationTarget === "zone") latest.current.onDangerZoneDrag?.(true);
+      else latest.current.onJogStart?.();
       local.dirty = true;
     };
     const onPointerMove = (event: PointerEvent) => {
       if (local.draggingPointer !== null) {
         if (event.pointerId !== local.draggingPointer) return;
+        if (!targetIsEnabled()) { finishDrag(); return; }
         event.preventDefault(); event.stopImmediatePropagation();
         transform.pointerMove(pointer(event, -1));
-      } else if (latest.current.jogEnabled && transform.enabled && event.buttons === 0) {
+      } else if (targetIsEnabled() && transform.enabled && event.buttons === 0) {
         scene.updateMatrixWorld(true);
         transform.pointerHover(pointer(event));
       }
@@ -553,9 +717,10 @@ export default function RobotScene(props: RobotSceneProps) {
     const onPointerUp = (event: PointerEvent) => {
       if (event.pointerId !== local.draggingPointer) return;
       event.preventDefault(); event.stopImmediatePropagation();
-      finishJog();
+      finishDrag();
     };
-    const onLostCapture = (event: PointerEvent) => { if (event.pointerId === local.draggingPointer) finishJog(); };
+    const onLostCapture = (event: PointerEvent) => { if (event.pointerId === local.draggingPointer) finishDrag(); };
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && local.draggingPointer !== null) { event.preventDefault(); finishDrag(); } };
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       if (!controls.enabled || local.draggingPointer !== null) return;
@@ -565,7 +730,17 @@ export default function RobotScene(props: RobotSceneProps) {
     };
     const onTransformChange = () => { local.dirty = true; };
     const onObjectChange = () => {
-      if (local.draggingPointer !== null) latest.current.onJogMove?.(poseFromJog());
+      if (local.draggingPointer !== null) {
+        if (!targetIsEnabled()) { finishDrag(); return; }
+        if (local.manipulationTarget === "zone" && local.manipulatedZoneId) {
+          const center = zoneObject.position.toArray().map(value => THREE.MathUtils.clamp(value / SCALE, -MAX_SCENE_COORDINATE_MM, MAX_SCENE_COORDINATE_MM)) as Vec3;
+          if (!center.every(Number.isFinite)) { finishDrag(); return; }
+          zoneObject.position.fromArray(center).multiplyScalar(SCALE);
+          // Move the visual immediately; React owns the final values and the inspection request.
+          local.dangerZones.get(local.manipulatedZoneId)?.root.position.copy(zoneObject.position);
+          latest.current.onDangerZoneMove?.(local.manipulatedZoneId, center);
+        } else latest.current.onJogMove?.(poseFromJog());
+      }
       local.dirty = true;
     };
     transform.addEventListener("change", onTransformChange);
@@ -576,7 +751,8 @@ export default function RobotScene(props: RobotSceneProps) {
     canvas.addEventListener("pointercancel", onPointerUp, true);
     canvas.addEventListener("lostpointercapture", onLostCapture);
     canvas.addEventListener("wheel", onWheel, { passive: false });
-    window.addEventListener("blur", finishJog);
+    window.addEventListener("blur", finishDrag);
+    window.addEventListener("keydown", onEscape);
     state.current = local;
     setView(local, latest.current.view);
     const resize = () => {
@@ -595,6 +771,7 @@ export default function RobotScene(props: RobotSceneProps) {
     let raf = 0;
     const lost = (event: Event) => {
       event.preventDefault();
+      finishDrag();
       contextLost = true;
       setGraphicsError("3D 图形上下文已中断，正在等待浏览器恢复。也可刷新页面重试。");
     };
@@ -639,15 +816,17 @@ export default function RobotScene(props: RobotSceneProps) {
       cancelAnimationFrame(raf);
       observer.disconnect();
       const captured = local.draggingPointer;
-      local.draggingPointer = null; // Unmount must not schedule new application work.
+      local.draggingPointer = null; // Unmount must not schedule any new robot motion.
       if (captured !== null && canvas.hasPointerCapture(captured)) canvas.releasePointerCapture(captured);
+      if (captured !== null && local.manipulationTarget === "zone") latest.current.onDangerZoneDrag?.(false);
       canvas.removeEventListener("pointerdown", onPointerDown, true);
       canvas.removeEventListener("pointermove", onPointerMove, true);
       canvas.removeEventListener("pointerup", onPointerUp, true);
       canvas.removeEventListener("pointercancel", onPointerUp, true);
       canvas.removeEventListener("lostpointercapture", onLostCapture);
       canvas.removeEventListener("wheel", onWheel);
-      window.removeEventListener("blur", finishJog);
+      window.removeEventListener("blur", finishDrag);
+      window.removeEventListener("keydown", onEscape);
       transform.removeEventListener("change", onTransformChange);
       transform.removeEventListener("objectChange", onObjectChange);
       scene.remove(helper);
@@ -822,17 +1001,44 @@ export default function RobotScene(props: RobotSceneProps) {
   }, [props.dangerZones, props.selectedDangerZoneId, mounted]);
 
   useEffect(() => {
+    if (state.current) updateScenePaths(state.current, props.scenePaths, props.selectedPointId);
+  }, [props.scenePaths, props.selectedPointId, mounted]);
+
+  useEffect(() => {
     const local = state.current;
     if (!local) return;
-    local.finishJog();
-    const enabled = !props.urdfModel && Boolean(props.jogEnabled);
-    local.transform.enabled = enabled;
-    local.transform.setMode(props.jogMode ?? "translate");
-    local.transform.setSpace(props.jogSpace ?? "world");
-    local.transform.getHelper().visible = enabled;
-    if (!props.urdfModel) setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
+    local.finishDrag();
+    local.manipulatedZoneId = zoneTargetId;
+    if (zoneTargetId) {
+      const zone = props.dangerZones!.find(zone => zone.id === zoneTargetId)!;
+      local.manipulationTarget = "zone";
+      local.zoneObject.position.fromArray(zone.centerMm).multiplyScalar(SCALE);
+      local.zoneObject.quaternion.identity();
+      local.transform.attach(local.zoneObject);
+      local.transform.setMode("translate");
+      local.transform.setSpace("world");
+    } else if (tcpManipulationEnabled) {
+      local.manipulationTarget = "tcp";
+      setPose(local.jogObject, forwardKinematics(props.model, props.joints).pose);
+      local.transform.attach(local.jogObject);
+      local.transform.setMode(gizmoMode);
+      local.transform.setSpace(gizmoSpace);
+    } else {
+      local.manipulationTarget = "none";
+      local.transform.detach();
+    }
+    local.transform.enabled = local.manipulationTarget !== "none";
+    local.transform.getHelper().visible = local.transform.enabled;
     local.dirty = true;
-  }, [props.model, props.urdfModel, props.jogEnabled, props.jogMode, props.jogSpace, props.jogResetRevision, mounted]);
+  }, [props.model, props.urdfModel, tcpManipulationEnabled, gizmoMode, gizmoSpace, gizmoResetRevision, zoneTargetId, mounted]);
+
+  useEffect(() => {
+    const local = state.current;
+    if (!local || local.manipulationTarget !== "zone" || local.draggingPointer !== null) return;
+    const zone = props.dangerZones?.find(zone => zone.id === local.manipulatedZoneId);
+    if (usableZone(zone)) local.zoneObject.position.fromArray(zone.centerMm).multiplyScalar(SCALE);
+    local.dirty = true;
+  }, [props.dangerZones, zoneTargetId, mounted]);
 
   useEffect(() => {
     const local = state.current;
@@ -842,12 +1048,13 @@ export default function RobotScene(props: RobotSceneProps) {
   }, [props.jogPending, props.joints, props.urdfModel]);
 
   useEffect(() => {
-    if (state.current) { state.current.finishJog(); setView(state.current, props.view); }
+    if (state.current) { state.current.finishDrag(); setView(state.current, props.view); }
   }, [props.view, props.viewRevision, mounted]);
 
   const totalParts = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? 7;
   return <div className="robot-scene" aria-label="机器人三维视图">
     <div className="robot-scene-canvas" ref={host} />
+    {props.scenePaths?.some(path => path.points.length > 1) && <div className="scene-path-legend" aria-label="Path 连线说明"><span />Path · 目标点连线，尚未验证运动</div>}
     {!graphicsError && <div className={`scene-model-status${loadError ? " scene-load-error" : ""}`} role="status" data-loaded-parts={loaded}>
       <span>{loadError || (loaded === totalParts ? `机器人模型已加载 · ${loaded}/${totalParts}` : `正在加载机器人模型 ${loaded}/${totalParts}`)}</span>
       {compatibilityGraphics && !loadError && <span className="scene-compatibility-mode">兼容图形模式</span>}

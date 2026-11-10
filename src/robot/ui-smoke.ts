@@ -1,6 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { nativeDesktop, solveMotion } from './client';
 import type { PlanRequest, PlanResult } from './types';
+import type { CollisionResult } from './collision-geometry';
+import { inspectEndpoint } from './endpoint-inspection';
+import { buildGenericChain } from './generic-motion-chain';
+import { solveGenericMotion } from './generic-motion';
 import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel } from '../catalog/client';
 
 let started = false;
@@ -49,19 +53,40 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
   const resources: ResourceCheck[] = [];
   let stage = 'bundled-model';
   const catalogEvidence: Record<string, unknown> = {};
+  const nativeEvidence: Record<string, unknown> = {};
   window.addEventListener('error', event => errors.push(event.message));
   window.addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
   try {
     const result = await solveMotion(request);
     if (result.status !== 'success' || result.path.length < 7 || Math.abs(result.selected.pose.position[1] - 30) > 0.001) throw new Error('Native IPC returned an invalid motion path');
-    show(result);
     const file = await invoke<{ fileName: string; content: string }>('preview_program', { requestId: crypto.randomUUID(), request: { programName: 'UiSmoke', controller: 'abb_rapid', motion: request } });
     if (!file.fileName.endsWith('.mod') || !file.content.includes('MODULE UiSmoke') || !file.content.includes('CJointT') || !file.content.includes('MoveL')) throw new Error('Native module IPC returned an invalid module');
-    const interference = await invoke<{ id: string; collidingLinks: number[]; zones: { zoneId: string; collidingLinks: number[] }[] }[]>('check_collisions', {
+    const alternatives = await inspectEndpoint({ modelId: request.modelId, pose: result.selected.pose, seedJoints: result.selected.joints });
+    if (!alternatives.length || !alternatives.some(solution => solution.configuration.every((value, index) => value === result.selected.configuration[index])
+      && solution.joints.every((value, index) => Math.abs(value - result.selected.joints[index]) < 1e-4))) throw new Error('Native endpoint inspection did not recover the recorded posture');
+    nativeEvidence.endpointAlternatives = alternatives.length;
+    const interference = await invoke<CollisionResult[]>('check_collisions', {
       requestId: crypto.randomUUID(),
       request: { modelId: request.modelId, zones: [{ id: 'smoke-zone', enabled: true, centerMm: [0, 0, 400], sizeMm: [4000, 4000, 4000] }], solutions: [{ id: 'ui-smoke', joints: request.startJoints }] },
     });
-    if (interference.length !== 1 || interference[0].id !== 'ui-smoke' || interference[0].collidingLinks.length !== 7 || interference[0].zones[0]?.zoneId !== 'smoke-zone') throw new Error('Native bounding-box inspection IPC returned an invalid result');
+    if (interference.length !== 1 || interference[0].id !== 'ui-smoke' || interference[0].collidingLinks.length !== 7 || interference[0].uncertainLinks.length || interference[0].zones[0]?.zoneId !== 'smoke-zone') throw new Error('Native mesh inspection IPC returned an invalid result');
+    const meshCases = await invoke<CollisionResult[]>('check_collisions', {
+      requestId: crypto.randomUUID(),
+      request: {
+        modelId: request.modelId,
+        solutions: [{ id: 'base-mesh', joints: [0, 0, 0, 0, 0, 0] }],
+        zones: [
+          { id: 'empty-corner', enabled: true, centerMm: [75, 75, 80], sizeMm: [4, 4, 4] },
+          { id: 'surface', enabled: true, centerMm: [0, 70, 100], sizeMm: [4, 4, 4] },
+          { id: 'contained', enabled: true, centerMm: [0, 0, 50], sizeMm: [2, 2, 2] },
+        ],
+      },
+    });
+    const meshResult = meshCases[0];
+    if (meshCases.length !== 1 || meshResult?.id !== 'base-mesh' || meshResult.uncertainLinks.length
+      || meshResult.zones.length !== 2 || meshResult.zones[0].zoneId !== 'surface' || meshResult.zones[1].zoneId !== 'contained'
+      || meshResult.zones.some(zone => zone.collidingLinks.length !== 1 || zone.collidingLinks[0] !== 0 || zone.uncertainLinks.length)) throw new Error('Native triangle/containment inspection IPC failed real STL cases');
+    nativeEvidence.meshCases = ['empty-corner-clear', 'surface-hit', 'contained-hit'];
     // Check packaged files independently from rendering, so a missing GPU cannot
     // be misreported as a missing STL. Preserve each response in failure evidence.
     await Promise.all(['irb1100-4-0.58', 'irb1100-4-0.475'].flatMap(model => ['base_link', 'link_1', 'link_2', 'link_3', 'link_4', 'link_5', 'link_6'].map(async name => {
@@ -75,6 +100,9 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       } catch (cause) { entry.error = String(cause); }
     })));
     if (resources.some(resource => resource.error)) throw new Error('Packaged STL resource verification failed');
+    // Publish the point after direct native checks finish, so background inspector
+    // requests triggered by selection cannot be preempted by the smoke export.
+    show(result);
     const until = performance.now() + 20000;
     while (!document.querySelector('[data-loaded-parts="7"]') || !document.querySelector('.result-success')) {
       const graphicsError = document.querySelector('.scene-graphics-error')?.textContent;
@@ -127,12 +155,23 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       cached.dispose();
       if (downloadedAgain) throw new Error('Complete native model cache unexpectedly downloaded again');
       catalogEvidence.cacheReused = true;
+      stage = 'generic-native-motion';
+      const genericRequest = {
+        chain: buildGenericChain(loaded.model),
+        startJoints: [20, 15, -25, 25, 35, 10] as [number, number, number, number, number, number],
+        targetJoints: [21, 14.5, -24.25, 25.5, 34.25, 11] as [number, number, number, number, number, number],
+        speedMmPerSecond: 100,
+      };
+      const genericMotion = await solveGenericMotion(genericRequest, controller.signal);
+      if (genericMotion.status !== 'success' || genericMotion.path.length < 2
+        || genericMotion.path.at(-1)!.joints.some((angle, index) => Math.abs(angle - genericRequest.targetJoints[index]) > 1e-6)) throw new Error('Native GP7 straight motion did not reach the recorded joints');
+      nativeEvidence.genericMotionSamples = genericMotion.path.length;
       const activeGl = document.querySelector<HTMLCanvasElement>('.robot-scene canvas')?.getContext('webgl2');
       if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
     } finally { clearTimeout(deadline); }
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, native motion/interference IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, catalogEvidence, ...snapshot(resources) }) });
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
-    await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, catalogEvidence, ...snapshot(resources), errors }) });
+    await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });
   }
 }

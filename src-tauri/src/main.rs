@@ -2,8 +2,10 @@
 
 use emulation_core::{
     collision::{CollisionRequest, CollisionResult},
+    endpoint_inspection::EndpointInspectionRequest,
+    generic_planner::{GenericPlanRequest, GenericPlanResult},
     program::ProgramExportRequest,
-    types::{PlanRequest, PlanResult},
+    types::{IkSolution, PlanRequest, PlanResult},
 };
 use emulation_desktop::{
     engine::{Engine, Reply, Work},
@@ -70,6 +72,22 @@ async fn solve_motion(
 }
 
 #[tauri::command]
+async fn solve_generic_motion(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: GenericPlanRequest,
+) -> Result<GenericPlanResult, String> {
+    match engine
+        .submit(request_id, Work::GenericPlan(request))?
+        .await
+        .map_err(|_| "原生 URDF 运动计算未完成")??
+    {
+        Reply::GenericPlan(result) => Ok(result),
+        _ => Err("原生 URDF 计算返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
 async fn check_collisions(
     engine: State<'_, Arc<Engine>>,
     request_id: String,
@@ -82,6 +100,22 @@ async fn check_collisions(
     {
         Reply::Collision(results) => Ok(results),
         _ => Err("原生干涉检查返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
+async fn inspect_endpoint(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: EndpointInspectionRequest,
+) -> Result<Vec<IkSolution>, String> {
+    match engine
+        .submit(request_id, Work::InspectEndpoint(request))?
+        .await
+        .map_err(|_| "端点逆解检查未完成")??
+    {
+        Reply::InspectEndpoint(solutions) => Ok(solutions),
+        _ => Err("原生端点检查返回类型错误".into()),
     }
 }
 
@@ -219,7 +253,9 @@ fn main() {
         .manage(UiSmoke { enabled: ui_smoke })
         .invoke_handler(tauri::generate_handler![
             solve_motion,
+            solve_generic_motion,
             check_collisions,
+            inspect_endpoint,
             cancel_motion,
             save_program,
             copy_rapid,

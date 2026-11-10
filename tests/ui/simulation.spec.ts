@@ -1,204 +1,189 @@
-import { expect, test, type Page } from "@playwright/test";
-import { expectCopyState, openProgram, openScene, readRapid, selectRobot } from "./workspace-helpers";
+import { expect, test } from '@playwright/test';
+import { forwardKinematics } from '../../src/robot/kinematics';
+import { getRobotModel } from '../../src/robot/model';
+import { bodyJoints, bodyPose, captureCurrent, checkedSegment, expectBodyJoints, expectCopyState, makePath, observeBrowser, openProgram, openScene, openWorkspace, programRows, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
 
-test.setTimeout(60_000);
+test.setTimeout(90_000);
+const ready = [0, 20, -30, 0, 40, 0];
 
-const longArm = "irb1100-4-0.58";
-const shortArm = "irb1100-4-0.475";
-const readyTarget = [444.89711, 30, 620.056465] as const;
-const readyQuaternion = [0.5, 0, 0.866025404, 0] as const;
-
-function observeBrowser(page: Page) {
-  const errors: string[] = [];
-  const meshes = new Set<string>();
-  page.on("pageerror", (error) => errors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`${message.text()} (${message.location().url})`);
-  });
-  page.on("response", (response) => {
-    const path = new URL(response.url()).pathname;
-    if (path.endsWith(".stl")) {
-      if (response.ok()) meshes.add(path);
-      else errors.push(`Mesh HTTP ${response.status()}: ${path}`);
-    }
-  });
-  return { errors, meshes };
-}
-
-async function loaded(page: Page, meshes: Set<string>, model = longArm) {
-  await expect(page.getByText("机器人模型已加载 · 7/7", { exact: true })).toBeVisible();
-  await expect.poll(() => [...meshes].filter((name) => name.includes(`/models/${model}/`)).length).toBe(7);
-  await expect(page.getByLabel("ABB IRB 1100 三维仿真场景")).toBeVisible();
-}
-
-async function setTarget(page: Page, position: readonly number[] = readyTarget) {
-  for (const [index, axis] of ["X", "Y", "Z"].entries()) {
-    await page.getByRole("spinbutton", { name: `目标 ${axis}`, exact: true }).fill(String(position[index]));
-  }
-}
-
-async function solveReady(page: Page) {
-  await page.getByRole("button", { name: "示例起始姿态", exact: true }).click();
-  await setTarget(page);
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toBeVisible();
-  await expectCopyState(page, true);
-}
-
-test("the workspace starts ready and explicitly selected mechanical zero refuses a singular MoveL start", async ({ page }) => {
-  const browser = observeBrowser(page);
-  await page.goto("/");
-  await loaded(page, browser.meshes);
-  await expect(page.getByRole("button", { name: "选择机器人型号", exact: true })).toContainText("IRB 1100-4/0.58");
-  await expect(page.getByRole("spinbutton", { name: "起始关节 J2", exact: true })).toHaveValue("20");
-  await expect(page.getByRole("spinbutton", { name: "起始关节 J5", exact: true })).toHaveValue("40");
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "机械零位", exact: true }).click();
-  for (let joint = 1; joint <= 6; joint++) await expect(page.getByRole("spinbutton", { name: `起始关节 J${joint}`, exact: true })).toHaveValue("0");
-  for (const [axis, coordinate] of [["X", 364], ["Y", 0], ["Z", 617]] as const) {
-    await expect.poll(async () => Number(await page.getByLabel("当前 TCP", { exact: true }).locator(`[data-axis="${axis}"] strong`).textContent())).toBe(coordinate);
-  }
-  await expectCopyState(page, false);
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(/起点处于奇异区域/);
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toHaveCount(0);
-  await expectCopyState(page, false);
-  await page.screenshot({ path: "/tmp/emulation-zero-pose.png", fullPage: true });
-  expect(browser.errors).toEqual([]);
-});
-
-test("a real worker validates a reachable path and emits copyable RAPID before animation", async ({ page, context }) => {
-  const browser = observeBrowser(page);
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.goto("/");
-  await loaded(page, browser.meshes);
-  await solveReady(page);
+test('robot selection exposes actual state and DH while mechanical zero cannot be recorded as a valid MoveL', async ({ page }) => {
+  const errors = observeBrowser(page);
+  await openWorkspace(page);
+  const objects = page.getByRole('complementary', { name: '场景对象', exact: true });
+  await expect(objects.getByLabel('当前 TCP', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('spinbutton', { name: /^起始关节|^目标 [XYZ]/ })).toHaveCount(0);
+  await expectBodyJoints(page, ready);
+  const dh = page.locator('details').filter({ hasText: 'DH 参数与关节范围' });
+  await dh.locator('summary').click();
+  await expect(dh.getByRole('row')).toHaveCount(7);
+  await page.getByRole('button', { name: '机械零位', exact: true }).click();
+  await expectBodyJoints(page, [0, 0, 0, 0, 0, 0]);
+  for (const [axis, coordinate] of [['X', '364.00'], ['Y', '0.00'], ['Z', '617.00']]) await expect(page.getByLabel('当前 TCP', { exact: true }).locator(`[data-axis="${axis}"] strong`)).toHaveText(coordinate);
+  await expect(page.getByRole('status', { name: '记录姿态提示', exact: true })).toContainText(/奇异|有效.*配置/);
   await openProgram(page);
-  await page.getByRole("button", { name: "复制 MoveL", exact: true }).click();
-  const rapid = await page.evaluate(() => navigator.clipboard.readText());
-  await openScene(page);
-  expect(rapid).toContain("ConfL \\On;");
-  expect(rapid).toContain("MoveL");
-  expect(rapid).toContain("tool0\\WObj:=wobj0");
-  expect(rapid).toMatch(/444\.897/);
-  expect(rapid).toContain("[0,-1,0,0]");
+  await page.getByRole('listbox', { name: 'MoveL 程序指令', exact: true }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: '插入当前姿态（MoveL）', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(programRows(page)).toHaveCount(0);
+  await expectCopyState(page, false);
+  await page.screenshot({ path: '/tmp/emulation-object-zero.png' });
+  expect(errors).toEqual([]);
+});
+
+test('real context capture and reversed multiselection create ordered Path objects without moving the selected point into the robot', async ({ page }) => {
+  const errors = observeBrowser(page);
+  await openWorkspace(page);
+  const first = await captureCurrent(page);
+  const firstPose = await bodyPose(page);
+  await setJoint(page, 1, 3);
+  const second = await captureCurrent(page);
+  const secondPose = await bodyPose(page);
+  const pathId = await makePath(page, [first, second]);
+  const pathTree = page.locator(`details.object-path`).filter({ has: page.locator(`[data-object-id="${pathId}"]`) });
+  await expect(pathTree.locator('[data-object-kind="target"]')).toHaveText([first.name, second.name]);
+  for (const point of [first, second]) await expect(page.getByRole('button', { name: `选择目标点 ${point.name}`, exact: true })).toBeInViewport();
+  const sectionLabel = page.locator('.object-section-label').filter({ hasText: '危险区域' }).locator('span');
+  expect((await sectionLabel.boundingBox())!.height).toBeLessThan(25);
+  await expect(page.getByRole('heading', { name: 'Path 1', exact: true })).toBeVisible();
+  await selectPoint(page, first);
+  await expectBodyJoints(page, [3, ...ready.slice(1)]);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveAttribute('readonly', '');
+  await expect(scene(page)).toHaveAttribute('data-selected-point-id', first.id);
+  await expect.poll(async () => {
+    const paths = JSON.parse((await scene(page).getAttribute('data-scene-paths'))!);
+    return paths.map((path: { id: string; points: { id: string }[] }) => ({ id: path.id, ids: path.points.map(point => point.id) }));
+  }).toEqual([{ id: pathId, ids: [first.id, second.id] }]);
+  const rendered = JSON.parse((await scene(page).getAttribute('data-scene-paths'))!)[0];
+  expect(rendered.visible).toBe(true);
+  for (let i = 0; i < 2; i++) {
+    for (let axis = 0; axis < 3; axis++) expect(rendered.points[i].position[axis]).toBeCloseTo([firstPose, secondPose][i].position[axis], 7);
+  }
+  expect(Math.hypot(...secondPose.position.map((value, i) => value - firstPose.position[i]))).toBeGreaterThan(20);
+  await expectCopyState(page, false);
+  await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
+  await expect.poll(async () => page.locator('[data-endpoint-joints]').evaluateAll(rows => rows.length > 0 && rows.every(row => ['hit', 'clear', 'uncertain'].includes(row.getAttribute('data-collision-state')!)))).toBe(true);
+  await page.screenshot({ path: '/tmp/emulation-object-path.png' });
+  await page.screenshot({ path: 'docs/images/workspace.png' });
+  await openProgram(page);
+  const template = page.locator('details.program-template');
+  if ((await template.getAttribute('open')) === null) await template.locator('summary').click();
+  await expect(page.getByRole('textbox', { name: 'ABB RAPID 程序模板', exact: true })).toHaveValue(/CONST robtarget P001/);
+  await page.screenshot({ path: 'docs/images/program-workspace.png' });
+  expect(errors).toEqual([]);
+});
+
+test('a recorded point requires a real MoveL check before copy or playback and preserves its full pose', async ({ page, context }) => {
+  const errors = observeBrowser(page);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openWorkspace(page);
+  await checkedSegment(page);
+  const rapid = await readRapid(page);
+  await page.getByRole('button', { name: '复制此 MoveL', exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(rapid);
+  expect(rapid).toContain('ConfL \\On;');
+  expect(rapid).toContain('tool0\\WObj:=wobj0');
   expect(rapid.match(/9E9/gi)).toHaveLength(6);
-  await page.screenshot({ path: "/tmp/emulation-reachable-path.png", fullPage: true });
-  const progress = page.getByRole("slider", { name: "路径进度", exact: true });
-  await progress.focus();
-  await progress.press("Home");
-  await expect(progress).toHaveValue("0");
-  await expect(page.getByLabel("当前 TCP", { exact: true }).locator('[data-axis="Y"] strong')).toHaveText("0.00");
-  await page.screenshot({ path: "/tmp/emulation-path-start.png", fullPage: true });
-  await page.getByRole("button", { name: "播放路径", exact: true }).click();
-  await expect(progress).toHaveValue("100", { timeout: 15_000 });
-  for (const [index, axis] of ["X", "Y", "Z"].entries()) {
-    const coordinate = Number(await page.getByLabel("当前 TCP", { exact: true }).locator(`[data-axis="${axis}"] strong`).textContent());
-    expect(coordinate).toBeCloseTo(readyTarget[index], 1);
-  }
-  await page.screenshot({ path: "/tmp/emulation-path-end.png", fullPage: true });
-  expect(browser.errors).toEqual([]);
+  await expectBodyJoints(page, [3, ...ready.slice(1)]);
+  await page.getByRole('button', { name: '播放此 MoveL', exact: true }).click();
+  await expect(page.getByRole('slider', { name: '路径进度', exact: true })).toHaveValue('100', { timeout: 15_000 });
+  const target = forwardKinematics(getRobotModel('irb1100-4-0.58'), ready as [number, number, number, number, number, number]).pose;
+  await expect.poll(async () => Math.hypot(...(await bodyPose(page)).position.map((value, i) => value - target.position[i]))).toBeLessThan(.01);
+  await page.screenshot({ path: '/tmp/emulation-object-checked-segment.png' });
+  expect(errors).toEqual([]);
 });
 
-test("editing invalidates the previous instruction and an unreachable or incomplete target cannot be copied", async ({ page }) => {
-  const browser = observeBrowser(page);
-  await page.goto("/");
-  await solveReady(page);
-  await setTarget(page, [3000, 0, 3000]);
+test('joint edits keep the last valid body, invalidate checked motion, and explicitly update an existing stored point', async ({ page }) => {
+  const errors = observeBrowser(page);
+  await openWorkspace(page);
+  const point = await checkedSegment(page);
+  await setJoint(page, 1, 1000);
+  await expect(page.getByRole('alert')).toContainText('超出关节范围');
+  await expectBodyJoints(page, [3, ...ready.slice(1)]);
   await expectCopyState(page, false);
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(/不可达|无法到达|工作范围|没有满足/);
+  await openProgram(page);
+  await expect(page.getByRole('button', { name: '＋ 插入当前姿态', exact: true })).toBeDisabled();
+  await setJoint(page, 1, '');
+  await expectBodyJoints(page, [3, ...ready.slice(1)]);
+  await setJoint(page, 1, 6);
+  await selectPoint(page, point);
+  const original = await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue();
+  await page.getByRole('button', { name: '用当前姿态更新点', exact: true }).click();
+  await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).not.toHaveValue(original);
+  await expectBodyJoints(page, [6, ...ready.slice(1)]);
   await expectCopyState(page, false);
-  await page.getByRole("spinbutton", { name: "目标 X", exact: true }).fill("");
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("目标位置需要填写完整的有限数值");
-  await expectCopyState(page, false);
-  expect(browser.errors).toEqual([]);
+  await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
+  await openProgram(page);
+  await expect(programRows(page)).toHaveCount(1);
+  await expect(programRows(page).first()).toHaveAttribute('data-program-point-id', point.id);
+  expect(errors).toEqual([]);
 });
 
-test("the target tab supports scalar-first quaternion and equivalent Euler orientation", async ({ page }) => {
-  const browser = observeBrowser(page);
-  await page.goto("/");
-  await page.getByRole("button", { name: "示例起始姿态", exact: true }).click();
-  await page.getByRole("button", { name: "target", exact: true }).click();
-  await setTarget(page);
-  for (const [index, value] of readyQuaternion.entries()) {
-    await page.getByRole("spinbutton", { name: `四元数 q${index + 1}`, exact: true }).fill(String(value));
-  }
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toBeVisible();
-  await page.getByLabel("姿态表示").selectOption("euler");
-  await expectCopyState(page, false);
-  await expect(page.getByRole("spinbutton", { name: "欧拉角 Ry", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toBeVisible();
-  expect(await readRapid(page)).toMatch(/\[0,-1,0,0\]/);
-  await page.getByLabel("姿态表示").selectOption("quaternion");
-  await expectCopyState(page, false);
-  for (let i = 1; i <= 4; i++) await page.getByRole("spinbutton", { name: `四元数 q${i}`, exact: true }).fill("0");
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(/四元数.*单位/);
-  await expectCopyState(page, false);
-  expect(browser.errors).toEqual([]);
+test('noncontinuous row deletion preserves the remaining program order and removes empty Path references', async ({ page }) => {
+  const errors = observeBrowser(page);
+  await openWorkspace(page);
+  const first = await captureCurrent(page);
+  await setJoint(page, 1, 3);
+  const middle = await captureCurrent(page);
+  await setJoint(page, 1, 6);
+  const last = await captureCurrent(page);
+  const pathId = await makePath(page, [first, last]);
+  await openProgram(page);
+  await page.getByRole('option', { name: `MoveL ${first.name}`, exact: true }).click();
+  await page.getByRole('option', { name: `MoveL ${last.name}`, exact: true }).click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('Delete');
+  await expect(programRows(page)).toHaveCount(1);
+  await expect(programRows(page).first()).toHaveAttribute('data-program-point-id', middle.id);
+  await expect(programRows(page).first()).toHaveAttribute('data-program-path-id', '');
+  await expect(page.locator(`[data-object-id="${pathId}"]`)).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '机器人属性', exact: true })).toBeVisible();
+  const fourth = await captureCurrent(page);
+  expect(fourth.name).toBe('P004');
+  // Keep P004 inspected while removing a different selected row. A cancellation
+  // must schedule a fresh inspection even though the inspected point is unchanged.
+  await page.getByRole('option', { name: `MoveL ${middle.name}`, exact: true }).click();
+  const kept = page.getByRole('option', { name: `MoveL ${fourth.name}`, exact: true });
+  await kept.click({ modifiers: ['ControlOrMeta'] });
+  await kept.click({ modifiers: ['ControlOrMeta'] });
+  await page.getByRole('button', { name: '重新检查端点解', exact: true }).click();
+  await kept.focus();
+  await page.keyboard.press('Delete');
+  await expect(programRows(page)).toHaveCount(1);
+  await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', fourth.id);
+  await expect.poll(() => page.locator('[data-endpoint-joints]').count()).toBeGreaterThan(0);
+  await expect.poll(async () => page.locator('[data-endpoint-joints]').evaluateAll(rows => rows.every(row => ['hit', 'clear', 'uncertain'].includes(row.getAttribute('data-collision-state')!)))).toBe(true);
+  expect(errors).toEqual([]);
 });
 
-test("changing reach loads the other real model and a 1000px workspace remains usable", async ({ page }) => {
-  const browser = observeBrowser(page);
-  await page.setViewportSize({ width: 1000, height: 1000 });
-  await page.goto("/");
-  await loaded(page, browser.meshes);
-  await selectRobot(page, shortArm);
-  await loaded(page, browser.meshes, shortArm);
+test('model switching isolates recorded programs and selections while returning restores the original points', async ({ page }) => {
+  const errors = observeBrowser(page);
+  await openWorkspace(page);
+  const longPoint = await captureCurrent(page);
+  await makePath(page, [longPoint]);
+  await openProgram(page);
+  await programRows(page).first().click({ button: 'right' });
+  await expect(page.getByRole('menu', { name: '程序右键菜单', exact: true })).toBeVisible();
+  await selectRobot(page, 'irb1100-4-0.475');
+  await expect(page.getByRole('menu', { name: '程序右键菜单', exact: true })).toHaveCount(0);
+  await openProgram(page);
+  await expect(programRows(page)).toHaveCount(0);
+  await expect(page.locator('[data-object-kind="path"]')).toHaveCount(0);
+  const shortPoint = await captureCurrent(page);
+  expect(shortPoint.id).not.toBe(longPoint.id);
+  await selectRobot(page, 'irb1100-4-0.58');
+  await openProgram(page);
+  await expect(programRows(page)).toHaveCount(1);
+  await expect(programRows(page).first()).toHaveAttribute('data-program-point-id', longPoint.id);
+  await expect(programRows(page).first()).toHaveAttribute('aria-selected', 'false');
+  await expect(page.getByRole('heading', { name: '机器人属性', exact: true })).toBeVisible();
   await expectCopyState(page, false);
-  await page.getByRole("button", { name: "示例起始姿态", exact: true }).click();
-  await page.getByRole("button", { name: "机械零位", exact: true }).click();
-  for (const [axis, coordinate] of [["X", 314], ["Y", 0], ["Z", 562]] as const) {
-    await expect.poll(async () => Number(await page.getByLabel("当前 TCP", { exact: true }).locator(`[data-axis="${axis}"] strong`).textContent())).toBe(coordinate);
-  }
-  await expect(page.getByRole("button", { name: "求解 MoveL", exact: true })).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  expect(overflow).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: "/tmp/emulation-short-arm-1000.png", fullPage: true });
-  const canvas = page.getByLabel("ABB IRB 1100 三维仿真场景");
-  const before = await canvas.screenshot();
-  const box = (await canvas.boundingBox())!;
-  await page.mouse.move(box.x + box.width * 0.48, box.y + box.height * 0.55);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.64, box.y + box.height * 0.45, { steps: 10 });
-  await page.mouse.up();
-  expect((await canvas.screenshot()).equals(before)).toBe(false);
-  expect(browser.errors).toEqual([]);
-});
-
-
-test("position is XYZ-only and ignores an invalid old target orientation after tab switching", async ({ page }) => {
-  const browser = observeBrowser(page);
-  await page.goto("/");
-  await loaded(page, browser.meshes);
-  const position = page.getByRole("button", { name: "position", exact: true });
-  const target = page.getByRole("button", { name: "target", exact: true });
-  await expect(position).toHaveAttribute("aria-pressed", "true");
-  await expect(target).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByRole("button", { name: "高级输入", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "ABB robtarget", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "ABB robtarget", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("spinbutton", { name: "四元数 q1", exact: true })).toBeHidden();
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expectCopyState(page, true);
-  await target.click();
-  await expect(target).toHaveAttribute("aria-pressed", "true");
-  await expectCopyState(page, false);
-  for (let i = 1; i <= 4; i++) await page.getByRole("spinbutton", { name: `四元数 q${i}`, exact: true }).fill("0");
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(/四元数/);
-  await position.click();
-  await expect(position).toHaveAttribute("aria-pressed", "true");
-  await expectCopyState(page, false);
-  await expect(page.getByRole("spinbutton", { name: "四元数 q1", exact: true })).toBeHidden();
-  await page.getByRole("button", { name: "求解 MoveL", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运动学可达", exact: true })).toBeVisible();
-  await expectCopyState(page, true);
-  expect(browser.errors).toEqual([]);
+  await selectRobot(page, 'irb1100-4-0.475');
+  await selectRobotObject(page);
+  await page.getByRole('button', { name: '机械零位', exact: true }).click();
+  await expect.poll(async () => (await bodyPose(page)).position.map(value => Math.round(value))).toEqual([314, 0, 562]);
+  await openProgram(page);
+  await expect(programRows(page).first()).toHaveAttribute('data-program-point-id', shortPoint.id);
+  await openScene(page);
+  await page.screenshot({ path: '/tmp/emulation-object-model-scope.png' });
+  expect(errors).toEqual([]);
 });

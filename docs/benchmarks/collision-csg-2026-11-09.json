@@ -1,0 +1,1042 @@
+{
+  "date": "2026-11-09",
+  "environment": {
+    "node": "v24.22.1",
+    "platform": "linux x64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "availableVcpus": 3,
+    "three": "0.187.0",
+    "threeCsgTs": "3.2.0",
+    "threeMeshBvh": "0.9.18",
+    "threeBvhCsg": "0.0.18"
+  },
+  "scope": "Exploratory cached seven-part IRB1100-4/0.475 geometry. Each backend ran in its own process, 60000 ms timeout, 1536 MiB V8 heap limit. BSP and BVH-CSG generate new intersection polygons; BVH prototype tests triangles and one signed ray. These are not production three-ray or Rust kernel timings. All known-solid fixtures use the full oriented mesh, including negative cavity surfaces. Nonclosed ready-pose parts are performance examples, not CSG correctness oracles.",
+  "sourceCommit": "ab6aa489855256de07ba46c7b45887fdbc42b607",
+  "sourceManifestSha256": "93c49e46a9ede6831818a9be8ea74d10569146ab448d0367217ce3e1360e3eaa",
+  "records": [
+    {
+      "backend": "bvh",
+      "case": "surface",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "surface",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 374.78066299999995,
+          "parseAndSetupMs": 81.456221
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "surface",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "hit": true,
+              "kind": "surface",
+              "testedTriangles": 5
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 1.4242590000000064,
+          "medianMs": 0.0825680000000375,
+          "maxMs": 1.4242590000000064,
+          "totalMs": 466.28941399999997,
+          "heapMiB": 12.529380798339844,
+          "maxRssMiB": 79.828125
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "contained",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "contained",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 327.95053399999995,
+          "parseAndSetupMs": 85.88428300000001
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "contained",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "hit": true,
+              "kind": "contained",
+              "testedTriangles": 0,
+              "rayCrossings": 1,
+              "signedCrossings": 1
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 1.832422000000065,
+          "medianMs": 0.09993099999996957,
+          "maxMs": 1.832422000000065,
+          "totalMs": 423.4943,
+          "heapMiB": 10.904067993164062,
+          "maxRssMiB": 80.04296875
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "ready-multiple",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "ready-multiple",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 327.83670299999994,
+          "parseAndSetupMs": 91.67097100000001
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "ready-multiple",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "results": [
+            {
+              "index": 1,
+              "hit": true,
+              "kind": "surface",
+              "testedTriangles": 2
+            },
+            {
+              "index": 2,
+              "hit": true,
+              "kind": "surface",
+              "testedTriangles": 1
+            },
+            {
+              "index": 3,
+              "hit": true,
+              "kind": "surface",
+              "testedTriangles": 1
+            },
+            {
+              "index": 4,
+              "hit": true,
+              "kind": "surface",
+              "testedTriangles": 1
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 2.3107390000000123,
+          "medianMs": 0.18479600000000573,
+          "maxMs": 2.3107390000000123,
+          "totalMs": 433.2526879999999,
+          "heapMiB": 12.441848754882812,
+          "maxRssMiB": 79.71875
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "link5-cavity",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "link5-cavity",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 312.904683,
+          "parseAndSetupMs": 83.778276
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "link5-cavity",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            5
+          ],
+          "results": [
+            {
+              "index": 5,
+              "hit": false,
+              "kind": "clear",
+              "testedTriangles": 12,
+              "rayCrossings": 2,
+              "signedCrossings": 0
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 4.424382000000037,
+          "medianMs": 0.3114590000000135,
+          "maxMs": 4.424382000000037,
+          "totalMs": 420.914139,
+          "heapMiB": 10.594261169433594,
+          "maxRssMiB": 79.2421875
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "cube-contact",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "cube-contact",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 1.2964709999999968,
+          "parseAndSetupMs": 1.4840859999999907
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "cube-contact",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "hit": true,
+              "kind": "surface",
+              "testedTriangles": 1
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 1.023145999999997,
+          "medianMs": 0.022368000000000166,
+          "maxMs": 1.023145999999997,
+          "totalMs": 8.513384000000002,
+          "heapMiB": 10.734893798828125,
+          "maxRssMiB": 45.1875
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "cube-gap",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "cube-gap",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 1.3928989999999999,
+          "parseAndSetupMs": 1.9019240000000082
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "cube-gap",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [],
+          "results": [],
+          "rounds": 30,
+          "firstMs": 0.04283000000000925,
+          "medianMs": 0.0002520000000174605,
+          "maxMs": 0.04283000000000925,
+          "totalMs": 6.677661999999998,
+          "heapMiB": 10.373367309570312,
+          "maxRssMiB": 44.828125
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "cube-contained",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "cube-contained",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 1.0755499999999927,
+          "parseAndSetupMs": 2.2523459999999886
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "cube-contained",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "hit": true,
+              "kind": "contained",
+              "testedTriangles": 12,
+              "rayCrossings": 1,
+              "signedCrossings": 1
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 2.5663879999999892,
+          "medianMs": 0.1706360000000018,
+          "maxMs": 2.5663879999999892,
+          "totalMs": 14.75590299999999,
+          "heapMiB": 12.184043884277344,
+          "maxRssMiB": 46.46484375
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "hollow-cavity",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "hollow-cavity",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            24
+          ],
+          "preparationMs": 2.0183420000000183,
+          "parseAndSetupMs": 2.5074949999999774
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "hollow-cavity",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "hit": false,
+              "kind": "clear",
+              "testedTriangles": 8,
+              "rayCrossings": 2,
+              "signedCrossings": 0
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 2.558436999999998,
+          "medianMs": 0.1824060000000145,
+          "maxMs": 2.558436999999998,
+          "totalMs": 18.399479999999983,
+          "heapMiB": 13.840499877929688,
+          "maxRssMiB": 47.38671875
+        }
+      ]
+    },
+    {
+      "backend": "bvh",
+      "case": "hollow-wall",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh",
+          "caseName": "hollow-wall",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            24
+          ],
+          "preparationMs": 1.956103000000013,
+          "parseAndSetupMs": 2.9407569999999907
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh",
+          "caseName": "hollow-wall",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "hit": true,
+              "kind": "contained",
+              "testedTriangles": 12,
+              "rayCrossings": 1,
+              "signedCrossings": 1
+            }
+          ],
+          "rounds": 30,
+          "firstMs": 3.8231269999999995,
+          "medianMs": 0.2651950000000056,
+          "maxMs": 3.8231269999999995,
+          "totalMs": 22.150258000000008,
+          "heapMiB": 10.516738891601562,
+          "maxRssMiB": 48.9375
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "surface",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "surface",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 699.02855,
+          "parseAndSetupMs": 88.19646399999999
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "surface",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "polygonCount": 13,
+              "volume": 37.087761210550674,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 1301.329097,
+          "medianMs": 1301.329097,
+          "maxMs": 1534.7815659999997,
+          "totalMs": 4300.548631,
+          "heapMiB": 422.7320785522461,
+          "maxRssMiB": 894.16015625
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "contained",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "contained",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 723.0282,
+          "parseAndSetupMs": 97.289683
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "contained",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "polygonCount": 0,
+              "volume": 0,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 1259.0368209999997,
+          "medianMs": 1031.8058999999998,
+          "maxMs": 1259.0368209999997,
+          "totalMs": 3777.720029,
+          "heapMiB": 384.1770935058594,
+          "maxRssMiB": 925.82421875
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "ready-multiple",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "ready-multiple",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 660.6265629999999,
+          "parseAndSetupMs": 82.829017
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "ready-multiple",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "results": [
+            {
+              "index": 1,
+              "polygonCount": 6948,
+              "volume": 93866.15189864194,
+              "closedInput": false
+            },
+            {
+              "index": 2,
+              "polygonCount": 48830,
+              "volume": 1181334.801578379,
+              "closedInput": false
+            },
+            {
+              "index": 3,
+              "polygonCount": 49651,
+              "volume": 790870.7914341082,
+              "closedInput": false
+            },
+            {
+              "index": 4,
+              "polygonCount": 12106,
+              "volume": 15725.683475130814,
+              "closedInput": false
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 5403.85449,
+          "medianMs": 5348.137411999999,
+          "maxMs": 5403.85449,
+          "totalMs": 16062.783058,
+          "heapMiB": 523.0270004272461,
+          "maxRssMiB": 1076.921875
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "link5-cavity",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "link5-cavity",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 707.0269330000001,
+          "parseAndSetupMs": 84.34276
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "link5-cavity",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            5
+          ],
+          "results": [
+            {
+              "index": 5,
+              "polygonCount": 0,
+              "volume": 0,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 881.8899650000001,
+          "medianMs": 432.31280500000025,
+          "maxMs": 881.8899650000001,
+          "totalMs": 2513.895743,
+          "heapMiB": 600.1680603027344,
+          "maxRssMiB": 761.17578125
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "cube-contact",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "cube-contact",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 0.943522999999999,
+          "parseAndSetupMs": 2.0647069999999985
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "cube-contact",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "polygonCount": 0,
+              "volume": 0,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 1.3030219999999986,
+          "medianMs": 0.26953499999999053,
+          "maxMs": 1.3030219999999986,
+          "totalMs": 7.175494000000015,
+          "heapMiB": 11.055809020996094,
+          "maxRssMiB": 44.9296875
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "cube-gap",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "cube-gap",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 2.1318100000000015,
+          "parseAndSetupMs": 2.811493000000013
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "cube-gap",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [],
+          "results": [],
+          "rounds": 3,
+          "firstMs": 0.06528800000000956,
+          "medianMs": 0.001944999999977881,
+          "maxMs": 0.06528800000000956,
+          "totalMs": 7.910164000000009,
+          "heapMiB": 10.391990661621094,
+          "maxRssMiB": 44.890625
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "cube-contained",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "cube-contained",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 1.145054000000016,
+          "parseAndSetupMs": 2.0443539999999985
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "cube-contained",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "polygonCount": 12,
+              "volume": 0.008000000357627875,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 1.5517249999999763,
+          "medianMs": 0.8906460000000038,
+          "maxMs": 1.5517249999999763,
+          "totalMs": 9.502526000000017,
+          "heapMiB": 11.86846923828125,
+          "maxRssMiB": 46.0390625
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "hollow-cavity",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "hollow-cavity",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            24
+          ],
+          "preparationMs": 1.3448759999999993,
+          "parseAndSetupMs": 2.385491000000002
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "hollow-cavity",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "polygonCount": 0,
+              "volume": 0,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 2.1655509999999936,
+          "medianMs": 0.8936739999999759,
+          "maxMs": 2.1655509999999936,
+          "totalMs": 10.08753999999999,
+          "heapMiB": 13.019561767578125,
+          "maxRssMiB": 46.9140625
+        }
+      ]
+    },
+    {
+      "backend": "bsp",
+      "case": "hollow-wall",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bsp",
+          "caseName": "hollow-wall",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            24
+          ],
+          "preparationMs": 1.2596260000000257,
+          "parseAndSetupMs": 9.010681999999974
+        },
+        {
+          "phase": "complete",
+          "backend": "bsp",
+          "caseName": "hollow-wall",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "polygonCount": 12,
+              "volume": 0.008000000357627877,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 5.581931999999995,
+          "medianMs": 1.253501,
+          "maxMs": 5.581931999999995,
+          "totalMs": 21.549027999999993,
+          "heapMiB": 12.399055480957031,
+          "maxRssMiB": 47.51953125
+        }
+      ]
+    },
+    {
+      "backend": "bvh-csg",
+      "case": "surface",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh-csg",
+          "caseName": "surface",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 577.9053440000001,
+          "parseAndSetupMs": 222.41238599999997
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh-csg",
+          "caseName": "surface",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "triangleCount": 30,
+              "volume": 37.08770482538565,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 20.77795500000002,
+          "medianMs": 14.462709000000132,
+          "maxMs": 20.77795500000002,
+          "totalMs": 850.0463129999999,
+          "heapMiB": 27.976974487304688,
+          "maxRssMiB": 139.35546875
+        }
+      ]
+    },
+    {
+      "backend": "bvh-csg",
+      "case": "contained",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh-csg",
+          "caseName": "contained",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 891.6050220000001,
+          "parseAndSetupMs": 87.39327699999998
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh-csg",
+          "caseName": "contained",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "triangleCount": 12,
+              "volume": 8,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 28.742823000000044,
+          "medianMs": 19.174852999999985,
+          "maxMs": 28.742823000000044,
+          "totalMs": 1048.5139100000001,
+          "heapMiB": 39.194549560546875,
+          "maxRssMiB": 139.06640625
+        }
+      ]
+    },
+    {
+      "backend": "bvh-csg",
+      "case": "link5-cavity",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh-csg",
+          "caseName": "link5-cavity",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            23618,
+            23974,
+            33022,
+            13495,
+            37156,
+            12464,
+            1656
+          ],
+          "preparationMs": 511.3569560000001,
+          "parseAndSetupMs": 83.99982299999999
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh-csg",
+          "caseName": "link5-cavity",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            5
+          ],
+          "results": [
+            {
+              "index": 5,
+              "triangleCount": 0,
+              "volume": 0,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 10.685092000000054,
+          "medianMs": 5.414175,
+          "maxMs": 10.685092000000054,
+          "totalMs": 617.646887,
+          "heapMiB": 36.258819580078125,
+          "maxRssMiB": 135.83984375
+        }
+      ]
+    },
+    {
+      "backend": "bvh-csg",
+      "case": "cube-contact",
+      "exitCode": 0,
+      "results": [
+        {
+          "phase": "prepared",
+          "backend": "bvh-csg",
+          "caseName": "cube-contact",
+          "modelId": "irb1100-4-0.475",
+          "triangleCounts": [
+            12
+          ],
+          "preparationMs": 4.0780949999999905,
+          "parseAndSetupMs": 1.8617930000000058
+        },
+        {
+          "phase": "complete",
+          "backend": "bvh-csg",
+          "caseName": "cube-contact",
+          "modelId": "irb1100-4-0.475",
+          "broadIndices": [
+            0
+          ],
+          "results": [
+            {
+              "index": 0,
+              "triangleCount": 0,
+              "volume": 0,
+              "closedInput": true
+            }
+          ],
+          "rounds": 3,
+          "firstMs": 11.866583999999989,
+          "medianMs": 6.866191999999984,
+          "maxMs": 11.866583999999989,
+          "totalMs": 30.63663299999999,
+          "heapMiB": 11.361457824707031,
+          "maxRssMiB": 52.60546875
+        }
+      ]
+    }
+  ]
+}

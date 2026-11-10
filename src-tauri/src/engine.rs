@@ -1,11 +1,14 @@
-//! One CPU worker with one pending motion/export and one pending inspection.
-//! Background collision inspection must never cancel a user's solve or export.
+//! One CPU worker with one pending motion/export, endpoint IK, and mesh inspection.
+//! Background endpoint and collision inspection never cancel a solve or export.
+//! Foreground work may interrupt inspection, including a cold mesh-index build.
 //! Cancellation never creates an unbounded spawn_blocking queue.
 use emulation_core::{
     collision::{check_collisions, CollisionRequest, CollisionResult},
+    endpoint_inspection::{inspect_endpoint_with_cancel, EndpointInspectionRequest},
+    generic_planner::{plan_generic_move_l, GenericPlanRequest, GenericPlanResult},
     planner::plan_move_l_with_cancel,
     program::{export_program_with_cancel, ProgramExportRequest, ProgramFile},
-    types::{PlanRequest, PlanResult},
+    types::{IkSolution, PlanRequest, PlanResult},
 };
 use std::{
     collections::VecDeque,
@@ -19,13 +22,17 @@ use tokio::sync::oneshot;
 
 pub enum Work {
     Plan(PlanRequest),
+    GenericPlan(GenericPlanRequest),
     Export(ProgramExportRequest),
     Collision(CollisionRequest),
+    InspectEndpoint(EndpointInspectionRequest),
 }
 pub enum Reply {
     Plan(PlanResult),
+    GenericPlan(GenericPlanResult),
     Export(ProgramFile),
     Collision(Vec<CollisionResult>),
+    InspectEndpoint(Vec<IkSolution>),
 }
 type Response = Result<Reply, String>;
 struct Job {
@@ -38,6 +45,7 @@ struct Job {
 struct Queue {
     pending: Option<Job>,
     background: Option<Job>,
+    endpoint: Option<Job>,
     active: Option<(String, Arc<AtomicBool>, bool)>,
     cancelled_ids: VecDeque<String>,
     stopped: bool,
@@ -65,7 +73,11 @@ impl Engine {
             .spawn(move || loop {
                 let job = {
                     let mut queue = worker.queue.lock().unwrap_or_else(|e| e.into_inner());
-                    while queue.pending.is_none() && queue.background.is_none() && !queue.stopped {
+                    while queue.pending.is_none()
+                        && queue.endpoint.is_none()
+                        && queue.background.is_none()
+                        && !queue.stopped
+                    {
                         queue = worker
                             .changed
                             .wait(queue)
@@ -77,12 +89,13 @@ impl Engine {
                     let job = queue
                         .pending
                         .take()
+                        .or_else(|| queue.endpoint.take())
                         .or_else(|| queue.background.take())
                         .expect("pending job checked");
                     queue.active = Some((
                         job.id.clone(),
                         job.cancelled.clone(),
-                        matches!(&job.work, Work::Collision(_)),
+                        matches!(&job.work, Work::Collision(_) | Work::InspectEndpoint(_)),
                     ));
                     job
                 };
@@ -91,11 +104,19 @@ impl Engine {
                         &request,
                         &job.cancelled,
                     ))),
+                    Work::GenericPlan(request) => Ok(Reply::GenericPlan(plan_generic_move_l(
+                        &request,
+                        &job.cancelled,
+                    ))),
                     Work::Export(request) => export_program_with_cancel(&request, &job.cancelled)
                         .map(Reply::Export)
                         .map_err(|e| e.to_string()),
                     Work::Collision(request) => {
                         check_collisions(&request, &job.cancelled).map(Reply::Collision)
+                    }
+                    Work::InspectEndpoint(request) => {
+                        inspect_endpoint_with_cancel(&request, &job.cancelled)
+                            .map(Reply::InspectEndpoint)
                     }
                 }))
                 .unwrap_or_else(|_| Err("原生运动计算异常，请调整输入后重试".into()));
@@ -134,18 +155,16 @@ impl Engine {
         if queue.stopped || queue.cancelled_ids.contains(&id) {
             return Err("计算已取消".into());
         }
-        let is_background = matches!(&work, Work::Collision(_));
+        let is_background = matches!(&work, Work::Collision(_) | Work::InspectEndpoint(_));
         if !is_background {
-            if let Some((_, cancelled, active_background)) = &queue.active {
-                if !*active_background {
-                    cancelled.store(true, Ordering::Release);
-                }
+            if let Some((_, cancelled, _)) = &queue.active {
+                cancelled.store(true, Ordering::Release);
             }
         }
-        let slot = if is_background {
-            &mut queue.background
-        } else {
-            &mut queue.pending
+        let slot = match &work {
+            Work::InspectEndpoint(_) => &mut queue.endpoint,
+            Work::Collision(_) => &mut queue.background,
+            _ => &mut queue.pending,
         };
         if let Some(previous) = slot.take() {
             let _ = previous.reply.send(Err("计算已取消".into()));
@@ -174,6 +193,11 @@ impl Engine {
             }
             if queue.background.as_ref().is_some_and(|job| job.id == id) {
                 if let Some(job) = queue.background.take() {
+                    let _ = job.reply.send(Err("计算已取消".into()));
+                }
+            }
+            if queue.endpoint.as_ref().is_some_and(|job| job.id == id) {
+                if let Some(job) = queue.endpoint.take() {
                     let _ = job.reply.send(Err("计算已取消".into()));
                 }
             }
@@ -209,6 +233,9 @@ impl Drop for Engine {
             if let Some(job) = queue.background.take() {
                 let _ = job.reply.send(Err("应用正在关闭".into()));
             }
+            if let Some(job) = queue.endpoint.take() {
+                let _ = job.reply.send(Err("应用正在关闭".into()));
+            }
             self.shared.changed.notify_one();
         }
     }
@@ -236,6 +263,66 @@ mod tests {
             },
             speed_mm_per_second: 100.0,
         }
+    }
+
+    fn generic_request() -> GenericPlanRequest {
+        let chains: Vec<emulation_core::generic_kinematics::GenericChain> = serde_json::from_str(
+            include_str!("../../tests/fixtures/catalog/generic-chains.json"),
+        )
+        .unwrap();
+        GenericPlanRequest {
+            chain: chains[0].clone(),
+            start_joints: [20., 15., -25., 25., 35., 10.],
+            target_joints: [21., 14.5, -24.25, 25.5, 34.25, 11.],
+            speed_mm_per_second: 100.,
+        }
+    }
+
+    #[test]
+    fn generic_foreground_work_uses_the_native_urdf_planner() {
+        let engine = Engine::new();
+        let request = generic_request();
+        let response = engine
+            .submit("generic-plan".into(), Work::GenericPlan(request.clone()))
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+        let Reply::GenericPlan(GenericPlanResult::Success(plan)) = response else {
+            panic!("expected a native URDF Cartesian path");
+        };
+        assert!(plan.path.len() > 2);
+        assert_eq!(plan.path[0].joints, request.start_joints);
+        assert_eq!(plan.path.last().unwrap().joints, request.target_joints);
+    }
+
+    #[test]
+    fn generic_work_has_foreground_priority_and_independent_cancellation() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("background-endpoint".into(), cancelled.clone(), true)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let receiver = engine
+            .submit(
+                "generic-foreground".into(),
+                Work::GenericPlan(generic_request()),
+            )
+            .unwrap();
+        assert!(cancelled.load(Ordering::Acquire));
+        {
+            let queue = engine.shared.queue.lock().unwrap();
+            assert_eq!(queue.pending.as_ref().unwrap().id, "generic-foreground");
+            assert!(queue.endpoint.is_none());
+        }
+        engine.cancel("generic-foreground");
+        assert!(receiver.blocking_recv().unwrap().is_err());
+        assert!(engine.shared.queue.lock().unwrap().pending.is_none());
     }
 
     #[test]
@@ -345,10 +432,42 @@ mod tests {
             Reply::Export(_)
         ));
         let Reply::Collision(results) = inspection.blocking_recv().unwrap().unwrap() else {
-            panic!("expected native bounding-box inspection");
+            panic!("expected native mesh inspection");
         };
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].colliding_links, vec![0, 1, 2, 3, 4, 5, 6]);
+        assert!(results[0].uncertain_links.is_empty());
+    }
+
+    #[test]
+    fn foreground_work_interrupts_active_inspection() {
+        // Inspect the scheduler policy without racing a CPU-dependent mesh build.
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("inspection".into(), cancelled.clone(), true)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let _receiver = engine
+            .submit("interactive-motion".into(), Work::Plan(request()))
+            .unwrap();
+        assert!(cancelled.load(Ordering::Acquire));
+        assert_eq!(
+            engine
+                .shared
+                .queue
+                .lock()
+                .unwrap()
+                .pending
+                .as_ref()
+                .unwrap()
+                .id,
+            "interactive-motion"
+        );
     }
 
     #[test]
@@ -371,5 +490,98 @@ mod tests {
                 })
             )
             .is_err());
+    }
+
+    fn endpoint_request() -> EndpointInspectionRequest {
+        let model = get_robot_model("irb1100-4-0.58").unwrap();
+        EndpointInspectionRequest {
+            model_id: model.id.clone(),
+            pose: forward_kinematics(&model, &model.ready_joints)
+                .unwrap()
+                .pose,
+            seed_joints: model.ready_joints,
+        }
+    }
+
+    #[test]
+    fn native_endpoint_work_returns_alternatives_without_a_motion_plan() {
+        let engine = Engine::new();
+        let response = engine
+            .submit(
+                "endpoint-ik".into(),
+                Work::InspectEndpoint(endpoint_request()),
+            )
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+        let Reply::InspectEndpoint(solutions) = response else {
+            panic!("expected endpoint IK alternatives");
+        };
+        assert!(solutions.len() > 8);
+        assert!(solutions
+            .iter()
+            .all(|solution| solution.position_error_mm <= 0.01));
+        engine.cancel("obsolete-endpoint");
+        assert!(engine
+            .submit(
+                "obsolete-endpoint".into(),
+                Work::InspectEndpoint(endpoint_request())
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn endpoint_and_collision_have_independent_bounded_slots_and_do_not_cancel_foreground() {
+        let foreground_cancelled = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some((
+                        "foreground-export".into(),
+                        foreground_cancelled.clone(),
+                        false,
+                    )),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let old = engine
+            .submit(
+                "old-endpoint".into(),
+                Work::InspectEndpoint(endpoint_request()),
+            )
+            .unwrap();
+        let _collision = engine
+            .submit(
+                "mesh-inspection".into(),
+                Work::Collision(CollisionRequest {
+                    model_id: "irb1100-4-0.58".into(),
+                    zones: vec![],
+                    solutions: vec![],
+                }),
+            )
+            .unwrap();
+        let latest = engine
+            .submit(
+                "latest-endpoint".into(),
+                Work::InspectEndpoint(endpoint_request()),
+            )
+            .unwrap();
+        assert!(old.blocking_recv().unwrap().is_err());
+        assert!(!foreground_cancelled.load(Ordering::Acquire));
+        {
+            let queue = engine.shared.queue.lock().unwrap();
+            assert!(queue.pending.is_none());
+            assert_eq!(queue.endpoint.as_ref().unwrap().id, "latest-endpoint");
+            assert_eq!(queue.background.as_ref().unwrap().id, "mesh-inspection");
+        }
+        engine.cancel("latest-endpoint");
+        assert!(latest.blocking_recv().unwrap().is_err());
+        let queue = engine.shared.queue.lock().unwrap();
+        assert!(queue.endpoint.is_none());
+        assert!(queue.background.is_some());
+        assert!(!foreground_cancelled.load(Ordering::Acquire));
     }
 }

@@ -10,3 +10,5 @@
 .scene-model-status.scene-load-error { left: 18px; top: 60px; right: 18px; max-width: none; color: #9c3e43; }
 
 .scene-compatibility-mode { color: #946c32; border-left: 1px solid #d7dde4; padding-left: 8px; }
+.scene-path-legend { position: absolute; left: 14px; bottom: 51px; display: flex; align-items: center; gap: 7px; max-width: calc(100% - 28px); padding: 6px 9px; border: 1px solid #d6dee7b3; border-radius: 5px; background: #fbfcfde0; color: #667c91; font-size: 10px; line-height: 1.4; pointer-events: none; }
+.scene-path-legend span { width: 23px; border-top: 2px dashed #507aa5; }

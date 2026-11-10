@@ -65,6 +65,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Verify collision bounds against original robot meshes
         run: node scripts/generate-collision-bounds.mjs --check
+      - name: Verify generic chains against pinned URDF fixtures
+        run: node scripts/generate-generic-chains.mjs --check
       - name: Read application version
         id: version
         run: node -e 'const fs=require("node:fs"); fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${require("./package.json").version}\n`);'

@@ -319,9 +319,11 @@ code,.rapid-code,input[type=number],.progress-value {
   display:flex;
   flex-direction:column;
   gap:4px;
-  max-height:260px;
-  overflow:auto;
-  overscroll-behavior:contain
+  min-width:0
+}
+
+.workspace-object-list>* {
+  flex-shrink:0
 }
 
 .workspace-object-list button {
@@ -1480,20 +1482,29 @@ h1 {
 }
 
 .collision-hit {
-  color:#a55332;
-  background:#fff0e4
+  color:#a34740;
+  background:#fff0ed
 }
 
-.collision-hit b {
+.collision-hit b,.collision-uncertain b {
   display:inline-flex;
   justify-content:center;
   align-items:center;
   width:13px;
   height:13px;
   border-radius:50%;
-  background:#b86a42;
+  background:#b95e54;
   color:white;
   font-size:10px
+}
+
+.collision-uncertain {
+  color:#8c6d38;
+  background:#fbf3e4
+}
+
+.collision-uncertain b {
+  background:#a98a52
 }
 
 .collision-error {
@@ -1958,4 +1969,64 @@ h1 {
   .spinner {
     animation-duration:1.5s
   }
+}
+
+/* Object inspectors share the workspace; only their own panels scroll. */
+.inspector-fieldset { min-width:0; margin:0; padding:0; border:0 }
+.inspector-object-name { display:block; color:#4c627b; font-size:12px; margin:0 0 14px; overflow-wrap:anywhere }
+.inspector-values { margin:15px 0; min-width:0 }
+.inspector-values h3 { display:flex; align-items:baseline; gap:7px; margin:0 0 7px; color:#65768a; font-size:11px; font-weight:600 }
+.inspector-values h3 small { color:#96a1b0; font-size:9px; font-weight:400 }
+.inspector-values>code { display:block; color:#4f657e; font-size:10px; line-height:1.7; overflow-wrap:anywhere }
+.inspector-vector { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px }
+.inspector-vector>span { display:flex; flex-direction:column; gap:5px; border:1px solid #e6ebf2; border-radius:5px; padding:8px; min-width:0 }
+.inspector-vector small { color:#94a2b3; font-size:9px }
+.inspector-vector strong { color:#536b85; font-size:11px; font-weight:600; overflow-wrap:anywhere }
+.inspector-joint-readout { border:0; padding:10px 0 0; margin:0 }
+.inspector-joint-readout>div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px }
+.inspector-joint-readout>div>span { display:flex; justify-content:space-between; gap:4px }
+.inspector-joint-readout strong { font-size:10px }
+.object-section-label { display:flex; align-items:center; justify-content:space-between; gap:7px; color:#8a98a9; padding:14px 5px 6px; font-size:9px; letter-spacing:.05em }
+.object-section-label>span { min-width:0; flex:1; white-space:nowrap }
+.workspace-object-list .object-section-label .text-button { width:26px; min-height:26px; flex:0 0 26px; padding:0; justify-content:center; font-size:18px; line-height:1 }
+.object-empty { padding:0 6px; font-size:9px; color:#9aa5b3 }
+.object-path { min-width:0 }
+.object-path>summary { display:flex; align-items:center; list-style:none; cursor:pointer }
+.object-path>summary::-webkit-details-marker { display:none }
+.object-path>summary::before { content:'›'; padding:0 3px; color:#8a9aad; font-size:15px }
+.object-path[open]>summary::before { content:'⌄' }
+.workspace-object-list .object-path>summary>button { flex:1; min-width:0; padding-left:4px }
+.object-path-points { padding-left:16px; border-left:1px solid #edf0f4; margin-left:8px }
+.object-jog-toolbar { position:absolute; top:57px; left:18px; right:18px; display:flex; flex-wrap:wrap; gap:6px; pointer-events:none }
+.object-jog-toolbar .view-options { pointer-events:auto; flex-wrap:wrap }
+.object-jog-status { position:absolute; left:18px; right:18px; bottom:46px; padding:7px 10px; border-radius:5px; background:#ffffffed; color:#6e7e91; font-size:10px; line-height:1.5; pointer-events:none }
+.viewport:has(>.object-jog-status) .scene-path-legend { bottom:90px }
+.path-point-list { list-style:decimal; padding-left:24px; color:#8795a6; font-size:10px }
+.path-point-list li { margin:10px 0 }
+.path-point-list span { display:block; margin-top:5px; font-size:9px }
+.target-robtarget,.segment-code { display:block; width:100%; resize:vertical; min-height:88px; padding:10px; border:1px solid #e3e9f1; border-radius:6px; background:#f8fafc; color:#5b6f87; font:10px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; overflow:auto }
+.target-inspector>.solve-button { width:100%; margin-top:8px }
+.segment-code { min-height:130px; margin-top:10px }
+.segment-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px }
+.segment-module-label { display:block; margin:14px 0 10px }
+.segment-module-label input { display:block; width:100%; height:29px; margin-top:6px; border:1px solid #dce4ed; border-radius:5px; padding:0 8px; color:#5e7188; background:#fff; font:10px ui-monospace,SFMono-Regular,Consolas,monospace }
+.endpoint-details { border-top:1px solid #e7ecf2; padding-top:12px; margin-top:16px }
+.endpoint-details>.field-heading { align-items:flex-start; gap:8px }
+.endpoint-details h3 { margin:0; font-size:11px; color:#65788d; line-height:1.5 }
+.endpoint-details .field-heading .text-button { flex-shrink:0; font-size:9px; line-height:1.5 }
+.workspace-message { padding:10px 0 0; border-top:1px solid #e8edf4; color:#7a8ba1; font-size:10px; line-height:1.7; overflow-wrap:anywhere }
+.zone-inspector>.field-label { margin-top:14px }
+.execution-status { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:10px; min-height:38px; padding:8px 14px; border-top:1px solid #e2e9f1; background:#f5f8fc; color:#627995; font-size:10px; line-height:1.5 }
+.execution-status>span { min-width:0; overflow-wrap:anywhere }
+.execution-status>button { flex-shrink:0; border-color:#dec5be; color:#a75f50 }
+.execution-error { color:#b46650; background:#fff7f4 }
+.point-action-menu { position:fixed; z-index:80; width:180px; padding:5px; border:1px solid #dce5ef; border-radius:8px; box-shadow:0 8px 30px #243e6226; background:#fff }
+.point-action-menu>button { display:block; width:100%; border:0; border-radius:4px; padding:8px 10px; background:transparent; text-align:left; color:#4b6787; font-size:11px; cursor:pointer }
+.point-action-menu>button:hover,.point-action-menu>button:focus-visible { background:#edf4fe; outline:none }
+.point-action-menu>button:disabled { opacity:.45; cursor:default }
+.point-action-menu>small { display:block; padding:3px 10px 5px; color:#8f9bab; font-size:9px }
+@media(max-width:1150px) {
+  .inspector-vector { gap:4px }
+  .inspector-vector>span { padding:7px 5px }
+  .object-jog-toolbar { left:12px; right:12px }
 }
