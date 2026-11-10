@@ -17,3 +17,14 @@
 .workspace-object-list button[data-executing="true"] { background:#e7f4e9; box-shadow:inset 3px 0 #48a96d }
 .point-action-menu { width:min(240px,calc(100vw - 16px)) }
 .point-action-menu button:focus-visible { outline:2px solid #4b91d2; outline-offset:-2px }
+
+.scene-display-options { display:flex; flex:0 0 auto; align-items:center; justify-content:flex-end; min-height:38px; padding:8px 16px; border-top:1px solid #e8edf4 }
+.scene-display-options .frame-toggle { margin:0 }
+.object-path>summary>.summary-icon { margin-left:0; margin-right:2px }
+.point-action-menu>button { display:flex; align-items:center; gap:8px }
+.point-action-menu>button>span { flex:1; min-width:0 }
+.path-run-controls .copy-button, .execution-status .copy-button { display:inline-flex; align-items:center; gap:6px }
+.zone-invalid-icon { color:#b16942 }
+.section-number { display:inline-flex; align-items:center; justify-content:center; padding:3px }
+.collision-legend>span { display:inline-flex; gap:4px; align-items:center; margin-right:8px }
+.collision-legend>span:first-child { color:#c16254 }

@@ -38,7 +38,7 @@
 .robot-catalog-error .copy-button { flex-shrink:0 }
 .robot-model-button { display:flex; align-items:center; gap:7px; border:0; background:transparent; color:inherit; font:inherit; font-weight:600; padding:6px; border-radius:5px; cursor:pointer }
 .robot-model-button:hover { background:#edf2f8 }
-.robot-model-button::after { content:'⌄'; color:#8b99ab }
+.robot-model-button>.ui-icon { color:#8b99ab }
 .topbar .project-label { display:flex; min-width:0 }
 .robot-model-button { min-width:0; max-width:250px; color:#52657e }
 .project-label .robot-model-name { color:inherit; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
@@ -60,3 +60,4 @@
   .robot-catalog-progress { flex-wrap:wrap }
   .robot-catalog-progress progress { width:100% }
 }
+.robot-catalog-search input::-webkit-search-cancel-button { -webkit-appearance:none; width:14px; height:14px; margin-left:6px; background:#7c899b; -webkit-mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 6 12 12M6 18 18 6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 6 12 12M6 18 18 6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E"); cursor:pointer }

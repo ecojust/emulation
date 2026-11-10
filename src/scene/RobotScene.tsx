@@ -1,3 +1,4 @@
+import Icon from '../ui/Icon';
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -1054,7 +1055,7 @@ export default function RobotScene(props: RobotSceneProps) {
   const totalParts = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? 7;
   return <div className="robot-scene" aria-label="机器人三维视图">
     <div className="robot-scene-canvas" ref={host} />
-    {props.scenePaths?.some(path => path.points.length > 1) && <div className="scene-path-legend" aria-label="Path 连线说明"><span />Path · 目标点连线，尚未验证运动</div>}
+    {props.scenePaths?.some(path => path.points.length > 1) && <div className="scene-path-legend" aria-label="Path 连线说明"><Icon name="route" width={23} height={14} preserveAspectRatio="none"/>Path · 目标点连线，尚未验证运动</div>}
     {!graphicsError && <div className={`scene-model-status${loadError ? " scene-load-error" : ""}`} role="status" data-loaded-parts={loaded}>
       <span>{loadError || (loaded === totalParts ? `机器人模型已加载 · ${loaded}/${totalParts}` : `正在加载机器人模型 ${loaded}/${totalParts}`)}</span>
       {compatibilityGraphics && !loadError && <span className="scene-compatibility-mode">兼容图形模式</span>}

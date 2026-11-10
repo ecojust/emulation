@@ -97,22 +97,33 @@ export async function selectPathForPoints(page: Page, points: CapturedPoint[]) {
   expect(ids.filter(id => points.some(point => point.id === id))).toEqual(points.map(point => point.id));
   return pathId;
 }
-export async function expectCopyState(page: Page, enabled: boolean) {
-  const button = page.getByRole('button', { name: '复制此 MoveL', exact: true });
-  if (enabled) await expect(button).toBeEnabled();
-  else await expect(page.getByRole('textbox', { name: 'RAPID MoveL 指令', exact: true })).toHaveCount(0);
+/** The target panel no longer exposes a separate single-leg motion workflow. */
+export async function expectNoPointMotionActions(page: Page) {
+  await expect(page.getByRole('button', { name: /^检查到此点的 / })).toHaveCount(0);
+  for (const name of ['复制此 MoveL', '导出此 MoveL', '播放此 MoveL', '播放路径']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+  }
+  await expect(page.getByRole('slider', { name: '路径进度', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'RAPID MoveL 指令', exact: true })).toHaveCount(0);
 }
-export async function readRapid(page: Page) {
-  return page.getByRole('textbox', { name: 'RAPID MoveL 指令', exact: true }).inputValue();
+/** Open the context menu without preselecting its Path through a left click. */
+export async function openPathMenu(page: Page, pathId: string, keyboard = false) {
+  await openScene(page);
+  const path = page.locator(`[data-object-kind="path"][data-object-id="${pathId}"]`);
+  if (keyboard) await path.press('Shift+F10');
+  else await path.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Path 右键菜单', exact: true });
+  await expect(menu).toBeVisible();
+  return menu;
 }
-export async function checkedSegment(page: Page) {
-  const point = await captureCurrent(page);
-  await setJoint(page, 1, 3);
-  await selectPoint(page, point);
-  await page.getByRole('button', { name: '检查到此点的 MoveL', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '此 MoveL 已通过运动学检查', exact: true })).toBeVisible();
-  await expectCopyState(page, true);
-  return point;
+export async function runPathFromMenu(page: Page, pathId: string, options: { keyboard?: boolean } = {}) {
+  const menu = await openPathMenu(page, pathId, options.keyboard);
+  const run = menu.getByRole('menuitem', { name: '运行', exact: true });
+  await expect(run).toBeEnabled();
+  if (options.keyboard) await run.press('Enter');
+  else await run.click();
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator('[data-run-phase]')).toHaveAttribute('data-run-path-id', pathId);
 }
 export async function selectRobot(page: Page, id: string) {
   await page.getByRole('button', { name: '选择机器人型号', exact: true }).click();

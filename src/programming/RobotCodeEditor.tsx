@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Compartment, EditorSelection, EditorState, StateEffect, Transaction } from '@codemirror/state';
 import { EditorView, crosshairCursor, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, hoverTooltip, keymap, lineNumbers, rectangularSelection } from '@codemirror/view';
-import { HighlightStyle, StreamLanguage, bracketMatching, foldGutter, foldKeymap, foldService, indentOnInput, indentUnit, syntaxHighlighting, syntaxTree, type StreamParser } from '@codemirror/language';
+import { HighlightStyle, StreamLanguage, bracketMatching, codeFolding, foldGutter, foldKeymap, foldService, indentOnInput, indentUnit, syntaxHighlighting, syntaxTree, type StreamParser } from '@codemirror/language';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, snippet, startCompletion, type Completion, type CompletionContext } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap, indentWithTab, isolateHistory, redo, undo } from '@codemirror/commands';
 import { highlightSelectionMatches, openSearchPanel, search, searchKeymap } from '@codemirror/search';
@@ -9,6 +9,8 @@ import { lintGutter, lintKeymap, nextDiagnostic, setDiagnostics } from '@codemir
 import { tags } from '@lezer/highlight';
 import type { LanguageAnalysis, LanguageEntry, ProgramSourceFile, RobotLanguageDefinition } from './types';
 import { copyRapid, nativeDesktop } from '../robot/client';
+import Icon from '../ui/Icon';
+import { completionIcon, editorPanelIcons, foldMarker, foldPlaceholder } from './editor-icons';
 import './editor.css';
 
 export interface SourceInsertion {
@@ -276,7 +278,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
   function extensions(language: RobotLanguageDefinition) {
     return [StreamLanguage.define(lexer(language)), syntaxHighlighting(highlighting),
       EditorView.contentAttributes.of({ 'aria-label': language.name + ' 代码编辑器', 'aria-multiline': 'true', spellcheck: 'false' }),
-      autocompletion({ override: [completions], maxRenderedOptions: 80 }),
+      autocompletion({ override: [completions], maxRenderedOptions: 80, icons: false, addToOptions: [{ render: completionIcon, position: 20 }] }),
       hoverTooltip((view, position, side) => {
         if (/comment|string/i.test(syntaxTree(view.state).resolveInner(position, side).name)) return null;
         const word = wordAt(view, position, latest.current.language);
@@ -294,9 +296,10 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
   }
   function makeState(text: string) {
     return EditorState.create({ doc: sourceMap(text).text, extensions: [
-      lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(), foldGutter({ foldingChanged: update => update.transactions.some(transaction => transaction.effects.some(effect => effect.is(foldedAnalysisChanged))) }),
+      lineNumbers(), highlightActiveLineGutter(), highlightSpecialChars(), history(),
+      codeFolding({ placeholderDOM: foldPlaceholder }), foldGutter({ markerDOM: foldMarker, foldingChanged: update => update.transactions.some(transaction => transaction.effects.some(effect => effect.is(foldedAnalysisChanged))) }),
       drawSelection(), dropCursor(), indentOnInput(), bracketMatching(), closeBrackets(), rectangularSelection(), crosshairCursor(), highlightActiveLine(), highlightSelectionMatches(),
-      search({ top: true }), lintGutter(), indentUnit.of('  '),
+      search({ top: true }), lintGutter(), editorPanelIcons, indentUnit.of('  '),
       keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...lintKeymap, ...defaultKeymap, indentWithTab]),
       foldService.of((_state, from, to) => {
         if (latest.current.pendingFileIds?.includes(activeId.current ?? '')) return null;
@@ -451,7 +454,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
   }
   return <section className="robot-code-workspace" aria-label="机器人源码工作区" data-language-id={props.language.id} data-language-dialect={props.language.dialect}>
     <div className="robot-code-filebar"><div className="robot-code-current-file" aria-label="当前模块" data-source-file-id={activeFile?.id} data-source-dirty={Boolean(activeFile?.dirty)} title={activeFile?.name}>
-      <span>{activeFile?.name ?? '未选择模块'}</span>{activeFile?.dirty && <i aria-label="已修改">●</i>}
+      <span>{activeFile?.name ?? '未选择模块'}</span>{activeFile?.dirty && <i aria-label="已修改"><Icon name="dot" size={9}/></i>}
     </div></div>
     <div className="robot-code-tools">
       {props.onNewFile && <button type="button" disabled={props.readOnly} onClick={() => setDialog({ kind: 'new', name: 'Program' + (props.language.extensions[0]?.startsWith('.') ? '' : '.') + (props.language.extensions[0] ?? 'txt') })}>新建文件</button>}
@@ -479,7 +482,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
         {props.analysisError && props.onRetryAnalysis && <button type="button" className="text-button" onClick={props.onRetryAnalysis}>重试源码检查</button>}
         <button type="button" className="text-button" disabled={!diagnostics.length} onClick={() => command(nextDiagnostic)}>定位下一个问题</button>
       </> : <>
-        <details className="robot-code-language-notes"><summary>{props.language.dialect} 语言说明</summary><ul>{props.language.coverage.map((item, index) => <li key={'coverage-' + index}>{item}</li>)}{props.language.limitations.map((item, index) => <li key={'limit-' + index}>{item}</li>)}</ul>{props.language.sources.map((source, index) => <span className="robot-code-source-link" key={index}>{nativeDesktop ? <><span>{source.title}{source.revision ? ' · ' + source.revision : ''}</span><button type="button" title={source.url} onClick={() => void copyDocumentation(source.url)}>复制官方链接</button></> : <a href={source.url} target="_blank" rel="noreferrer">{source.title}{source.revision ? ' · ' + source.revision : ''}</a>}</span>)}</details>
+        <details className="robot-code-language-notes"><summary><Icon name="chevron-right" size={12}/>{props.language.dialect} 语言说明</summary><ul>{props.language.coverage.map((item, index) => <li key={'coverage-' + index}>{item}</li>)}{props.language.limitations.map((item, index) => <li key={'limit-' + index}>{item}</li>)}</ul>{props.language.sources.map((source, index) => <span className="robot-code-source-link" key={index}>{nativeDesktop ? <><span>{source.title}{source.revision ? ' · ' + source.revision : ''}</span><button type="button" title={source.url} onClick={() => void copyDocumentation(source.url)}>复制官方链接</button></> : <a href={source.url} target="_blank" rel="noreferrer">{source.title}{source.revision ? ' · ' + source.revision : ''}</a>}</span>)}</details>
         <input className="robot-code-reference-search" aria-label="查找指令参考" placeholder="查找指令、参数或说明" value={query} onChange={event => setQuery(event.target.value)}/>
         <div className="robot-code-reference-layout"><ul className="robot-code-reference-list" role="listbox" aria-label="指令参考列表">{entries.map(entry => <li key={entry.name}><button type="button" role="option" aria-selected={referenceEntry?.name === entry.name} onClick={() => setReference(entry.name)}>{entry.name}</button></li>)}</ul>
           {referenceEntry ? <article className="robot-code-reference-detail"><h3>{referenceEntry.name}</h3><pre>{referenceEntry.signature}</pre><p>{referenceEntry.description}</p>{referenceEntry.parameters?.length ? <dl>{referenceEntry.parameters.map((parameter, index) => <div key={index}><dt>{parameter.name}{parameter.type ? ' : ' + parameter.type : ''}{parameter.optional ? '（可选）' : ''}</dt><dd>{parameter.description}</dd></div>)}</dl> : null}{referenceEntry.requiresOption && <p>控制器选项：{referenceEntry.requiresOption}</p>}<div className="robot-code-reference-actions"><button type="button" disabled={readOnly} onClick={() => insertReference(referenceEntry)}>插入指令</button>{referenceEntry.documentationUrl && (nativeDesktop ? <button type="button" title={referenceEntry.documentationUrl} onClick={() => void copyDocumentation(referenceEntry.documentationUrl!)}>复制官方链接</button> : <a href={referenceEntry.documentationUrl} target="_blank" rel="noreferrer">官方说明</a>)}</div></article> : <p className="robot-code-empty">没有匹配的指令。</p>}

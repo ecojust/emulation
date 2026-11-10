@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { quaternionDistanceDeg } from '../../src/robot/kinematics';
 import type { Pose, Quaternion, Vec3 } from '../../src/robot/types';
-import { expectCopyState } from './workspace-helpers';
+import { expectNoPointMotionActions } from './workspace-helpers';
 
 test.setTimeout(60_000);
 type Point = { x: number; y: number };
@@ -116,7 +116,7 @@ test('a real world-X flange drag moves the robot through IK while the camera rem
   expect(Math.abs(after[2] - initial[2])).toBeLessThan(.03);
   expect(distance(await jsonAttribute<Vec3>(scene(page), 'data-camera-position'), camera)).toBeLessThan(1e-8);
   expect((await scene(page).screenshot()).equals(before)).toBe(false);
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-jog-world-x.png', fullPage: true });
   expect(errors).toEqual([]);
 });

@@ -368,19 +368,9 @@ code,.rapid-code,input[type=number],.progress-value {
   color:#b16942
 }
 
-.zone-object-dot {
-  width:8px;
-  height:8px;
-  flex:0 0 8px;
-  border:1px solid #cb7d69;
-  border-radius:2px;
-  background:#f4d7cc
-}
+.zone-object-icon { color:#cb7d69; fill:#f4d7cc }
 
-.zone-object-dot.disabled {
-  background:#e9edf2;
-  border-color:#b6c0cd
-}
+.zone-object-icon.disabled { color:#b6c0cd; fill:#e9edf2 }
 
 .current-state-panel {
   margin-top:15px;
@@ -402,18 +392,6 @@ code,.rapid-code,input[type=number],.progress-value {
 
 .current-state-panel summary::-webkit-details-marker {
   display:none
-}
-
-.current-state-panel summary:before {
-  content:'›';
-  font-size:16px;
-  font-weight:400;
-  line-height:1;
-  color:#97a4b3
-}
-
-.current-state-panel[open] summary:before {
-  transform:rotate(90deg)
 }
 
 .object-panel .tcp-readout,
@@ -628,12 +606,7 @@ h1 {
   color:#5f6876
 }
 
-.axis-dot {
-  width:5px;
-  height:5px;
-  border:1px solid #778393;
-  border-radius:50%
-}
+.origin-icon { color:#778393 }
 
 .scene-legend {
   position:absolute;
@@ -652,23 +625,16 @@ h1 {
   gap:5px
 }
 
-.scene-legend i {
-  width:6px;
-  height:6px;
-  border-radius:50%;
-  display:inline-block
-}
-
 .legend-current {
-  background:#4a9a92
+  color:#4a9a92
 }
 
 .legend-target {
-  background:#e65055
+  color:#e65055
 }
 
 .legend-path {
-  background:#3972ab
+  color:#3972ab
 }
 
 .playback {
@@ -1348,17 +1314,6 @@ h1 {
   display:none
 }
 
-.details-panel summary:before {
-  content:'+';
-  font-size:13px;
-  color:#9fa8b5;
-  margin-right:3px
-}
-
-.details-panel[open] summary:before {
-  content:'−'
-}
-
 .details-panel summary>span,.details-panel summary>svg {
   margin-left:auto
 }
@@ -1993,8 +1948,6 @@ h1 {
 .object-path { min-width:0 }
 .object-path>summary { display:flex; align-items:center; list-style:none; cursor:pointer }
 .object-path>summary::-webkit-details-marker { display:none }
-.object-path>summary::before { content:'›'; padding:0 3px; color:#8a9aad; font-size:15px }
-.object-path[open]>summary::before { content:'⌄' }
 .workspace-object-list .object-path>summary>button { flex:1; min-width:0; padding-left:4px }
 .object-path-points { padding-left:16px; border-left:1px solid #edf0f4; margin-left:8px }
 .object-jog-toolbar { position:absolute; top:57px; left:18px; right:18px; display:flex; flex-wrap:wrap; gap:6px; pointer-events:none }

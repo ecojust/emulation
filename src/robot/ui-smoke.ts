@@ -30,7 +30,8 @@ function snapshot(resources: ResourceCheck[]) {
     modelStatus: document.querySelector('.scene-model-status')?.textContent ?? null,
     graphicsError: document.querySelector('.scene-graphics-error')?.textContent ?? null,
     loadError: document.querySelector('.scene-load-error')?.textContent ?? null,
-    renderedResult: Boolean(document.querySelector('.result-success')),
+    renderedTargetId: document.querySelector<HTMLElement>('[data-target-point-id]')?.dataset.targetPointId ?? null,
+    pathRunPhase: document.querySelector<HTMLElement>('[data-run-phase]')?.dataset.runPhase ?? null,
     alerts: [...document.querySelectorAll('[role="alert"]')].map(element => element.textContent),
     canvas: canvas ? { width: canvas.width, height: canvas.height } : null,
     webgl2: gl ? {
@@ -65,7 +66,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     }
   }
   async function changeView(name: '程序' | '场景') {
-    const button = [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(item => item.textContent === name);
+    const button = [...document.querySelectorAll<HTMLButtonElement>('.workspace-view-switch button')].find(item => item.textContent?.trim() === name);
     if (!button) throw new Error(`Installed ${name} view is unavailable`);
     button.click();
     await waitForUi(() => button.getAttribute('aria-pressed') === 'true', `Installed ${name} view did not open`);
@@ -98,7 +99,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       && document.querySelector('[aria-label="程序模块列表"]')), 'Installed local module editor did not mount');
     const sourceTools = [...document.querySelectorAll<HTMLButtonElement>('.robot-code-tools button')];
     for (const label of ['新建文件', '导入源码']) {
-      const button = sourceTools.find(item => item.textContent === label);
+      const button = sourceTools.find(item => item.textContent?.trim() === label);
       if (!button || button.disabled) throw new Error(`Installed module editor cannot ${label}`);
     }
     const initialModules = moduleOptions();
@@ -157,12 +158,13 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const previousPathIds = new Set([...document.querySelectorAll<HTMLElement>('[data-object-kind="path"]')].map(element => element.dataset.objectId));
     show(result);
     const until = performance.now() + 20000;
-    while (!document.querySelector('[data-loaded-parts="7"]') || !document.querySelector('.result-success')) {
+    while (!document.querySelector('[data-loaded-parts="7"]') || !document.querySelector('[data-target-point-id]')
+      || !document.querySelector('[data-endpoint-joints]')) {
       const graphicsError = document.querySelector('.scene-graphics-error')?.textContent;
       if (graphicsError) throw new Error(`Installed WebView cannot render the scene: ${graphicsError}`);
       const loadError = document.querySelector('.scene-load-error')?.textContent;
       if (loadError) throw new Error(`Robot mesh loader failed: ${loadError}`);
-      if (performance.now() > until) throw new Error('Bundled robot meshes or rendered result did not load');
+      if (performance.now() > until) throw new Error('Bundled robot meshes, recorded target or endpoint alternatives did not load');
       if (errors.length) throw new Error(errors.join('; '));
       await new Promise(resolve => setTimeout(resolve, 100));
     }
@@ -172,20 +174,72 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const earlyErrors = (window as DiagnosticsWindow).__EMULATION_UI_DIAGNOSTICS__;
     if (earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Installed WebView reported a console or runtime error');
     if (errors.length) throw new Error(errors.join('; '));
+    const nearTuple = (actual: unknown, expected: readonly number[], tolerance: number): actual is number[] =>
+      Array.isArray(actual) && actual.length === expected.length
+      && actual.every((value, index) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value - expected[index]) <= tolerance);
+    const targetField = document.querySelector<HTMLTextAreaElement>('[aria-label="目标 robtarget"]');
+    const targetValue: unknown = targetField ? JSON.parse(targetField.value) : null;
+    if (!Array.isArray(targetValue) || !nearTuple(targetValue[0], result.selected.pose.position, 0.001)
+      || !nearTuple(targetValue[1], result.selected.pose.orientation, 1e-8)
+      || !nearTuple(targetValue[2], result.selected.configuration, 0)) throw new Error('Installed target inspector did not preserve the native robot target');
+    if ([...document.querySelectorAll<HTMLButtonElement>('.target-inspector button')]
+      .some(button => /^检查到此点的/.test(button.textContent?.trim() ?? ''))) throw new Error('Installed target inspector still exposes the removed single-segment check');
+    const smokePointId = document.querySelector<HTMLElement>('[data-target-point-id]')?.dataset.targetPointId;
+    const smokePathId = [...document.querySelectorAll<HTMLButtonElement>('[data-object-kind="path"]')]
+      .find(button => !previousPathIds.has(button.dataset.objectId) && button.getAttribute('aria-label') === '选择路径 Smoke Path')?.dataset.objectId;
+    if (!smokePathId || !smokePointId) throw new Error('Installed native result did not create the smoke Path and target');
+    const recordedTarget = targetField!.value;
+    nativeEvidence.recordedTarget = { pointId: smokePointId, pathId: smokePathId, matchesNativeResult: true, endpointAlternatives: document.querySelectorAll('[data-endpoint-joints]').length };
+    async function openSmokePathMenu() {
+      const path = [...document.querySelectorAll<HTMLButtonElement>('[data-object-kind="path"]')]
+        .find(button => button.dataset.objectId === smokePathId);
+      if (!path) throw new Error('Installed smoke Path is unavailable');
+      const bounds = path.getBoundingClientRect();
+      path.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + 8, clientY: bounds.top + 8 }));
+      await waitForUi(() => Boolean(document.querySelector('[role="menu"][aria-label="Path 右键菜单"]')), 'Installed Path context menu did not open');
+    }
+    async function selectRobot() {
+      const button = document.querySelector<HTMLButtonElement>('[data-object-kind="robot"]');
+      if (!button || button.disabled) throw new Error('Installed robot properties are unavailable');
+      button.click();
+      await waitForUi(() => document.querySelectorAll('.robot-inspector input[aria-label^="机器人关节 J"]').length === 6, 'Installed robot properties did not open');
+    }
+    const currentJoints = () => [...document.querySelectorAll<HTMLInputElement>('.robot-inspector input[aria-label^="机器人关节 J"]')].map(input => Number(input.value));
+    const currentPosition = () => [...document.querySelectorAll('[aria-label="当前 TCP"] [data-axis] strong')].map(node => Number(node.textContent));
+    stage = 'path-context-run';
+    // The callback records the native target but leaves the body at startJoints.
+    // Running must perform this nonzero motion through the actual context menu.
+    await selectRobot();
+    if (!nearTuple(currentJoints(), request.startJoints, 1e-5)
+      || nearTuple(request.startJoints, result.selected.joints, 0.01)) throw new Error('Installed Path run does not start from the expected distinct robot pose');
+    await openSmokePathMenu();
+    const run = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"][aria-label="Path 右键菜单"] [role="menuitem"]')]
+      .find(button => button.textContent?.trim() === '运行');
+    if (!run || run.disabled) throw new Error('Installed Path context menu cannot run the recorded target');
+    run.click();
+    await waitForUi(() => {
+      const state = document.querySelector<HTMLElement>('[data-run-phase]');
+      if (state?.dataset.runPathId !== smokePathId) return false;
+      if (state.dataset.runPhase === 'error') throw new Error('Installed Path context run failed: ' + state.textContent);
+      return state.dataset.runPhase === 'complete' && state.dataset.runPointId === smokePointId;
+    }, 'Installed Path context run did not complete the recorded target');
+    await selectRobot();
+    await waitForUi(() => nearTuple(currentJoints(), result.selected.joints, 1e-4)
+      && nearTuple(currentPosition(), result.selected.pose.position, 0.02), 'Installed Path run did not display the final native joints and TCP');
+    nativeEvidence.pathContextRun = { pathId: smokePathId, pointId: smokePointId, completed: true, joints: currentJoints(), toolPositionMm: currentPosition() };
+    const point = [...document.querySelectorAll<HTMLButtonElement>('[data-object-kind="target"]')].find(button => button.dataset.objectId === smokePointId);
+    if (!point) throw new Error('Installed Path run removed its recorded target');
+    point.click();
+    await waitForUi(() => document.querySelector<HTMLTextAreaElement>('[aria-label="目标 robtarget"]')?.value === recordedTarget, 'Installed Path run changed the recorded target');
     stage = 'offline-path-module';
     // Exercise the same Path context menu as the user; source conversion must
     // add and select a new module without replacing any existing source file.
     await changeView('程序');
     const previousModules = new Map(moduleOptions().map(option => [option.dataset.sourceFileId, option.getAttribute('aria-label')]));
     await changeView('场景');
-    const smokePath = [...document.querySelectorAll<HTMLButtonElement>('[data-object-kind="path"]')]
-      .find(button => !previousPathIds.has(button.dataset.objectId) && button.getAttribute('aria-label') === '选择路径 Smoke Path');
-    if (!smokePath) throw new Error('Installed native result did not create the smoke Path');
-    const bounds = smokePath.getBoundingClientRect();
-    smokePath.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: bounds.left + 8, clientY: bounds.top + 8 }));
-    await waitForUi(() => Boolean(document.querySelector('[role="menu"][aria-label="Path 右键菜单"]')), 'Installed Path context menu did not open');
+    await openSmokePathMenu();
     const convert = [...document.querySelectorAll<HTMLButtonElement>('[role="menu"][aria-label="Path 右键菜单"] [role="menuitem"]')]
-      .find(button => button.textContent === '转换为程序');
+      .find(button => button.textContent?.trim() === '转换为程序');
     if (!convert || convert.disabled) throw new Error('Installed Path cannot convert its recorded pose into a module');
     convert.click();
     await waitForUi(() => moduleOptions().some(option => option.getAttribute('aria-selected') === 'true' && !previousModules.has(option.dataset.sourceFileId)), 'Installed Path conversion did not select a new module');
@@ -257,7 +311,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
     } finally { clearTimeout(deadline); }
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path-to-module editor workflow, WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path context-run and module workflow, WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });
   }

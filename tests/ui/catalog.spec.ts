@@ -2,8 +2,8 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import type { RobotCatalog, RobotCatalogModel } from '../../src/catalog/types';
 import type { Pose } from '../../src/robot/types';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
-import { bodyJoints, captureCurrent, checkedSegment, expectCopyState, openScene, pathPoints, readRapid, selectRobot } from './workspace-helpers';
-import { chooseCompletion, codeEditor, generateSource, moduleList, newSource, readSource, replaceSource } from './programming-helpers';
+import { bodyJoints, captureCurrent, expectNoPointMotionActions, openScene, pathPoints, selectPoint, selectRobot, setJoint } from './workspace-helpers';
+import { chooseCompletion, codeEditor, generateSource, moduleList, newSource, openCode, readSource, replaceSource } from './programming-helpers';
 
 test.setTimeout(90_000);
 let catalog: RobotCatalog;
@@ -57,6 +57,15 @@ async function noDocumentScroll(page: Page) {
   expect(await page.evaluate(() => Math.max(document.documentElement.scrollWidth - innerWidth, document.documentElement.scrollHeight - innerHeight, Math.abs(scrollX), Math.abs(scrollY)))).toBeLessThanOrEqual(1);
 }
 
+/** Keep both an immutable scene point and a separately generated source file. */
+async function recordedWorkspace(page: Page) {
+  const point = await captureCurrent(page);
+  const source = await generateSource(page, point.pathId);
+  await setJoint(page, 1, 3);
+  await selectPoint(page, point);
+  return { point, source, target: await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue() };
+}
+
 test('the title opens a bounded searchable model catalog with honest brand availability', async ({ page }) => {
   const errors = observe(page);
   await page.setViewportSize({ width: 1000, height: 720 });
@@ -100,8 +109,7 @@ test('cancelling an in-progress verified asset download retains the current robo
   });
   try {
     await open(page);
-    const point = await checkedSegment(page);
-    const program = await readRapid(page);
+    const { point, source, target } = await recordedWorkspace(page);
     const originalJoints = await bodyJoints(page);
     await showPicker(page);
     await entry(page, model.id).getByRole('button', { name: /^加载 / }).click();
@@ -116,10 +124,12 @@ test('cancelling an in-progress verified asset download retains the current robo
     await expect(picker(page)).toContainText('已取消加载，当前机器人保持不变');
     await page.getByRole('button', { name: '关闭模型目录', exact: true }).click();
     await expect(current(page)).toContainText('IRB 1100-4/0.58');
-    expect(await readRapid(page)).toBe(program);
     expect(await bodyJoints(page)).toEqual(originalJoints);
     await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
-    await expectCopyState(page, true);
+    await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(target);
+    await expectNoPointMotionActions(page);
+    await openCode(page);
+    expect(await readSource(page)).toBe(source);
     expect(errors).toEqual([]);
   } finally { cancelled = true; release(); }
 });
@@ -140,14 +150,18 @@ test('a corrupt asset cannot replace the robot, retry succeeds, and verified bro
     await realBytes(route);
   });
   await open(page);
-  await checkedSegment(page);
-  const program = await readRapid(page);
+  const { point, source, target } = await recordedWorkspace(page);
+  const originalJoints = await bodyJoints(page);
   await showPicker(page);
   await entry(page, model.id).getByRole('button', { name: /^加载 / }).click();
   await expect(picker(page).getByRole('alert')).toContainText(/校验|SHA|完整/);
   // The modal makes the old workspace inert, but its accepted state must remain.
   await expect(page.locator('button[aria-label="选择机器人型号"]')).toContainText('IRB 1100-4/0.58');
-  expect(await page.locator('textarea[aria-label="RAPID MoveL 指令"]').inputValue()).toBe(program);
+  expect(await page.locator('textarea[aria-label="目标 robtarget"]').inputValue()).toBe(target);
+  await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
+  expect(await bodyJoints(page)).toEqual(originalJoints);
+  // Source remains mounted while the modal and scene make its controls inert.
+  expect((await page.locator('.cm-content .cm-line').allTextContents()).join('\n')).toBe(source);
   corrupt = false;
   await page.getByRole('button', { name: '重试加载', exact: true }).click();
   await expectModel(page, model, 7);
@@ -185,7 +199,7 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
     await expect.poll(async () => Math.max(...(await toolPose(page)).position.map((value, i) => Math.abs(value - expected.xyz[i])))).toBeLessThan(.001);
     await expect(page.getByRole('button', { name: '检查到此点的 MoveL', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
+    await expectNoPointMotionActions(page);
     const before = await genericCanvas(page).screenshot();
     await page.getByRole('spinbutton', { name: '机器人关节 J1', exact: true }).fill('30');
     await expect.poll(async () => JSON.parse((await genericCanvas(page).getAttribute('data-urdf-joints'))!)[0]).toBe(30);
@@ -261,7 +275,10 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
   await selectRobot(page, 'irb1100-4-0.58');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toBeEnabled();
-  await checkedSegment(page);
-  await expectCopyState(page, true);
+  const point = await captureCurrent(page);
+  await expectNoPointMotionActions(page);
+  const source = await generateSource(page, point.pathId);
+  expect(source).toContain('MoveL ' + point.name + ',');
+  expect(source).toContain('CONST robtarget ' + point.name);
   expect(errors).toEqual([]);
 });

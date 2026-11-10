@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { forwardKinematics } from '../../src/robot/kinematics';
 import { codeEditor, downloadSource, generateSource, moduleList, readSource } from './programming-helpers';
 import { getRobotModel } from '../../src/robot/model';
-import { bodyPose, captureCurrent, checkedSegment, expectBodyJoints, expectCopyState, selectPathForPoints, observeBrowser, openProgram, openScene, openWorkspace, pathObjects, pathPoints, createPath, selectPath, readRapid, scene, selectPoint, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
+import { bodyPose, captureCurrent, expectBodyJoints, expectNoPointMotionActions, selectPathForPoints, observeBrowser, openProgram, openScene, openWorkspace, pathObjects, pathPoints, createPath, selectPath, openPathMenu, runPathFromMenu, scene, selectPoint, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
 
 test.setTimeout(90_000);
 const ready = [0, 20, -30, 0, 40, 0];
@@ -27,9 +27,10 @@ test('robot selection exposes actual state and DH while mechanical zero cannot b
   await expect(page.getByRole('button', { name: '运行 Path', exact: true })).toBeDisabled();
   await page.locator(`[data-object-kind="path"][data-object-id="${pathId}"]`).click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: '添加当前点到 Path', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: '运行', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(pathPoints(page)).toHaveCount(0);
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-object-zero.png' });
   expect(errors).toEqual([]);
 });
@@ -39,6 +40,11 @@ test('creating a Path first and capturing its ordered points generates a module 
   await openWorkspace(page);
   const emptyPath = await createPath(page);
   await expect(pathPoints(page, emptyPath)).toHaveCount(0);
+  const emptyMenu = await openPathMenu(page, emptyPath, true);
+  await expect(emptyMenu.getByRole('menuitem', { name: '运行', exact: true })).toBeDisabled();
+  await emptyMenu.press('Escape');
+  await expect(emptyMenu).toHaveCount(0);
+  await expect(page.locator(`[data-object-kind="path"][data-object-id="${emptyPath}"]`)).toBeFocused();
   const first = await captureCurrent(page, emptyPath);
   const firstPose = await bodyPose(page);
   await setJoint(page, 1, 3);
@@ -65,8 +71,7 @@ test('creating a Path first and capturing its ordered points generates a module 
     for (let axis = 0; axis < 3; axis++) expect(rendered.points[i].position[axis]).toBeCloseTo([firstPose, secondPose][i].position[axis], 7);
   }
   expect(Math.hypot(...secondPose.position.map((value, i) => value - firstPose.position[i]))).toBeGreaterThan(20);
-  await expectCopyState(page, false);
-  await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
+  await expectNoPointMotionActions(page);
   await expect.poll(async () => page.locator('[data-endpoint-joints]').evaluateAll(rows => rows.length > 0 && rows.every(row => ['hit', 'clear', 'uncertain'].includes(row.getAttribute('data-collision-state')!)))).toBe(true);
   await page.screenshot({ path: '/tmp/emulation-object-path.png' });
   await page.screenshot({ path: 'docs/images/workspace.png' });
@@ -85,38 +90,40 @@ test('creating a Path first and capturing its ordered points generates a module 
   expect(errors).toEqual([]);
 });
 
-test('a recorded point requires a real MoveL check before copy or playback and preserves its full pose', async ({ page, context }) => {
+test('a point exposes data and preview while the Path context menu validates and runs its recorded pose', async ({ page }) => {
   const errors = observeBrowser(page);
-  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openWorkspace(page);
-  await checkedSegment(page);
-  const rapid = await readRapid(page);
-  await page.getByRole('button', { name: '复制此 MoveL', exact: true }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(rapid);
-  expect(rapid).toContain('ConfL \\On;');
-  expect(rapid).toContain('tool0\\WObj:=wobj0');
-  expect(rapid.match(/9E9/gi)).toHaveLength(6);
+  const point = await captureCurrent(page);
+  const storedTarget = await page.getByRole('textbox', { name: '目标 robtarget', exact: true }).inputValue();
+  await setJoint(page, 1, 3);
+  await selectPoint(page, point);
+  await expectNoPointMotionActions(page);
   await expectBodyJoints(page, [3, ...ready.slice(1)]);
-  await page.getByRole('button', { name: '播放此 MoveL', exact: true }).click();
-  await expect(page.getByRole('slider', { name: '路径进度', exact: true })).toHaveValue('100', { timeout: 15_000 });
+  await runPathFromMenu(page, point.pathId, { keyboard: true });
+  await expect(page.locator('[data-run-phase]')).toHaveAttribute('data-run-phase', 'complete', { timeout: 20_000 });
   const target = forwardKinematics(getRobotModel('irb1100-4-0.58'), ready as [number, number, number, number, number, number]).pose;
   await expect.poll(async () => Math.hypot(...(await bodyPose(page)).position.map((value, i) => value - target.position[i]))).toBeLessThan(.01);
-  await page.screenshot({ path: '/tmp/emulation-object-checked-segment.png' });
+  await selectPoint(page, point);
+  await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).toHaveValue(storedTarget);
+  await expectNoPointMotionActions(page);
+  await page.screenshot({ path: '/tmp/emulation-point-path-run.png' });
   expect(errors).toEqual([]);
 });
 
-test('joint edits keep the last valid body, invalidate checked motion, and explicitly update an existing stored point', async ({ page }) => {
+test('joint edits keep the last valid body, block Path running on invalid input, and explicitly update an existing stored point', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
-  const point = await checkedSegment(page);
+  const point = await captureCurrent(page);
+  await setJoint(page, 1, 3);
   await setJoint(page, 1, 1000);
   await expect(page.getByRole('alert')).toContainText('超出关节范围');
   await expectBodyJoints(page, [3, ...ready.slice(1)]);
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   await selectPath(page, point.pathId);
   await expect(page.getByRole('button', { name: '添加当前点到 Path', exact: true })).toBeDisabled();
   await page.locator(`[data-object-kind="path"][data-object-id="${point.pathId}"]`).click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: '添加当前点到 Path', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: '运行', exact: true })).toBeDisabled();
   await page.getByRole('menu', { name: 'Path 右键菜单', exact: true }).press('Escape');
   await expect(pathPoints(page, point.pathId)).toHaveCount(1);
   await setJoint(page, 1, '');
@@ -128,8 +135,7 @@ test('joint edits keep the last valid body, invalidate checked motion, and expli
   await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
   await expect(page.getByRole('textbox', { name: '目标 robtarget', exact: true })).not.toHaveValue(original);
   await expectBodyJoints(page, [6, ...ready.slice(1)]);
-  await expectCopyState(page, false);
-  await expect(page.getByRole('button', { name: '播放路径', exact: true })).toBeDisabled();
+  await expectNoPointMotionActions(page);
   await expect(pathPoints(page)).toHaveCount(1);
   await expect(pathPoints(page).first()).toHaveAttribute('data-object-id', point.id);
   expect(errors).toEqual([]);
@@ -214,7 +220,7 @@ test('model switching isolates recorded programs and selections while returning 
   await expect(pathPoints(page).first()).toHaveAttribute('data-object-id', longPoint.id);
   await expect(pathPoints(page).first()).not.toHaveClass(/selected/);
   await expect(page.getByRole('heading', { name: '机器人属性', exact: true })).toBeVisible();
-  await expectCopyState(page, false);
+  await expectNoPointMotionActions(page);
   await selectRobot(page, 'irb1100-4-0.475');
   await selectRobotObject(page);
   await page.getByRole('button', { name: '机械零位', exact: true }).click();

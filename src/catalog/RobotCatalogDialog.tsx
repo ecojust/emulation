@@ -1,3 +1,4 @@
+import Icon from '../ui/Icon';
 import { useEffect, useRef, useState } from 'react';
 import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel, type ModelProgress } from './client';
 import './catalog.css';
@@ -79,8 +80,8 @@ export default function RobotCatalogDialog({ currentModelId, onSelect, onClose }
   const progressLabel = progress?.phase === 'preparing' ? '正在解析模型与网格' : progress?.phase === 'downloading' ? '正在下载模型' : '正在检查模型缓存';
   const selectedName = MODEL_CATALOG.find(model => model.id === loadingId)?.name;
   return <dialog ref={dialog} className="robot-catalog-dialog" aria-labelledby="robot-catalog-title" onCancel={event => { event.preventDefault(); close(); }}>
-    <header className="robot-catalog-heading"><div><span className="eyebrow">ROBOT LIBRARY</span><h2 id="robot-catalog-title">机器人模型目录</h2><p>选择型号后加载完整模型。首次使用需要下载，后续使用本机缓存。</p></div><button type="button" className="icon-button" aria-label="关闭模型目录" onClick={close}>×</button></header>
-    <label className="robot-catalog-search">搜索型号<input type="search" aria-label="搜索机器人型号" placeholder="品牌或型号" value={query} onChange={event => setQuery(event.target.value)}/></label>
+    <header className="robot-catalog-heading"><div><span className="eyebrow">ROBOT LIBRARY</span><h2 id="robot-catalog-title">机器人模型目录</h2><p>选择型号后加载完整模型。首次使用需要下载，后续使用本机缓存。</p></div><button type="button" className="icon-button" aria-label="关闭模型目录" onClick={close}><Icon name="close" size={18}/></button></header>
+    <label className="robot-catalog-search"><Icon name="search" size={16}/>搜索型号<input type="search" aria-label="搜索机器人型号" placeholder="品牌或型号" value={query} onChange={event => setQuery(event.target.value)}/></label>
     <div className="robot-catalog-list">
       {brands.map(brand => {
         const entries = MODEL_CATALOG.filter(model => model.brand === brand && (!search || `${model.brand} ${model.name}`.toLocaleLowerCase().includes(search)));
@@ -94,7 +95,7 @@ export default function RobotCatalogDialog({ currentModelId, onSelect, onClose }
       {cacheError && <p className="robot-catalog-message" role="status">缓存状态暂不可用，仍可选择型号加载。<button type="button" className="copy-button" disabled={Boolean(loadingId)} onClick={() => setCacheRevision(value => value + 1)}>重试缓存检查</button></p>}
       {loadingId && <div className="robot-catalog-progress" role="status" aria-label="模型加载进度"><div><strong>{selectedName}</strong><span>{progressLabel}{progress && progress.totalBytes > 0 ? ` · ${bytesText(progress.downloadedBytes)} / ${bytesText(progress.totalBytes)}` : ''}</span></div><progress aria-label="模型下载进度" max={Math.max(1, progress?.totalBytes ?? 1)} value={progress?.phase === 'downloading' ? progress.downloadedBytes : undefined}/><button type="button" className="copy-button" onClick={cancel}>取消加载</button></div>}
       {message && <p className={failedId ? 'robot-catalog-error' : 'robot-catalog-message'} role={failedId ? 'alert' : 'status'}>{message}{failedId && <button type="button" className="copy-button" onClick={() => void load(failedId)}>重试加载</button>}</p>}
-      <p className="robot-catalog-note">ABB 支持原生运动检查与单段模块导出；FANUC、安川支持直线仿真和品牌模板，控制器文件导出尚未适配。</p>
+      <p className="robot-catalog-note">目录内型号支持 Path 直线仿真和品牌模板；ABB 另支持端点逆解与干涉检查。模板尚未完成控制器验收。</p>
     </footer>
   </dialog>;
 }
