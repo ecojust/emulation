@@ -456,3 +456,105 @@ fn out_of_range_generated_detours_are_skipped_without_losing_other_routes() {
     assert!(plan.waypoints.iter().any(|p| p.target_index.is_none()));
     assert_eq!(plan.waypoints.last().unwrap().target_index, Some(0));
 }
+
+#[test]
+fn distinct_input_target_poses_are_kept_exactly_with_rotated_base_and_offset_tool() {
+    let mut r = request();
+    r.orientation = None;
+    r.allow_detours = false;
+    r.base_pose = Pose {
+        position: [450., -230., 120.],
+        orientation: [0.3_f64.cos(), 0., 0., 0.3_f64.sin()],
+    };
+    r.tool_pose = Pose {
+        position: [30., 15., 70.],
+        orientation: [0.15_f64.cos(), 0.15_f64.sin(), 0., 0.],
+    };
+    let model = get_robot_model("irb1100-4-0.58").unwrap();
+    r.targets = [[1., 20., -30., 0., 40., 2.], [2., 20., -30., 0., 40., 4.]]
+        .iter()
+        .map(|q| {
+            multiply(
+                r.base_pose,
+                multiply(forward_kinematics(&model, q).unwrap().pose, r.tool_pose),
+            )
+        })
+        .collect();
+    let before = r.clone();
+    let plan = success(&r);
+    assert_eq!(r, before);
+    for (index, point) in plan.waypoints.iter().enumerate() {
+        assert_eq!(point.pose.position, r.targets[index].position);
+        assert!(
+            quaternion_distance_deg(&point.pose.orientation, &r.targets[index].orientation) < 1e-5
+        );
+    }
+    assert!(
+        quaternion_distance_deg(
+            &plan.waypoints[0].pose.orientation,
+            &plan.waypoints[1].pose.orientation
+        ) > 1.
+    );
+    r.orientation = Some(r.targets[0].orientation);
+    assert_eq!(failure(&r).code, "invalid_input");
+}
+#[test]
+fn smooth_abb_quadrant_crossings_are_allowed_but_wrist_branch_flips_are_not() {
+    let mut r = request();
+    r.orientation = None;
+    r.allow_detours = false;
+    r.start_joints = [89.6, 20., -30., 89.6, 40., 89.6];
+    let model = get_robot_model("irb1100-4-0.58").unwrap();
+    r.targets = [
+        [90.1, 20., -30., 90.1, 40., 90.1],
+        [90.4, 20., -30., 90.4, 40., 90.4],
+    ]
+    .iter()
+    .map(|q| forward_kinematics(&model, q).unwrap().pose)
+    .collect();
+    let plan = success(&r);
+    assert_eq!(
+        &plan.waypoints.last().unwrap().configuration.unwrap()[..3],
+        &[1, 1, 1]
+    );
+    let initial = emulation_core::configuration::get_configuration(
+        &model,
+        &r.start_joints,
+        &forward_kinematics(&model, &r.start_joints).unwrap(),
+    )
+    .configuration
+    .unwrap();
+    assert!(plan
+        .waypoints
+        .iter()
+        .all(|p| p.configuration.unwrap()[3] == initial[3]));
+    r.start_joints = [0., 20., -30., 0., -0.2, 0.];
+    r.targets = vec![
+        forward_kinematics(&model, &[0., 20., -30., 0., 0.2, 0.])
+            .unwrap()
+            .pose,
+    ];
+    assert!(matches!(
+        plan_grinding(&r, &AtomicBool::new(false)),
+        GrindingResult::Failure(_)
+    ));
+}
+#[test]
+fn redundant_chain_uses_bounded_candidates_after_greedy_dead_end() {
+    let r: GrindingRequest = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/grinding/redundant-lookahead.json"
+    ))
+    .unwrap();
+    let plan = success(&r);
+    assert_eq!(plan.waypoints.len(), 2);
+    assert!(plan.checked_intervals <= 100000);
+    for (index, point) in plan.waypoints.iter().enumerate() {
+        assert_eq!(point.pose.position, r.targets[index].position);
+        assert_eq!(point.target_index, Some(index));
+        assert_eq!(point.configuration, None);
+    }
+    let mut calls = 0;
+    assert!(
+        matches!(plan_grinding_cancellable(&r,||{calls+=1;calls>1500}),GrindingResult::Failure(error) if error.code=="cancelled")
+    );
+}

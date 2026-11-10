@@ -4,7 +4,14 @@ import type { Vec3 } from '../robot/types';
 
 export type WorkspaceView = 'scene' | 'program';
 export type WorkspaceSelection = { kind: 'robot' } | { kind: 'base' } | { kind: 'flange' } | { kind: 'joint'; index: number } | { kind: 'zone' | 'path' | 'target' | 'frame' | 'tool'; id: string };
+export interface WorkspaceInitialState {
+  activeView?: WorkspaceView;
+  leftCollapsed?: boolean;
+  zones?: readonly DangerZoneDraft[];
+  selection?: WorkspaceSelection;
+}
 export interface WorkspaceOptions {
+  initial?: WorkspaceInitialState;
   modelKey?: string;
   pathIds?: readonly string[];
   targetIds?: readonly string[];
@@ -30,7 +37,7 @@ export interface DangerZoneDraft {
 }
 
 const defaultGeometry = () => ({ enabled: true, center: ['220', '-160', '350'], size: ['160', '160', '200'] });
-const firstZone = (): DangerZoneDraft => ({ id: 'danger-zone-1', name: '危险区 1', ...defaultGeometry() });
+export const createDefaultDangerZone = (): DangerZoneDraft => ({ id: 'danger-zone-1', name: '危险区 1', ...defaultGeometry() });
 
 function zoneVector(values: string[], label: string): Vec3 {
   if (values.length !== 3 || values.some(value => !value.trim() || !Number.isFinite(Number(value)))) throw new Error(`${label}需要填写完整的有限数值。`);
@@ -39,11 +46,11 @@ function zoneVector(values: string[], label: string): Vec3 {
 
 /** Shared workspace state remains mounted when scene/program views switch. */
 export function useWorkspace(options: WorkspaceOptions = {}) {
-  const [activeView, setActiveView] = useState<WorkspaceView>('scene');
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [zones, setZones] = useState<DangerZoneDraft[]>(() => [firstZone()]);
-  const [selectionState, setSelectionState] = useState<{ modelKey?: string; selection: WorkspaceSelection }>(() => ({ modelKey: options.modelKey, selection: ROBOT_SELECTION }));
-  const nextZoneNumber = useRef(2);
+  const [activeView, setActiveView] = useState<WorkspaceView>(options.initial?.activeView ?? 'scene');
+  const [leftCollapsed, setLeftCollapsed] = useState(options.initial?.leftCollapsed ?? false);
+  const [zones, setZones] = useState<DangerZoneDraft[]>(() => options.initial?.zones ? structuredClone([...options.initial.zones]) : [createDefaultDangerZone()]);
+  const [selectionState, setSelectionState] = useState<{ modelKey?: string; selection: WorkspaceSelection }>(() => ({ modelKey: options.modelKey, selection: options.initial?.selection ?? ROBOT_SELECTION }));
+  const nextZoneNumber = useRef((options.initial?.zones?.length ?? 1) + 1);
   const scope = { zoneIds: zones.map(zone => zone.id), pathIds: options.pathIds, targetIds: options.targetIds, frameIds: options.frameIds, toolIds: options.toolIds };
   const selection = sanitizeWorkspaceSelection(selectionState.selection, scope, selectionState.modelKey, options.modelKey);
   const selectedZoneId = selection.kind === 'zone' ? selection.id : null;
@@ -104,7 +111,7 @@ export function useWorkspace(options: WorkspaceOptions = {}) {
   return {
     activeView, setActiveView, leftCollapsed, setLeftCollapsed,
     selection, selectObject,
-    zones, selectedZoneId, selectedZone, setSelectedZoneId,
+    zones, setZones, selectedZoneId, selectedZone, setSelectedZoneId,
     zoneConfiguration, editZone, addZone, removeSelectedZone, resetSelectedZone,
     canAddZone: zones.length < COLLISION_LIMITS.maximumZones,
   };

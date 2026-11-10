@@ -1,11 +1,11 @@
-import { forwardKinematics, multiplyMatrices, normalizeQuaternion, quaternionDistanceDeg, quaternionToMatrix, matrixToQuaternion } from './kinematics';
+import { forwardKinematics, multiplyMatrices, normalizeQuaternion, quaternionDistanceDeg, quaternionToMatrix, matrixToQuaternion, slerpQuaternion } from './kinematics';
 import { getRobotModel } from './model';
 import { getConfiguration } from './configuration';
 import { forwardGenericUnchecked, validateGenericChain } from './generic-kinematics';
 import type { GrindingRequest, GrindingResult, GrindingSuccess } from './grinding-types';
 import type { Pose, Vec3 } from './types';
 
-export const GRINDING_LIMITS = { targets: 64, samples: 8192, ikCalls: 32768, intervalChecks: 100000, certDepth: 12, translationStepMm: 2, orientationStepDeg: 1, jointStepDeg: 15 } as const;
+export const GRINDING_LIMITS = { targets: 64, samples: 8192, ikCalls: 32768, intervalChecks: 100000, certDepth: 12, translationStepMm: 2, orientationStepDeg: 1, jointStepDeg: 15, beamWidth: 4, legRefinements: 3 } as const;
 export const finiteTuple = (value: unknown, length: number): value is number[] => Array.isArray(value) && value.length === length && Array.from(value).every(item => typeof item === 'number' && Number.isFinite(item));
 export function validateGrindingPose(pose: Pose): Pose {
   if (!pose || !finiteTuple(pose.position, 3) || pose.position.some(value => Math.abs(value) > 1e6)
@@ -40,14 +40,16 @@ export function validateGrindingRequest(value: GrindingRequest): GrindingRequest
   }
   const basePose = validateGrindingPose(value.basePose), toolPose = validateGrindingPose(value.toolPose);
   const orientation = value.orientation == null ? null : validateGrindingPose({ position: [0, 0, 0], orientation: value.orientation }).orientation;
+  const targets = Array.from(value.targets).map(validateGrindingPose);
+  if (orientation && targets.some(target => quaternionDistanceDeg(target.orientation, orientation) > 1e-5)) throw new Error('旧版统一方向参数与目标姿态不一致；不会覆盖输入目标。');
   // Snapshot the request so later caller edits cannot change the submitted context.
-  return structuredClone({ ...value, basePose, toolPose, orientation, targets: Array.from(value.targets).map(validateGrindingPose) });
+  return structuredClone({ ...value, basePose, toolPose, orientation, targets });
 }
 export function validateGrindingResult(value: unknown, request?: GrindingRequest): GrindingResult {
   if (!value || typeof value !== 'object') throw new Error('未取得有效的路径规划结果。');
   const result = value as GrindingResult;
   if (result.status === 'failure') {
-    if (typeof result.code !== 'string' || typeof result.message !== 'string') throw new Error('路径规划失败信息无效。');
+    if (typeof result.code !== 'string' || typeof result.message !== 'string' || Object.hasOwn(result, 'path') || Object.hasOwn(result, 'waypoints')) throw new Error('路径规划失败信息无效。');
     return result;
   }
   if (result.status !== 'success') throw new Error('路径规划状态无效。');
@@ -77,9 +79,15 @@ export function validateGrindingResult(value: unknown, request?: GrindingRequest
     const robot = request.robot;
     const limits = robot.kind === 'abb' ? getRobotModel(robot.modelId).limits : robot.chain.limits;
     if (plan.path[0].joints.some((v, i) => Math.abs(v - request.startJoints[i]) > 1e-6)) throw new Error('规划结果起点与请求不一致。');
+    const initialConfiguration = robot.kind === 'abb' ? getConfiguration(getRobotModel(robot.modelId), request.startJoints, forwardKinematics(getRobotModel(robot.modelId), request.startJoints)).configuration : null;
     for (const [index, sample] of plan.path.entries()) {
       if (sample.joints.some((v, i) => v < limits[i].minDeg - 1e-7 || v > limits[i].maxDeg + 1e-7
         || (index > 0 && Math.abs(v - plan.path[index - 1].joints[i]) > GRINDING_LIMITS.jointStepDeg + 1e-6))) throw new Error('规划关节限位或连续性复核失败。');
+      if (robot.kind === 'abb') {
+        const model = getRobotModel(robot.modelId), config = getConfiguration(model, sample.joints, forwardKinematics(model, sample.joints));
+        if (config.singular || !config.configuration || !initialConfiguration || config.configuration[3] !== initialConfiguration[3]) throw new Error('规划轨迹发生机器人分支变化。');
+      }
+      if (index > 0 && sample.joints.some((v,i) => Math.abs(v-plan.path[index-1].joints[i]) / ((sample.t-plan.path[index-1].t)*plan.durationSeconds) > limits[i].maxSpeedDeg + 1e-5)) throw new Error('规划轨迹超过关节速度限制。');
       const flange = robot.kind === 'abb' ? forwardKinematics(getRobotModel(robot.modelId), sample.joints).frames[6]
         : forwardGenericUnchecked(robot.chain, sample.joints).transform;
       const world = multiplyMatrices(multiplyMatrices(base, flange), tool);
@@ -88,7 +96,8 @@ export function validateGrindingResult(value: unknown, request?: GrindingRequest
     }
     const targets = plan.waypoints.filter(point => point.targetIndex !== null);
     if (targets.length !== request.targets.length || targets.some((point, i) => point.targetIndex !== i
-      || distance(point.pose, request.targets[i]) > 0.02 || quaternionDistanceDeg(point.pose.orientation, request.orientation ?? request.targets[i].orientation) > 0.002)) throw new Error('规划结果未按顺序包含全部目标。');
+      || point.pose.position.some((v,axis) => v !== request.targets[i].position[axis])
+      || Math.min(...[1,-1].map(sign => Math.hypot(...point.pose.orientation.map((v,axis) => v-sign*normalizeQuaternion(request.targets[i].orientation)[axis])))) > 1e-12)) throw new Error('规划结果未按顺序包含全部目标。');
     let pathIndex = 0;
     for (const [pointIndex, point] of plan.waypoints.entries()) {
       const expectedKind = point.targetIndex === null || point.targetIndex === 0 || (pointIndex > 0 && plan.waypoints[pointIndex - 1].targetIndex === null) ? 'transfer' : 'process';
@@ -101,6 +110,16 @@ export function validateGrindingResult(value: unknown, request?: GrindingRequest
         ? (plan.path.length - 1 > pathIndex && matches(plan.path.at(-1)!) ? plan.path.length - 1 : -1)
         : plan.path.findIndex((sample, i) => i > pathIndex && matches(sample));
       if (found < 0) throw new Error('规划路径点与轨迹不一致。');
+      const origin = plan.path[pathIndex], end = plan.path[found], interval = end.t-origin.t;
+      const length = distance(origin.pose,point.pose), angle = quaternionDistanceDeg(origin.pose.orientation,point.pose.orientation);
+      for (let i=pathIndex+1;i<=found;i++) {
+        const sample=plan.path[i],fraction=(sample.t-origin.t)/interval;
+        const expectedPosition=origin.pose.position.map((v,axis)=>v+(point.pose.position[axis]-v)*fraction);
+        const delta=(sample.t-plan.path[i-1].t)/interval;
+        if (Math.hypot(...sample.pose.position.map((v,axis)=>v-expectedPosition[axis]))>0.0021
+          || quaternionDistanceDeg(sample.pose.orientation,slerpQuaternion(origin.pose.orientation,point.pose.orientation,fraction))>0.0021
+          || length*delta>GRINDING_LIMITS.translationStepMm+1e-6 || angle*delta>GRINDING_LIMITS.orientationStepDeg+1e-6) throw new Error('规划采样未按目标间直线和姿态插值生成。');
+      }
       if (robot.kind === 'abb') {
         const model = getRobotModel(robot.modelId), actual = getConfiguration(model, point.joints, forwardKinematics(model, point.joints));
         if (actual.singular || !actual.configuration || !point.configuration || actual.configuration.some((v, i) => v !== point.configuration![i])) throw new Error('规划点的机器人配置复核失败。');
@@ -108,7 +127,7 @@ export function validateGrindingResult(value: unknown, request?: GrindingRequest
       pathIndex = found;
     }
     if (pathIndex !== plan.path.length - 1) throw new Error('规划终点与轨迹不一致。');
-    if (request.orientation ? !plan.orientation || quaternionDistanceDeg(request.orientation, plan.orientation) > 0.002 : plan.orientation !== null) throw new Error('规划结果的统一工具方向不匹配。');
+    if (request.orientation ? !plan.orientation || quaternionDistanceDeg(request.orientation, plan.orientation) > 0.002 : plan.orientation !== null) throw new Error('规划结果的兼容方向约束不匹配。');
   }
   return plan;
 }

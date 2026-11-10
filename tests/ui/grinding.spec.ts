@@ -1,5 +1,6 @@
+import { openDefaultProject } from './project-helpers';
 import { expect, test, type Page } from '@playwright/test';
-import type { Pose } from '../../src/robot/types';
+import type { JointAngles, Pose } from '../../src/robot/types';
 import { forwardKinematics } from '../../src/robot/kinematics';
 import { getRobotModel } from '../../src/robot/model';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
@@ -14,14 +15,14 @@ async function disableZones(page: Page) {
     await page.getByRole('checkbox', { name: '显示干涉区域', exact: true }).uncheck();
   }
 }
-async function openPlanner(page: Page, pathId: string, initial: Pose) {
+async function openPlanner(page: Page, pathId: string, initial: Pose, next: Pose = { position: [initial.position[0], initial.position[1] + 20, initial.position[2]], orientation: initial.orientation.map(value => -value) as Pose['orientation'] }) {
   const menu = await openPathMenu(page, pathId);
   await menu.getByRole('menuitem', { name: '路径规划', exact: true }).click();
   await expect(planner(page)).toBeVisible();
-  const next: Pose = { position: [initial.position[0], initial.position[1] + 20, initial.position[2]], orientation: initial.orientation.map(value => -value) as Pose['orientation'] };
   const input = [initial, next].map(pose => [...pose.position, ...pose.orientation].join(' ')).join('\n');
   await planner(page).getByRole('textbox', { name: '目标点列表', exact: true }).fill(input);
-  await planner(page).getByRole('button', { name: '使用首点方向', exact: true }).click();
+  await expect(planner(page).getByRole('button', { name: '使用首点方向', exact: true })).toHaveCount(0);
+  await expect(planner(page).getByRole('spinbutton', { name: /^统一工具方向 / })).toHaveCount(0);
   await planner(page).getByRole('spinbutton', { name: '最小安全间距', exact: true }).fill('2');
   return { input, next };
 }
@@ -37,20 +38,24 @@ function sameDirection(actual: number[], expected: number[]) {
   return Math.abs(1 - Math.abs(actual.reduce((sum, value, i) => sum + value * expected[i], 0)));
 }
 
-test('grinding creates a uniform tool direction through real planning and only explicit apply replaces the recorded Path', async ({ page }) => {
+test('grinding preserves distinct target orientations through preview, apply and execution without changing the recorded Path before apply', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
   await disableZones(page);
   const point = await captureCurrent(page), before = await bodyPose(page);
+  const originalJoints = await bodyJoints(page);
+  const nextJoints = [...originalJoints] as JointAngles;
+  nextJoints[0] += 1; nextJoints[5] += 3;
+  const nextTarget = forwardKinematics(getRobotModel('irb1100-4-0.58'), nextJoints).pose;
+  expect(sameDirection(nextTarget.orientation, before.orientation)).toBeGreaterThan(1e-6);
   const original = await renderedPoints(page, point.pathId);
-  const { input, next } = await openPlanner(page, point.pathId, before);
+  const { input, next } = await openPlanner(page, point.pathId, before, nextTarget);
   await planner(page).getByRole('button', { name: '生成路径', exact: true }).click();
   await expect(result(page)).toHaveAttribute('data-grinding-status', 'success', { timeout: 40_000 });
   await expect(planner(page).getByRole('button', { name: '应用到路径', exact: true })).toBeEnabled();
   expect(await renderedPoints(page, point.pathId)).toEqual(original);
   await expect(pathPoints(page, point.pathId)).toHaveCount(1);
   expect(await bodyPose(page)).toEqual(before);
-  const originalJoints = await bodyJoints(page);
   const cameraBefore = JSON.parse((await bodyCanvas(page).getAttribute('data-camera-position'))!) as number[];
   await planner(page).getByRole('button', { name: '预览路径', exact: true }).click();
   await expect(planner(page)).toHaveAttribute('data-planning-mode', 'preview');
@@ -86,9 +91,16 @@ test('grinding creates a uniform tool direction through real planning and only e
   await expect(planner(page)).toHaveCount(0);
   await expect.poll(async () => (await renderedPoints(page, point.pathId)).length).toBeGreaterThanOrEqual(2);
   const points = await renderedPoints(page, point.pathId);
-  for (const pose of points) expect(sameDirection(pose.orientation, before.orientation)).toBeLessThan(1e-7);
-  for (const position of [before.position, next.position]) expect(points.some(pose => Math.hypot(...pose.position.map((value, i) => value - position[i])) < .01)).toBe(true);
+  let previousIndex = -1;
+  for (const target of [before, next]) {
+    const index = points.findIndex((pose, i) => i > previousIndex && Math.hypot(...pose.position.map((value, axis) => value - target.position[axis])) < .01 && sameDirection(pose.orientation, target.orientation) < 1e-7);
+    expect(index).toBeGreaterThan(previousIndex); previousIndex = index;
+  }
   expect(await bodyPose(page)).toEqual(before);
+  await runPathFromMenu(page, point.pathId);
+  await expect(page.locator('[data-run-phase]')).toHaveAttribute('data-run-phase', 'complete', { timeout: 30_000 });
+  await expect.poll(async () => Math.hypot(...(await bodyPose(page)).position.map((value, i) => value - next.position[i]))).toBeLessThan(.01);
+  expect(sameDirection((await bodyPose(page)).orientation, next.orientation)).toBeLessThan(1e-7);
   await page.screenshot({ path: '/tmp/emulation-grinding-path.png' });
   expect(input.split('\n')).toHaveLength(2);
   expect(errors).toEqual([]);
@@ -138,7 +150,6 @@ test('real GP7 mesh bounds and its own URDF chain generate and run a uniform-dir
   await openPlanner(page, point.pathId, before);
   const targets: Pose[] = [5, 15].map(delta => ({ position: [before.position[0], before.position[1] + delta, before.position[2]], orientation: before.orientation }));
   await planner(page).getByRole('textbox', { name: '目标点列表', exact: true }).fill(targets.map(pose => [...pose.position, ...pose.orientation].join(' ')).join('\n'));
-  await planner(page).getByRole('button', { name: '使用首点方向', exact: true }).click();
   await planner(page).getByRole('button', { name: '生成路径', exact: true }).click();
   await expect(result(page)).toHaveAttribute('data-grinding-status', 'success', { timeout: 40_000 });
   // Read the actual Three.js line, not the input or the planner's response.
@@ -165,11 +176,11 @@ test('real GP7 mesh bounds and its own URDF chain generate and run a uniform-dir
 });
 
 
-test('an empty Path adopts the first pasted direction automatically and preserves an explicit override until first-point mode is restored', async ({ page }) => {
+test('an empty Path retains every pasted pose and ABB configuration, and failed replanning preserves the saved targets', async ({ page }) => {
   const errors = observeBrowser(page);
   // This case also runs against the production bundle, where DEV canvas
   // diagnostics are absent. Verify the default body through visible controls.
-  await page.goto('/');
+  await openDefaultProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   const model = getRobotModel('irb1100-4-0.58');
   const before = forwardKinematics(model, model.readyJoints).pose;
@@ -188,26 +199,29 @@ test('an empty Path adopts the first pasted direction automatically and preserve
   const pathId = await createPath(page);
   async function displayedTargets() {
     const ids = await pathPoints(page, pathId).evaluateAll(nodes => nodes.map(node => node.getAttribute('data-object-id')!));
-    const saved: { id: string; pose: Pose }[] = [];
+    const saved: { id: string; pose: Pose; configuration: number[] }[] = [];
     for (const id of ids) {
       await page.locator(`[data-object-kind="target"][data-object-id="${id}"]`).click();
       const inspector = page.locator(`[data-target-point-id="${id}"]`);
       await expect(inspector).toBeVisible();
-      saved.push({ id, pose: JSON.parse((await inspector.getAttribute('data-world-pose'))!) as Pose });
+      saved.push({ id, pose: JSON.parse((await inspector.getAttribute('data-world-pose'))!) as Pose,
+        configuration: JSON.parse((await inspector.getByLabel('目标 robconf', { exact: true }).textContent())!) as number[] });
     }
     return saved;
   }
   expect(Math.hypot(...before.orientation.map((value, index) => value - (index === 0 ? 1 : 0)))).toBeGreaterThan(.1);
-  const targets: Pose[] = [5, 15].map(delta => ({ position: [before.position[0], before.position[1] + delta, before.position[2]], orientation: before.orientation }));
+  const targets = [1, 2].map(delta => {
+    const joints = [...model.readyJoints] as JointAngles;
+    joints[0] += delta; joints[5] += delta * 2;
+    return forwardKinematics(model, joints).pose;
+  });
+  expect(sameDirection(targets[0].orientation, targets[1].orientation)).toBeGreaterThan(1e-6);
   const text = (poses: Pose[]) => poses.map(pose => [...pose.position, ...pose.orientation].join(' ')).join('\n');
-  const direction = async () => Promise.all(['qw', 'qx', 'qy', 'qz'].map(async axis => Number(await planner(page).getByRole('spinbutton', { name: '统一工具方向 ' + axis, exact: true }).inputValue())));
-  const expectDirection = async (expected: readonly number[]) => expect.poll(async () => Math.max(...(await direction()).map((value, index) => Math.abs(value - expected[index])))).toBeLessThan(1e-9);
   const menu = await openPathMenu(page, pathId);
   await menu.getByRole('menuitem', { name: '路径规划', exact: true }).click();
   await expect(planner(page)).toBeVisible();
   await planner(page).getByRole('textbox', { name: '目标点列表', exact: true }).fill(text(targets));
-  // Do not click “使用首点方向”: an empty Path's first pasted point is the default.
-  await expectDirection(before.orientation);
+  await expect(planner(page).getByRole('spinbutton', { name: /^统一工具方向 / })).toHaveCount(0);
   await planner(page).getByRole('button', { name: '生成路径', exact: true }).click();
   await expect(result(page)).toHaveAttribute('data-grinding-status', 'success', { timeout: 40_000 });
   await expect(pathPoints(page, pathId)).toHaveCount(0);
@@ -215,22 +229,29 @@ test('an empty Path adopts the first pasted direction automatically and preserve
   await expect(planner(page)).toHaveCount(0);
   await expect.poll(() => pathPoints(page, pathId).count()).toBeGreaterThanOrEqual(2);
   const generated = await displayedTargets();
-  for (const { pose } of generated) expect(sameDirection(pose.orientation, before.orientation)).toBeLessThan(1e-7);
-  for (const target of targets) expect(generated.some(({ pose }) => Math.hypot(...pose.position.map((value, i) => value - target.position[i])) < .01)).toBe(true);
+  let previousIndex = -1;
+  for (const target of targets) {
+    const index = generated.findIndex(({ pose }, i) => i > previousIndex && Math.hypot(...pose.position.map((value, axis) => value - target.position[axis])) < .01 && sameDirection(pose.orientation, target.orientation) < 1e-7);
+    expect(index).toBeGreaterThan(previousIndex); previousIndex = index;
+  }
+  for (const { configuration } of generated) {
+    expect(configuration).toHaveLength(4);
+    expect(configuration.every(Number.isInteger)).toBe(true);
+    expect(configuration[3]).toBe(generated[0].configuration[3]);
+  }
   await expectUnchangedBody();
 
   const nextMenu = await openPathMenu(page, pathId);
   await nextMenu.getByRole('menuitem', { name: '路径规划', exact: true }).click();
   await expect(planner(page)).toBeVisible();
-  await planner(page).getByRole('spinbutton', { name: '统一工具方向 qw', exact: true }).fill('0.25');
-  const custom = await direction();
-  const otherDirection: Pose[] = targets.map(pose => ({ ...pose, orientation: [1, 0, 0, 0] }));
-  await planner(page).getByRole('textbox', { name: '目标点列表', exact: true }).fill(text(otherDirection));
-  await expectDirection(custom);
-  await planner(page).getByRole('button', { name: '使用首点方向', exact: true }).click();
-  await expectDirection([1, 0, 0, 0]);
-  await planner(page).getByRole('textbox', { name: '目标点列表', exact: true }).fill(text(targets));
-  await expectDirection(before.orientation);
+  const unreachable: Pose = { position: [100000, 100000, 100000], orientation: targets[1].orientation };
+  const rejectedInput = text([targets[0], unreachable]);
+  await planner(page).getByRole('textbox', { name: '目标点列表', exact: true }).fill(rejectedInput);
+  await planner(page).getByRole('button', { name: '生成路径', exact: true }).click();
+  await expect(result(page)).toHaveAttribute('data-grinding-status', 'failure', { timeout: 40_000 });
+  await expect(planner(page).getByRole('textbox', { name: '目标点列表', exact: true })).toHaveValue(rejectedInput);
+  await expect(planner(page).getByRole('button', { name: '应用到路径', exact: true })).toBeDisabled();
+  await expect(planner(page).getByRole('button', { name: '预览路径', exact: true })).toBeDisabled();
   await planner(page).getByRole('button', { name: '关闭路径规划', exact: true }).click();
   await expect(planner(page)).toHaveCount(0);
   expect(await displayedTargets()).toEqual(generated);

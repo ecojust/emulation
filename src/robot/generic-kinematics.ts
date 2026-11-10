@@ -116,8 +116,8 @@ function orientationError(target: Quaternion, current: Quaternion): Vec3 {
   return [relative[1] * factor, relative[2] * factor, relative[3] * factor];
 }
 
-function residual(target: Pose, current: Pose, scale: number): { error: number[]; converged: boolean } {
-  const position = sub(target.position, current.position), orientation = orientationError(target.orientation, current.orientation);
+function residual(target: Pose, current: Pose, scale: number, positionOnly: boolean): { error: number[]; converged: boolean } {
+  const position = sub(target.position, current.position), orientation: Vec3 = positionOnly ? [0, 0, 0] : orientationError(target.orientation, current.orientation);
   return { error: [position[0] / scale, position[1] / scale, position[2] / scale, ...orientation],
     converged: norm(position) <= GENERIC_IK_TOLERANCES.positionMm && norm(orientation) <= GENERIC_IK_TOLERANCES.orientationRadians };
 }
@@ -148,20 +148,31 @@ function solveLinear(matrix: number[][], rhs: number[]): number[] | null {
 
 /** @internal Damped least squares seeded from the preceding accepted Cartesian sample. */
 export function solveGenericUnchecked(chain: GenericChain, target: Pose, seed: JointAngles, cancel = NEVER_CANCEL): JointAngles | null {
+  return solveGenericTaskUnchecked(chain, target, seed, undefined, false, cancel);
+}
+
+/** @internal The optional tool transform participates in both the FK objective and TCP Jacobian. */
+export function solveGenericTaskUnchecked(chain: GenericChain, target: Pose, seed: JointAngles, tool: Mat4 | undefined, positionOnly: boolean, cancel = NEVER_CANCEL): JointAngles | null {
+  const taskPose = (fk: GenericFkResult): Pose => {
+    if (!tool) return fk.pose;
+    const transform = multiplyMatrices(fk.transform, tool);
+    return { position: translation(transform), orientation: matrixToQuaternion(transform) };
+  };
   const scale = Math.max(100, chain.steps.reduce((sum, step) => sum + norm(translation(step.origin)), 0));
   let joints = [...seed] as JointAngles, damping = 0.001;
   for (let iteration = 0; iteration < 80; iteration++) {
     if (cancel()) throw new GenericMotionCancelled();
     const fk = forwardGenericUnchecked(chain, joints, cancel);
-    const { error, converged } = residual(target, fk.pose, scale);
+    const current = taskPose(fk);
+    const { error, converged } = residual(target, current, scale, positionOnly);
     if (converged) return joints;
     const cost = error.reduce((sum, value) => sum + value * value, 0);
     const jacobian = Array.from({ length: 6 }, () => Array<number>(6).fill(0));
     for (let column = 0; column < 6; column++) {
-      const linear = cross(fk.jointAxes[column], sub(fk.pose.position, fk.jointOrigins[column]));
+      const linear = cross(fk.jointAxes[column], sub(current.position, fk.jointOrigins[column]));
       for (let row = 0; row < 3; row++) {
         jacobian[row][column] = linear[row] / scale;
-        jacobian[row + 3][column] = fk.jointAxes[column][row];
+        jacobian[row + 3][column] = positionOnly ? 0 : fk.jointAxes[column][row];
       }
     }
     const normal = Array.from({ length: 6 }, (_, row) => Array.from({ length: 6 }, (_, column) => {
@@ -181,7 +192,7 @@ export function solveGenericUnchecked(chain: GenericChain, target: Pose, seed: J
       const trial = joints.map((value, i) => Math.max(chain.limits[i].minDeg,
         Math.min(chain.limits[i].maxDeg, value + delta![i] * alpha * DEG))) as JointAngles;
       const trialFk = forwardGenericUnchecked(chain, trial, cancel);
-      const next = residual(target, trialFk.pose, scale);
+      const next = residual(target, taskPose(trialFk), scale, positionOnly);
       const trialCost = next.error.reduce((sum, value) => sum + value * value, 0);
       if (next.converged || trialCost < cost * (1 - 1e-10)) {
         joints = trial;

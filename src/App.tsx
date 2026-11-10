@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import RobotScene from './scene/RobotScene';
+import RobotScene, { type RobotSceneHandle } from './scene/RobotScene';
 import Icon from './ui/Icon';
 import RobotCatalogDialog from './catalog/RobotCatalogDialog';
 import RobotInspector from './workspace/RobotInspector';
 import TargetInspector from './workspace/TargetInspector';
 import ProgramPanel, { type ProgramCodeWorkspace } from './workspace/ProgramPanel';
 import ModuleList from './workspace/ModuleList';
-import SceneObjectTree from './workspace/SceneObjectTree';
+import SceneObjectTree, { type SceneTreeMenu } from './workspace/SceneObjectTree';
+import { detachRobotTools, sceneRemovalLabel, type SceneRemovalKind } from './workspace/scene-removal';
+import type { ProjectWorkspaceProps } from './projects/ProjectApp';
+import { validateProjectModelWorld, type ProjectScene, type ProjectModelScene } from './projects/schema';
 import SceneFrameInspector, { AttachmentSelector, PoseEditor, PoseReadout } from './workspace/SceneFrameInspector';
 import ToolInspector from './workspace/ToolInspector';
 import PathPlanningDialog from './workspace/PathPlanningDialog';
@@ -32,7 +35,10 @@ import { planProgramRun, sampleProgramRun, sampleJointPositioning, ProgramRunErr
 import { buildGenericChain } from './robot/generic-motion-chain';
 import { solveGenericMotion } from './robot/generic-motion';
 import type { GenericPlanRequest } from './robot/generic-motion-types';
-import type { LoadedCatalogModel } from './catalog/client';
+import { loadCatalogModel, type LoadedCatalogModel } from './catalog/client';
+import { inspectGenericEndpoint } from './robot/generic-endpoint';
+import { solveGenericPoseMotion } from './robot/generic-pose-motion';
+import { checkGenericCollisions, genericCollisionParts } from './robot/generic-collision';
 import { forwardUrdfKinematics } from './catalog/kinematics';
 import { nativeDesktop, solveMotion } from './robot/client';
 import { inspectEndpoint } from './robot/endpoint-inspection';
@@ -40,13 +46,15 @@ import { isNativeUiSmoke, runNativeUiSmoke } from './robot/ui-smoke';
 import { forwardKinematics, quaternionDistanceDeg } from './robot/kinematics';
 import { getConfiguration } from './robot/configuration';
 import { checkCollisions, type CollisionResult } from './robot/collision';
-import { createJogController, type JogController, type JogStatus } from './robot/jog-controller';
+import { createPoseJogController, type PoseJogController, type PoseJogSuccess, type JogStatus } from './robot/jog-controller';
 import { getRobotModel } from './robot/model';
 import { normalizeOrientation } from './robot/rapid';
 import type { IKSolution, JointAngles, MotionSample, PlanRequest, Pose, Quaternion, RobotId, Vec3 } from './robot/types';
 import './styles.css';
 import './App.css';
 
+type EndpointSolution = Omit<IKSolution, 'configuration'> & { configuration?: IKSolution['configuration'] };
+const GENERIC_READY: JointAngles = [20, 15, -25, 25, 35, 10];
 type View = 'iso' | 'front' | 'top';
 type CollisionStatus = 'pending' | 'hit' | 'uncertain' | 'clear' | 'error' | 'off';
 interface CollisionView { key: string; status: 'pending' | 'ready' | 'error'; items: CollisionResult[]; error?: string }
@@ -67,24 +75,60 @@ function quaternionToEulerZYX(value: Quaternion): Vec3 {
   const roll = locked ? 0 : Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
   return [yaw, pitch, roll].map(angle => angle * 180 / Math.PI) as Vec3;
 }
-export default function App() {
-  const [modelId, setModelId] = useState<RobotId>('irb1100-4-0.58');
+/** Mount no workspace/source hooks until the project's intended model is ready. */
+export default function App(props: Partial<ProjectWorkspaceProps> = {}) {
+  const requested = props.project?.scene.activeModelId ?? 'irb1100-4-0.58';
+  const [loaded, setLoaded] = useState<LoadedCatalogModel | null>(null);
+  const [error, setError] = useState(''), [retry, setRetry] = useState(0), [progress, setProgress] = useState('正在读取机器人模型…');
+  useEffect(() => {
+    const controller = new AbortController(); let prepared: LoadedCatalogModel | null = null;
+    setError(''); setLoaded(null);
+    void loadCatalogModel(requested, { signal: controller.signal, onProgress: value => setProgress(value.phase === 'downloading' ? '正在下载机器人模型 ' + Math.round(value.downloadedBytes / value.totalBytes * 100) + '%' : '正在准备机器人模型…') }).then(value => {
+      prepared = value;
+      const savedModel = props.project?.scene.models[requested];
+      const saved = savedModel?.joints;
+      const limits = value.kind === 'bundled' ? getRobotModel(value.motionModelId).limits : value.model.description.actuatedJoints;
+      if (saved && saved.some((angle, index) => angle < limits[index].minDeg || angle > limits[index].maxDeg)) throw new Error('项目保存的关节角超出当前型号范围，未更改已保存的数据。');
+      if (savedModel) {
+        const flange = value.kind === 'bundled' ? forwardKinematics(getRobotModel(value.motionModelId), savedModel.joints).pose : forwardUrdfKinematics(value.model.description, savedModel.joints).toolPose;
+        if (!flange) throw new Error('保存的型号缺少有效法兰位姿，未更改项目。');
+        validateProjectModelWorld(savedModel, flange);
+      }
+      if (controller.signal.aborted) { if (value.kind === 'urdf') value.dispose(); return; }
+      setLoaded(value);
+    }).catch(cause => { if (prepared?.kind === 'urdf') prepared.dispose(); if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '机器人模型加载失败'); });
+    return () => { controller.abort(); };
+  }, [requested, retry]);
+  if (!loaded) return <main className="project-home" aria-label="打开项目"><h1>{props.project?.name ?? 'emulation'}</h1><p role={error ? 'alert' : 'status'}>{error || progress}</p>{error && <button type="button" onClick={() => setRetry(value => value + 1)}>重新加载模型</button>}{props.onCancelOpen && <button type="button" onClick={props.onCancelOpen}>返回项目主页</button>}</main>;
+  return <Workspace {...props} initialModel={loaded}/>;
+}
+function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initialModel }: Partial<ProjectWorkspaceProps> & { initialModel: LoadedCatalogModel }) {
+  const initialScene = project?.scene;
+  const initialId = initialModel.entry.id;
+  const savedBody = initialScene?.models[initialId];
+  const sceneHandle = useRef<RobotSceneHandle | null>(null);
+  const bodyStates = useRef<Record<string, Pick<ProjectModelScene, 'robotPresent' | 'joints'>>>(Object.fromEntries(Object.entries(initialScene?.models ?? {}).map(([id, saved]) => [id, { robotPresent: saved.robotPresent, joints: saved.joints }])));
+  const [robotPresent, setRobotPresent] = useState(savedBody?.robotPresent ?? true);
+  const [homeBusy, setHomeBusy] = useState(false), [homeError, setHomeError] = useState('');
+  const homeOperation = useRef(false);
+  const saveSceneBeforeClose = useRef<(() => Promise<void>) | null>(null);
+  const [modelId, setModelId] = useState<RobotId>(initialModel.kind === 'bundled' ? initialModel.motionModelId : 'irb1100-4-0.58');
   const model = getRobotModel(modelId);
   const [catalogOpen, setCatalogOpen] = useState(false);
-  const [catalogModel, setCatalogModel] = useState<Extract<LoadedCatalogModel, { kind: 'urdf' }> | null>(null);
+  const [catalogModel, setCatalogModel] = useState<Extract<LoadedCatalogModel, { kind: 'urdf' }> | null>(initialModel.kind === 'urdf' ? initialModel : null);
   const genericModel = catalogModel?.model ?? null;
   const activeName = catalogModel?.entry.name ?? model.name;
   const activeBrand = catalogModel?.entry.brand ?? 'ABB';
   const activeModelId = catalogModel?.entry.id ?? modelId;
   useEffect(() => () => catalogModel?.dispose(), [catalogModel]);
-  const [nativeJoints, setNativeJoints] = useState<JointAngles>([...model.readyJoints]);
-  const [jointDraft, setJointDraft] = useState<string[]>(strings(model.readyJoints));
-  const [catalogJoints, setCatalogJoints] = useState<number[]>([]);
-  const [catalogDraft, setCatalogDraft] = useState<string[]>([]);
-  const [speed, setSpeed] = useState(100);
-  const program = useProgram(activeModelId);
-  const frameState = useFrameGraph(activeModelId), graph = frameState.graph;
-  const documents = useDocuments(activeModelId);
+  const [nativeJoints, setNativeJoints] = useState<JointAngles>([...(savedBody?.joints ?? model.readyJoints)]);
+  const [jointDraft, setJointDraft] = useState<string[]>(strings(savedBody?.joints ?? model.readyJoints));
+  const [catalogJoints, setCatalogJoints] = useState<number[]>(initialModel.kind === 'urdf' ? [...(savedBody?.joints ?? initialModel.model.description.homeJoints)] : []);
+  const [catalogDraft, setCatalogDraft] = useState<string[]>(initialModel.kind === 'urdf' ? strings(savedBody?.joints ?? initialModel.model.description.homeJoints) : []);
+  const [speed, setSpeed] = useState(initialScene?.speed ?? 100);
+  const program = useProgram(activeModelId, Object.fromEntries(Object.entries(initialScene?.models ?? {}).map(([id, saved]) => [id, saved.program])));
+  const frameState = useFrameGraph(activeModelId, Object.fromEntries(Object.entries(initialScene?.models ?? {}).map(([id, saved]) => [id, saved.graph]))), graph = frameState.graph;
+  const documents = useDocuments(activeModelId, sourceRepository ? { repository: sourceRepository } : undefined);
   const documentsRef = useRef(documents); documentsRef.current = documents;
   const activeModelRef = useRef(activeModelId); activeModelRef.current = activeModelId;
   const [languageState, setLanguageState] = useState<{ key: string; loadedKey: string; definition: RobotLanguageDefinition | null; error: string }>({ key: '', loadedKey: '', definition: null, error: '' });
@@ -104,7 +148,7 @@ export default function App() {
     try { return genericModel ? { chain: buildGenericChain(genericModel), error: '' } : null; }
     catch (error) { return { chain: null, error: error instanceof Error ? error.message : '当前 URDF 不能用于直线运动' }; }
   }, [genericModel]);
-  const workspace = useWorkspace({ modelKey: activeModelId, pathIds: program.paths.map(path => path.id), targetIds: program.points.map(point => point.id), frameIds: graph.frames.map(frame => frame.id), toolIds: graph.tools.map(tool => tool.id) });
+  const workspace = useWorkspace({ modelKey: activeModelId, pathIds: program.paths.map(path => path.id), targetIds: program.points.map(point => point.id), frameIds: graph.frames.map(frame => frame.id), toolIds: graph.tools.map(tool => tool.id), initial: initialScene });
   const { activeView, leftCollapsed, selection, zones, selectedZone, selectedZoneId, zoneConfiguration } = workspace;
   const sourceAnalysis = useSourceAnalysis(documents.project, activeView === 'program' && documents.ready && !analysisPaused);
   const selectedPoint = selection.kind === 'target' ? program.points.find(point => point.id === selection.id) ?? null : null;
@@ -114,29 +158,29 @@ export default function App() {
   const [planningPathId, setPlanningPathId] = useState<string | null>(null);
   const [planningPreview, setPlanningPreview] = useState<GrindingSuccess | null>(null);
   const [message, setMessage] = useState('');
-  const [view, setView] = useState<View>('iso');
+  const [view, setView] = useState<View>(initialScene?.view ?? 'iso');
   const [viewRevision, setViewRevision] = useState(0);
-  const [showFrames, setShowFrames] = useState(false);
+  const [showFrames, setShowFrames] = useState(initialScene?.showFrames ?? false);
   const [jogEnabled, setJogEnabled] = useState(false);
   const [jogMode, setJogMode] = useState<'translate' | 'rotate'>('translate');
   const [jogSpace, setJogSpace] = useState<'world' | 'local'>('world');
   const [jogStatus, setJogStatus] = useState<JogStatus>({ pending: false, error: null });
   const [jogDragging, setJogDragging] = useState(false);
   const [jogResetRevision, setJogResetRevision] = useState(0);
-  const jogController = useRef<JogController | null>(null);
+  const jogController = useRef<PoseJogController | null>(null);
   const [zoneDragging, setZoneDragging] = useState(false);
   const inspectionRun = useRef<AbortController | null>(null);
   const collisionRun = useRef<AbortController | null>(null);
   const [inspectionRevision, setInspectionRevision] = useState(0);
-  const [inspection, setInspection] = useState<{ key: string; pending: boolean; solutions: IKSolution[]; error: string }>({ key: '', pending: false, solutions: [], error: '' });
-  const [endpointPreview, setEndpointPreview] = useState<{ modelId: string; pointId: string; revision: number; solution: IKSolution } | null>(null);
+  const [inspection, setInspection] = useState<{ key: string; pending: boolean; solutions: EndpointSolution[]; error: string }>({ key: '', pending: false, solutions: [], error: '' });
+  const [endpointPreview, setEndpointPreview] = useState<{ modelId: string; pointId: string; revision: number; solution: EndpointSolution } | null>(null);
   const [collisionView, setCollisionView] = useState<CollisionView>({ key: '', status: 'pending', items: [] });
-  const [loop, setLoop] = useState(false);
+  const [loop, setLoop] = useState(initialScene?.loop ?? false);
   const [execution, setExecution] = useState<ExecutionStatus>({ phase: 'idle', message: '', pointId: null, line: 0, cycle: 0 });
   const executionRun = useRef<{ controller: AbortController; frame: number } | null>(null);
   const executing = execution.phase === 'planning' || execution.phase === 'running' || execution.phase === 'positioning';
-  const [objectMenu, setObjectMenu] = useState<{ kind: 'path' | 'target'; id: string; x: number; y: number; trigger: HTMLElement } | null>(null);
-  const [removeObject, setRemoveObject] = useState<{ kind: 'path' | 'target'; id: string; modelId: string } | null>(null);
+  const [objectMenu, setObjectMenu] = useState<SceneTreeMenu | null>(null);
+  const [removeObject, setRemoveObject] = useState<{ kind: SceneRemovalKind; id: string; modelId: string } | null>(null);
   const displayJoints = (genericModel ? catalogJoints : nativeJoints) as JointAngles;
   // A candidate is a rendering override, never the source for teaching or motion.
   const previewSolution = endpointPreview?.modelId === activeModelId && endpointPreview.pointId === selectedPoint?.id && endpointPreview.revision === selectedPoint.revision ? endpointPreview.solution : null;
@@ -152,7 +196,7 @@ export default function App() {
     catch (error) { return { bodies: null, error: error instanceof Error ? error.message : '机器人几何包络不可用' }; }
   }, [genericModel]);
   const sceneFrames = useMemo(() => graph.frames.map(frame => ({ id: frame.id, name: frame.name, pose: referenceWorldPose(graph, frame.id), selected: selection.kind === 'frame' && selection.id === frame.id })), [graph, selection]);
-  const visibleFlangePose = previewSolution ? forwardKinematics(model, visibleJoints).pose : currentFlangePose;
+  const visibleFlangePose = previewSolution ? genericModel ? forwardUrdfKinematics(genericModel.description, visibleJoints).toolPose : forwardKinematics(model, visibleJoints).pose : currentFlangePose;
   const sceneTools = useMemo(() => visibleFlangePose ? graph.tools.map(tool => ({ id: tool.id, name: tool.name, pose: toolWorldPose(graph, tool.id, visibleFlangePose), tcpPose: toolTcpWorldPose(graph, tool.id, visibleFlangePose), radiusMm: tool.radiusMm, selected: selection.kind === 'tool' && selection.id === tool.id })) : [], [graph, visibleFlangePose, selection]);
   const configuration = useMemo(() => genericModel ? null : getConfiguration(model, displayJoints, currentFk!), [genericModel, model, displayJoints, currentFk]);
   const limits = useMemo(() => genericModel ? genericModel.description.actuatedJoints : model.limits.map((limit, index) => ({ ...limit, name: 'J' + (index + 1) })), [genericModel, model]);
@@ -164,7 +208,7 @@ export default function App() {
       return '';
     } catch (error) { return error instanceof Error ? error.message : '关节输入无效'; }
   }, [genericModel, catalogDraft, jointDraft, limits]);
-  const poseCaptureDisabledReason = executing || sourceBusy || jogStatus.pending || jogDragging ? '请等待当前操作完成后再记录姿态。' : poseError || (!currentPose || displayJoints.length !== 6 ? '当前模型缺少有效的六轴工具姿态。' : genericModel ? genericChain?.error || null : configuration?.singular || !configuration?.configuration ? (configuration?.reason || '当前姿态没有有效 robconf') + '；请调整关节或使用示例姿态。' : null);
+  const poseCaptureDisabledReason = !robotPresent ? '请先添加机器人本体。' : homeBusy ? '正在保存项目。' : executing || sourceBusy || jogStatus.pending || jogDragging ? '请等待当前操作完成后再记录姿态。' : poseError || (!currentPose || displayJoints.length !== 6 ? '当前模型缺少有效的六轴工具姿态。' : genericModel ? genericChain?.error || null : configuration?.singular || !configuration?.configuration ? (configuration?.reason || '当前姿态没有有效 robconf') + '；请调整关节或使用示例姿态。' : null);
   const captureDisabledReason = previewSolution ? '请先退出端点预览，再记录姿态或检查运动。' : poseCaptureDisabledReason;
   const moduleGenerationDisabled = !documents.ready || sourceBusy || executing || closeState !== null;
   const sceneZones = useMemo(() => zoneConfiguration.validZones.map(zone => ({ ...zone, name: zones.find(draft => draft.id === zone.id)?.name.trim() || '未命名危险区' })), [zoneConfiguration.validZones, zones]);
@@ -175,16 +219,16 @@ export default function App() {
   const zoneNames = useMemo(() => new Map(zones.map(zone => [zone.id, zone.name.trim() || '未命名危险区'])), [zones]);
   const pointKey = selectedPoint ? activeModelId + ':' + selectedPoint.id + ':' + selectedPoint.revision + ':' + graph.revision : '';
   const solutions = inspection.key === pointKey && !inspection.pending ? inspection.solutions : [];
-  const collisionRequest = useMemo(() => !genericModel && !zoneConfiguration.errors.length && solutions.length ? { modelId, basePose, zones: zoneConfiguration.validZones, solutions: solutions.map(solution => ({ id: solution.id, joints: solution.joints })) } : null, [genericModel, modelId, basePose, zoneConfiguration, solutions]);
+  const collisionRequest = useMemo(() => robotPresent && !zoneConfiguration.errors.length && solutions.length ? { modelId: activeModelId, basePose, zones: zoneConfiguration.validZones, solutions: solutions.map(solution => ({ id: solution.id, joints: solution.joints })) } : null, [robotPresent, activeModelId, basePose, zoneConfiguration, solutions]);
   const collisionKey = collisionRequest ? JSON.stringify(collisionRequest) : '';
   const collisionById = useMemo(() => new Map(collisionView.items.map(item => [item.id, item])), [collisionView.items]);
-  const planningContextKey = JSON.stringify([activeModelId, graph.revision, program.revision, zones, displayJoints]);
+  const planningContextKey = JSON.stringify([activeModelId, robotPresent, graph.revision, program.revision, zones, displayJoints]);
   const sceneContextRef = useRef(planningContextKey); sceneContextRef.current = planningContextKey;
   const sourceReadOnly = sourceBusy || executing || closeState !== null || !documents.ready || sourceLanguagePending;
   const draftStatusText = documents.draftStatus === 'saved' ? '草稿已保存' : documents.draftStatus === 'saving' ? '正在保存草稿…' : documents.draftStatus === 'pending' ? '草稿等待保存…' : documents.draftStatus === 'loading' ? '正在恢复草稿…' : '草稿保存失败';
   const sourceStatus = [...new Set([languageState.key === languageKey && languageState.error ? '语言版本加载失败：' + languageState.error : sourceLanguagePending ? '正在加载本地语言版本…' : '', sourceMessage, documents.error, draftStatusText, documents.dirty ? '源码已修改' : ''].filter(Boolean))].join(' · ');
 
-  function sourceWritable() { return documents.ready && !sourceLanguagePending && !sourceOperation.current && !executionRun.current && !closeAttempt.current.busy; }
+  function sourceWritable() { return documents.ready && !sourceLanguagePending && !sourceOperation.current && !executionRun.current && !closeAttempt.current.busy && !homeOperation.current; }
   function beginSourceOperation(message: string) {
     if (!sourceWritable()) return null;
     const operation = { modelId: activeModelId }; sourceOperation.current = operation;
@@ -242,7 +286,6 @@ export default function App() {
         let start = [...displayJoints] as JointAngles;
         const resolved: ProgramPoint[] = [];
         const worldPoints = points.map(point => ({ ...point, pose: pathPointToWorld(graph, pathId, point.pose) }));
-        if (path.planning && worldPoints.some(point => quaternionDistanceDeg(point.pose.orientation, worldPoints[0].pose.orientation) > .1)) throw new Error('加工方向已改变，请先重新规划统一工具方向。');
         for (const [index, point] of worldPoints.entries()) {
           if (!currentSourceOperation(operation) || sceneContextRef.current !== capturedContext) return;
           const leg = await planPointSegment(start, point, operation.controller.signal);
@@ -275,11 +318,12 @@ export default function App() {
   function retrySourceAnalysis() { setAnalysisPaused(true); }
   async function finishNativeClose(discard = false) {
     if (!nativeDesktop || closeAttempt.current.busy) return;
-    closeAttempt.current.busy = true; sourceOperation.current?.controller?.abort(); sourceOperation.current = null; setSourceBusy(false); setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setRemoveObject(null); setCloseState('saving'); setCloseError('');
+    closeAttempt.current.busy = true; stopExecution(false); stopJog(); clearPreview(); cancelInspections(); sourceOperation.current?.controller?.abort(); sourceOperation.current = null; setSourceBusy(false); setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setRemoveObject(null); setCloseState('saving'); setCloseError('');
     try {
       if (!discard && (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts())) {
         setCloseError('部分型号的草稿未能保存。正文仍在当前窗口，可重试保存，或继续编辑并导出源文件。'); setCloseState('error'); return;
       }
+      if (!discard) await saveSceneBeforeClose.current?.();
       const window = (await import('@tauri-apps/api/window')).getCurrentWindow();
       closeAttempt.current.allow = true;
       await window.close();
@@ -323,16 +367,51 @@ export default function App() {
     void import('@tauri-apps/api/window').then(async module => {
       const detach = await module.getCurrentWindow().onCloseRequested(async event => {
         if (closeAttempt.current.allow) { closeAttempt.current.allow = false; return; }
-        if (!documentsRef.current.hasPendingDrafts()) return;
+        if (homeOperation.current) { event.preventDefault(); return; }
+        if (!documentsRef.current.hasPendingDrafts() && !saveSceneBeforeClose.current) return;
         event.preventDefault();
         if (!closeAttempt.current.busy) await finishNativeClose();
       });
       if (cancelled) detach(); else unlisten = detach;
-    }).catch(error => { if (!cancelled) setSourceMessage('未能启用关闭前草稿保存：' + (error instanceof Error ? error.message : String(error))); });
+    }).catch(error => { if (!cancelled) setSourceMessage('未能启用关闭前项目和模块草稿保存：' + (error instanceof Error ? error.message : String(error))); });
     return () => { cancelled = true; unlisten?.(); };
   }, []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; sourceOperation.current?.controller?.abort(); sourceOperation.current = null; }; }, []);
 
+  function collectScene(camera = sceneHandle.current?.camera() ?? initialScene?.camera ?? null, workspaceView = activeView): ProjectScene {
+    bodyStates.current[activeModelId] = { robotPresent, joints: [...displayJoints] };
+    const frames = frameState.getStore(), programs = program.getStore();
+    const models: ProjectScene['models'] = {};
+    for (const [id, body] of Object.entries(bodyStates.current)) {
+      const frame = frames[id] ?? (id === activeModelId ? graph : undefined), storedProgram = programs[id];
+      if (!frame || !storedProgram) throw new Error('型号场景尚未保存完整：' + id);
+      models[id] = { ...body, graph: frame, program: storedProgram };
+    }
+    if (!currentFlangePose) throw new Error('当前型号缺少有效法兰位姿，项目尚未保存。');
+    validateProjectModelWorld(models[activeModelId], currentFlangePose);
+    return { activeModelId, models, zones: structuredClone(zones), activeView: workspaceView, leftCollapsed, view, showFrames, loop, speed, camera };
+  }
+  saveSceneBeforeClose.current = onSaveScene ? async () => { await onSaveScene(collectScene()); } : null;
+  async function returnHome() {
+    if (!onReturnHome || homeOperation.current || sourceOperation.current || closeState !== null) return;
+    homeOperation.current = true; setHomeBusy(true); setHomeError('');
+    const savedView = activeView;
+    stopExecution(false); stopJog(); clearPreview(); cancelInspections();
+    setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setCatalogOpen(false); setZoneDragging(false);
+    workspace.setActiveView('scene');
+    try {
+      if (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts()) throw new Error('模块草稿尚未保存，请重试；当前项目仍保持打开。');
+      // Let React commit the accepted body pose and remove every transient preview.
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      if (!sceneHandle.current) throw new Error('三维场景尚未就绪，请稍后重试。');
+      const captured = await sceneHandle.current.capture();
+      const scene = collectScene(captured.camera, savedView);
+      await onReturnHome(scene, captured.thumbnail);
+    } catch (error) {
+      setHomeError(error instanceof Error ? error.message : '项目保存失败，请重试。');
+      workspace.setActiveView(savedView);
+    } finally { homeOperation.current = false; if (alive.current) setHomeBusy(false); }
+  }
   function writeBodyPose(joints: JointAngles) {
     if (genericModel) { setCatalogJoints([...joints]); setCatalogDraft(strings(joints)); }
     else { setNativeJoints([...joints]); setJointDraft(strings(joints)); }
@@ -359,7 +438,7 @@ export default function App() {
   }
   function changeView(next: View) { stopJog(); setZoneDragging(false); setView(next); setViewRevision(value => value + 1); }
   function editJoint(index: number, value: string) {
-    if (executionRun.current || sourceOperation.current) return;
+    if (!robotPresent || homeOperation.current || executionRun.current || sourceOperation.current) return;
     stopJog(); clearPreview();
     const drafts = [...(genericModel ? catalogDraft : jointDraft)];
     drafts[index] = value;
@@ -371,22 +450,43 @@ export default function App() {
     } catch { /* Numeric drafts retain the previous rendered pose. */ }
   }
   function setRobotPose(kind: 'ready' | 'zero') {
-    if (executionRun.current || sourceOperation.current) return;
+    if (!robotPresent || homeOperation.current || executionRun.current || sourceOperation.current) return;
     stopJog(); clearPreview();
-    if (genericModel) { setCatalogJoints([...genericModel.description.homeJoints]); setCatalogDraft(strings(genericModel.description.homeJoints)); }
+    if (genericModel) { const joints = kind === 'ready' ? GENERIC_READY : genericModel.description.homeJoints; setCatalogJoints([...joints]); setCatalogDraft(strings(joints)); }
     else { const joints = kind === 'ready' ? model.readyJoints : model.homeJoints; setNativeJoints([...joints]); setJointDraft(strings(joints)); }
   }
   function selectCatalogModel(loaded: LoadedCatalogModel) {
-    if (sourceOperation.current || closeState !== null) { if (loaded.kind === 'urdf') loaded.dispose(); return; }
+    if (sourceOperation.current || closeState !== null || homeOperation.current) { if (loaded.kind === 'urdf') loaded.dispose(); return; }
+    const saved = loaded.entry.id === activeModelId ? { robotPresent, joints: [...displayJoints] as JointAngles } : bodyStates.current[loaded.entry.id];
+    try {
+      if (!currentFlangePose || !program.program) throw new Error('当前型号缺少有效场景，未切换机器人。');
+      // Validate the outgoing scene before preserving it as an inactive model.
+      validateProjectModelWorld({ robotPresent, joints: displayJoints, graph, program: program.program }, currentFlangePose);
+      const restoredLimits = loaded.kind === 'bundled' ? getRobotModel(loaded.motionModelId).limits : loaded.model.description.actuatedJoints;
+      if (saved?.joints.some((angle, index) => angle < restoredLimits[index].minDeg || angle > restoredLimits[index].maxDeg)) throw new Error('已保存关节超出当前型号范围，未更改场景。');
+      if (saved) {
+        const restoredGraph = loaded.entry.id === activeModelId ? graph : frameState.getStore()[loaded.entry.id] ?? initialScene?.models[loaded.entry.id]?.graph;
+        const restoredProgram = program.getStore()[loaded.entry.id] ?? initialScene?.models[loaded.entry.id]?.program;
+        if (!restoredGraph || !restoredProgram) throw new Error('待恢复型号的场景不完整，未更改当前场景。');
+        const flange = loaded.kind === 'bundled' ? forwardKinematics(getRobotModel(loaded.motionModelId), saved.joints).pose : forwardUrdfKinematics(loaded.model.description, saved.joints).toolPose;
+        if (!flange) throw new Error('待恢复型号缺少有效法兰位姿，未更改当前场景。');
+        validateProjectModelWorld({ ...saved, robotPresent: true, graph: restoredGraph, program: restoredProgram }, flange);
+      }
+    } catch (error) {
+      if (loaded.kind === 'urdf') loaded.dispose(); setMessage(error instanceof Error ? error.message : '型号场景无效，未切换机器人。'); return;
+    }
+    bodyStates.current[activeModelId] = { robotPresent, joints: [...displayJoints] };
+    frameState.replaceGraph(graph);
+    setRobotPresent(true);
     activeModelRef.current = loaded.entry.id; setSourceMessage('');
     stopExecution(false); setObjectMenu(null); setRemoveObject(null); setPlanningPathId(null); setPlanningPreview(null);
     stopJog(); clearPreview(); cancelInspections(); setJogEnabled(false); setMessage('');
     if (loaded.kind === 'bundled') {
       const next = getRobotModel(loaded.motionModelId);
       setPlanningPathId(null); setPlanningPreview(null);
-      setCatalogModel(null); setModelId(loaded.motionModelId); setNativeJoints([...next.readyJoints]); setJointDraft(strings(next.readyJoints));
+      setCatalogModel(null); setModelId(loaded.motionModelId); setNativeJoints([...(saved?.joints ?? next.readyJoints)]); setJointDraft(strings(saved?.joints ?? next.readyJoints));
     } else {
-      setCatalogModel(loaded); setCatalogJoints([...loaded.model.description.homeJoints]); setCatalogDraft(strings(loaded.model.description.homeJoints));
+      setCatalogModel(loaded); setCatalogJoints([...(saved?.joints ?? loaded.model.description.homeJoints)]); setCatalogDraft(strings(saved?.joints ?? loaded.model.description.homeJoints));
     }
     workspace.selectObject({ kind: 'robot' }); workspace.setActiveView('scene'); setViewRevision(value => value + 1);
   }
@@ -419,18 +519,29 @@ export default function App() {
     const requested = removeObject;
     setRemoveObject(null);
     if (!requested || requested.modelId !== activeModelId || executionRun.current || closeState !== null || closeAttempt.current.busy) return;
-    clearPreview(); stopJog(); cancelInspections();
-    if (requested.kind === 'path') {
-      program.removePath(requested.id); frameState.removePath(requested.id);
-      workspace.selectObject({ kind: 'robot' });
-    } else {
-      const point = program.points.find(item => item.id === requested.id);
-      program.removePoint(requested.id);
-      workspace.selectObject(point ? { kind: 'path', id: point.pathId } : { kind: 'robot' });
-    }
+    clearPreview(); stopJog(); cancelInspections(); setPlanningPathId(null); setPlanningPreview(null);
+    try {
+      if (requested.kind === 'robot') {
+        stopExecution(false); setJogEnabled(false);
+        frameState.replaceGraph(detachRobotTools(graph, currentFlangePose ?? undefined));
+        setRobotPresent(false);
+        bodyStates.current[activeModelId] = { robotPresent: false, joints: [...displayJoints] };
+        workspace.selectObject({ kind: 'robot' });
+      } else if (requested.kind === 'frame') { frameState.removeFrame(requested.id); workspace.selectObject({ kind: 'robot' }); }
+      else if (requested.kind === 'tool') { frameState.removeTool(requested.id); workspace.selectObject({ kind: 'robot' }); }
+      else if (requested.kind === 'zone') { workspace.setZones(current => current.filter(zone => zone.id !== requested.id)); workspace.selectObject({ kind: 'robot' }); }
+      else if (requested.kind === 'path') {
+        program.removePath(requested.id); frameState.removePath(requested.id);
+        workspace.selectObject({ kind: 'robot' });
+      } else {
+        const point = program.points.find(item => item.id === requested.id);
+        program.removePoint(requested.id);
+        workspace.selectObject(point ? { kind: 'path', id: point.pathId } : { kind: 'robot' });
+      }
+    } catch (error) { setMessage(error instanceof Error ? error.message : '对象删除失败'); return; }
     setMessage('已删除场景对象，生成的模块文件保持不变。');
   }
-  function previewEndpoint(solution: IKSolution) {
+  function previewEndpoint(solution: EndpointSolution) {
     if (!selectedPoint || executionRun.current || sourceOperation.current || jogStatus.pending || jogDragging) return;
     setEndpointPreview({ modelId: activeModelId, pointId: selectedPoint.id, revision: selectedPoint.revision, solution });
     workspace.setActiveView('scene');
@@ -444,6 +555,7 @@ export default function App() {
     try { graphEdit(action); } catch (error) { setMessage(error instanceof Error ? error.message : '坐标对象更新失败'); }
   }
   function reparentObject(object: FrameObjectRef, parent: FrameParent) {
+    if (parent.kind === 'flange' && !robotPresent) throw new Error('请先添加机器人本体。');
     if (object.kind === 'tool' && parent.kind === 'flange' && graph.tools.some(tool => tool.id !== object.id && tool.parent.kind === 'flange')) {
       throw new Error('当前机器人已挂载一个工具，请先将原工具移回世界坐标。');
     }
@@ -485,23 +597,23 @@ export default function App() {
     return { ...input, robot, basePose, toolPose, toolRadiusMm, zones: zoneConfiguration.validZones };
   }
   function openPathPlanning(pathId: string) {
-    if (executing || sourceBusy || closeState !== null || !program.paths.some(path => path.id === pathId)) return;
+    if (!robotPresent || executing || sourceBusy || closeState !== null || !program.paths.some(path => path.id === pathId)) return;
     clearPreview(); stopJog(); cancelInspections(); setObjectMenu(null); workspace.selectObject({ kind: 'path', id: pathId });
     setPlanningPreview(null); setPlanningPathId(pathId);
   }
   function applyGrindingPath(result: GrindingSuccess, input: GrindingInput) {
-    if (!planningPathId || executing || sourceBusy || sourceOperation.current || closeAttempt.current.busy || !program.paths.some(path => path.id === planningPathId)) throw new Error('当前正在执行其他操作，请结束后重新规划。');
+    if (!robotPresent || !planningPathId || executing || sourceBusy || sourceOperation.current || closeAttempt.current.busy || !program.paths.some(path => path.id === planningPathId)) throw new Error('当前正在执行其他操作，请结束后重新规划。');
     const snapshots = result.waypoints.map(point => ({ pose: worldPointToPath(graph, planningPathId, point.pose), joints: point.joints,
       configuration: point.configuration, speedMmPerSecond: input.speedMmPerSecond, motionRole: point.kind }));
     program.replacePathPoints(planningPathId, snapshots, { kind: 'grinding', clearanceMm: input.clearanceMm });
     workspace.selectObject({ kind: 'path', id: planningPathId }); setPlanningPreview(null);
-    setMessage('已应用统一工具方向路径。运行时将按当前基座、工具和禁入区重新验证整条运动。');
+    setMessage('已按各目标点的位置和姿态应用连续路径。运行时将按当前基座、工具和禁入区重新验证整条运动。');
   }
   async function planPointSegment(start: JointAngles, point: ProgramPoint, signal: AbortSignal): Promise<PlannedLeg> {
     if (needsFramedPlanning(point.pathId)) {
       const path = program.paths.find(item => item.id === point.pathId);
       const result = await planGrindingPath(makeGrindingRequest({ startJoints: start, targets: [point.pose],
-        orientation: path?.planning ? point.pose.orientation : null, allowDetours: false,
+        orientation: null, allowDetours: false,
         clearanceMm: path?.planning?.clearanceMm ?? 0, speedMmPerSecond: point.speedMmPerSecond }), signal);
       if (result.status !== 'success') throw new Error(result.message);
       const target = result.waypoints.at(-1)!;
@@ -534,9 +646,6 @@ export default function App() {
     const path = program.paths.find(item => item.id === pathId);
     if (!path || pathRunDisabledReason(pathId) || executionRun.current || closeAttempt.current.busy) return;
     const points = program.pointsForPath(path.id).map(point => ({ ...point, pose: pathPointToWorld(graph, path.id, point.pose) }));
-    if (path.planning && points.some(point => quaternionDistanceDeg(point.pose.orientation, points[0].pose.orientation) > .1)) {
-      setExecution({ pathId, phase: 'error', message: '加工点的工具方向已不一致，请重新进行路径规划。', pointId: null, line: 0, cycle: 0 }); return;
-    }
     const start = [...displayJoints] as JointAngles;
     clearPreview(); stopJog(); cancelInspections(); setObjectMenu(null); setZoneDragging(false);
     workspace.selectObject({ kind: 'path', id: path.id }); workspace.setActiveView('scene');
@@ -569,7 +678,7 @@ export default function App() {
   function moveToPoint(id: string) {
     const point = program.points.find(item => item.id === id);
     setObjectMenu(null);
-    if (!point || executionRun.current || sourceOperation.current || closeAttempt.current.busy || jogStatus.pending || jogDragging) return;
+    if (!robotPresent || !point || executionRun.current || sourceOperation.current || closeAttempt.current.busy || jogStatus.pending || jogDragging) return;
     if (needsFramedPlanning(point.pathId)) { void moveFramedPoint(point); return; }
     const from = [...displayJoints] as JointAngles;
     clearPreview(); stopJog(); cancelInspections(); setZoneDragging(false);
@@ -609,13 +718,25 @@ export default function App() {
     }
   }
   function beginJog() {
-    if (genericModel || selection.kind !== 'robot' || !jogEnabled || poseError || executionRun.current || sourceOperation.current) return;
-    const joints = [...displayJoints] as JointAngles, pose = forwardKinematics(model, joints).pose;
+    if (!robotPresent || selection.kind !== 'robot' || !jogEnabled || poseError || !currentPose || executionRun.current || sourceOperation.current || homeOperation.current) return;
+    const joints = [...displayJoints] as JointAngles;
     jogController.current?.dispose(); clearPreview();
-    setNativeJoints(joints); setJointDraft(strings(joints)); setJogDragging(true); setJogStatus({ pending: false, error: null });
-    jogController.current = createJogController({ initial: { modelId, joints, pose, speedMmPerSecond: speed }, solve: solveMotion,
-      onAccept: accepted => { setNativeJoints([...accepted.selected.joints]); setJointDraft(strings(accepted.selected.joints)); },
-      onStatus: setJogStatus });
+    writeBodyPose(joints); setJogDragging(true); setJogStatus({ pending: false, error: null });
+    jogController.current = createPoseJogController<PoseJogSuccess>({ initial: { modelId: activeModelId, joints, pose: currentPose, speedMmPerSecond: speed },
+      solve: async (request, signal) => {
+        if (genericModel) {
+          if (!genericChain?.chain) throw new Error(genericChain?.error || '运动学链不可用');
+          return solveGenericPoseMotion({ chain: genericChain.chain, startJoints: request.startJoints, target: { position: request.target.position, orientation: jogMode === 'translate' ? null : request.target.orientation }, basePose, toolPose, speedMmPerSecond: request.speedMmPerSecond }, signal);
+        }
+        if (!isIdentity(basePose) || !isIdentity(toolPose)) {
+          const result = await planGrindingPath(makeGrindingRequest({ startJoints: request.startJoints, targets: [request.target], orientation: null, allowDetours: false, clearanceMm: 0, speedMmPerSecond: request.speedMmPerSecond }), signal);
+          if (result.status !== 'success') return result;
+          const last = result.path.at(-1)!;
+          return { status: 'success', selected: { joints: last.joints, pose: last.pose } };
+        }
+        return solveMotion({ ...request, modelId }, signal);
+      },
+      onAccept: accepted => writeBodyPose(accepted.selected.joints), onStatus: setJogStatus });
   }
   function editZone(patch: Partial<Omit<DangerZoneDraft, 'id'>>) {
     if (!selectedZoneId || executionRun.current || sourceOperation.current) return;
@@ -624,28 +745,33 @@ export default function App() {
   useEffect(() => { setEndpointPreview(null); }, [activeModelId, selectedPoint?.id, selectedPoint?.revision, graph.revision]);
   useEffect(() => {
     const controller = new AbortController(); inspectionRun.current?.abort(); inspectionRun.current = controller;
-    if (!selectedPoint || genericModel || executing || jogStatus.pending || jogDragging) return () => controller.abort();
+    if (homeBusy || !robotPresent || !selectedPoint || executing || jogStatus.pending || jogDragging) return () => controller.abort();
     setInspection({ key: pointKey, pending: true, solutions: [], error: '' });
-    void inspectEndpoint({ modelId, pose: worldTcpToBaseFlange(graph, selectedPointWorld!), seedJoints: selectedPoint.joints }, controller.signal).then(found => {
+    const pose = worldTcpToBaseFlange(graph, selectedPointWorld!);
+    const pending = genericModel
+      ? genericChain?.chain ? inspectGenericEndpoint({ chain: genericChain.chain, pose, seedJoints: selectedPoint.joints }, controller.signal) : Promise.reject(new Error(genericChain?.error || '运动学链不可用'))
+      : inspectEndpoint({ modelId, pose, seedJoints: selectedPoint.joints }, controller.signal);
+    void pending.then(found => {
       if (!controller.signal.aborted && inspectionRun.current === controller) setInspection({ key: pointKey, pending: false, solutions: found, error: '' });
     }, error => {
       if (!controller.signal.aborted && inspectionRun.current === controller) setInspection({ key: pointKey, pending: false, solutions: [], error: error instanceof Error ? error.message : '端点检查失败' });
     });
     return () => { controller.abort(); if (inspectionRun.current === controller) inspectionRun.current = null; };
-  }, [pointKey, selectedPoint, selectedPointWorld, graph, genericModel, modelId, inspectionRevision, executing, jogStatus.pending, jogDragging]);
+  }, [homeBusy, robotPresent, pointKey, selectedPoint, selectedPointWorld, graph, genericModel, genericChain, modelId, inspectionRevision, executing, jogStatus.pending, jogDragging]);
   useEffect(() => {
     const controller = new AbortController(); collisionRun.current?.abort(); collisionRun.current = controller;
-    if (!collisionRequest || !zones.some(zone => zone.enabled) || executing || zoneDragging) return () => controller.abort();
+    if (homeBusy || !collisionRequest || !zones.some(zone => zone.enabled) || executing || zoneDragging) return () => controller.abort();
     setCollisionView({ key: collisionKey, status: 'pending', items: [] });
     const timer = setTimeout(() => {
-      void checkCollisions(collisionRequest, controller.signal).then(items => {
+      const pending = genericModel ? checkGenericCollisions(collisionRequest, controller.signal) : checkCollisions({ ...collisionRequest, modelId }, controller.signal);
+      void pending.then(items => {
         if (!controller.signal.aborted && collisionRun.current === controller) setCollisionView({ key: collisionKey, status: 'ready', items });
       }, error => {
         if (!controller.signal.aborted && collisionRun.current === controller) setCollisionView({ key: collisionKey, status: 'error', items: [], error: error instanceof Error ? error.message : '干涉检测失败' });
       });
     }, 120);
     return () => { clearTimeout(timer); controller.abort(); if (collisionRun.current === controller) collisionRun.current = null; };
-  }, [collisionRequest, collisionKey, executing, zoneDragging, zones]);
+  }, [homeBusy, collisionRequest, collisionKey, genericModel, modelId, executing, zoneDragging, zones]);
   useEffect(() => () => { jogController.current?.dispose(); inspectionRun.current?.abort(); collisionRun.current?.abort(); executionRun.current?.controller.abort(); if (executionRun.current) cancelAnimationFrame(executionRun.current.frame); }, []);
   useEffect(() => { setObjectMenu(null); setRemoveObject(null); }, [activeModelId, activeView]);
   useEffect(() => {
@@ -667,7 +793,7 @@ export default function App() {
     if (collisionView.key !== collisionKey || collisionView.status === 'pending' || zoneDragging) return { state: 'pending', label: '检测中', title: '正在检查端点机器人模型与危险区是否干涉' };
     const checked = collisionById.get(id);
     if (collisionView.status === 'error' || !checked) return { state: 'error', label: '检测失败', title: collisionView.error || '未取得完整检测结果' };
-    const describe = (kind: 'collidingLinks' | 'uncertainLinks') => checked.zones.filter(zone => zone[kind].length).map(zone => (zoneNames.get(zone.zoneId) || '未命名危险区') + '（' + zone[kind].map(link => link === 0 ? '基座' : '连杆 ' + link).join('、') + '）').join('；');
+    const describe = (kind: 'collidingLinks' | 'uncertainLinks') => checked.zones.filter(zone => zone[kind].length).map(zone => (zoneNames.get(zone.zoneId) || '未命名危险区') + '（' + zone[kind].map(link => genericModel ? genericCollisionParts(activeModelId)[link]?.name ?? '部件 ' + link : link === 0 ? '基座' : '连杆 ' + link).join('、') + '）').join('；');
     const unknown = checked.uncertainLinks.length ? '无法确定：' + describe('uncertainLinks') + '。当前模型无法可靠确定该区域是否位于实体内部。' : '';
     const scope = '仅检查端点与已启用危险区，未检查整段路径或自碰撞。';
     if (checked.collidingLinks.length) return { state: 'hit', label: '干涉', title: '确认干涉：' + describe('collidingLinks') + '。' + unknown + scope };
@@ -684,17 +810,17 @@ export default function App() {
     return collisionById.get(id)?.zones.filter(zone => (uncertain ? zone.uncertainLinks : zone.collidingLinks).length).map(zone => zone.zoneId) ?? [];
   }
   return <div className="app-shell">
-    <header className="topbar" inert={closeState !== null || removeObject !== null}>
-      <a className="brand" href="./" aria-label="Emulation 首页"><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
-      <div className="header-divider"/><div className="project-label"><span className="project-context">运动工作台</span><Icon name="chevron-right" size={13} className="project-separator"/><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={executing || sourceBusy} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span><Icon name="chevron-down" size={13}/></button></div>
+    <header className="topbar" inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null}>
+      <a className="brand" href="./" aria-label="Emulation 首页" onClick={event => { if (onReturnHome) { event.preventDefault(); void returnHome(); } }}><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
+      <div className="header-divider"/><div className="project-label"><span className="project-context">{project?.name ?? '运动工作台'}</span><Icon name="chevron-right" size={13} className="project-separator"/><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={executing || sourceBusy} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span><Icon name="chevron-down" size={13}/></button></div>
       <div className="workspace-view-switch" aria-label="工作区视图">{(['scene', 'program'] as const).map(item => <button key={item} type="button" aria-pressed={activeView === item} disabled={executing && item === 'program'} className={activeView === item ? 'selected' : ''} onClick={() => changeWorkspaceView(item)}>{item === 'scene' ? '场景' : '程序'}</button>)}</div>
-      <div className="header-right"><span className="version">v0.3.1</span></div>
+      <div className="header-right">{onReturnHome && <button type="button" className="copy-button return-home-button" disabled={homeBusy || sourceBusy || closeState !== null} onClick={() => void returnHome()}><Icon name="chevron-left" size={14}/>返回主页</button>}<span className="version">v0.4.0</span></div>
     </header>
-    <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={closeState !== null || removeObject !== null}>
+    <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null}>
       <aside className="object-panel" aria-label={activeView === 'program' ? '程序模块' : '场景对象'}>
         <div className="object-panel-header"><h2>{activeView === 'program' ? '模块文件' : '场景对象'}</h2><button type="button" className="icon-button" aria-label={leftCollapsed ? '展开左侧面板' : '折叠左侧面板'} onClick={() => workspace.setLeftCollapsed(value => !value)}><Icon name={leftCollapsed ? 'chevron-right' : 'chevron-left'} size={16}/></button></div>
         <div className="object-panel-content" aria-hidden={leftCollapsed} inert={leftCollapsed}>
-          {activeView === 'program' ? <ModuleList files={documents.files} activeFileId={documents.project.activeFileId} disabled={!documents.ready || sourceBusy || executing} onSelectFile={id => documents.selectFile(id)}/> : <SceneObjectTree robotName={activeName} joints={displayJoints} robotParent={graph.robotBase.parent} frames={graph.frames} tools={graph.tools}
+          {activeView === 'program' ? <ModuleList files={documents.files} activeFileId={documents.project.activeFileId} disabled={!documents.ready || sourceBusy || executing} onSelectFile={id => documents.selectFile(id)}/> : <SceneObjectTree robotPresent={robotPresent} robotName={activeName} joints={displayJoints} robotParent={graph.robotBase.parent} frames={graph.frames} tools={graph.tools}
             paths={program.paths.map(path => ({ ...path, parent: pathAttachment(graph, path.id).parent }))} points={program.points} zones={zones}
             invalidZoneIds={zoneConfiguration.errors.map(error => error.id)} selection={selection} executingPointId={execution.phase === 'running' ? execution.pointId : null}
             disabled={executing || sourceBusy} canAddZone={workspace.canAddZone} onSelect={chooseObject} onContextMenu={setObjectMenu} onReparent={reparentObject}
@@ -706,45 +832,46 @@ export default function App() {
       <section className="scene-panel" aria-label="机器人视口" aria-hidden={activeView !== 'scene'} inert={activeView !== 'scene'}>
         <div className="scene-heading"><div><span className="eyebrow">ROBOT WORKSPACE</span><h1>机器人工作区</h1><p>{genericModel ? 'URDF 模型 · 关节姿态 · 工具坐标' : '对象调姿 · 姿态记录 · 端点检查'}</p></div><span className="robot-tag"><span className={activeBrand === 'ABB' ? 'abb-mark' : 'robot-brand-mark'}>{activeBrand}</span>{activeName}<span className="tag-divider"/>{limits.length} 轴</span></div>
         <div className="viewport">
-          <RobotScene model={model} joints={visibleJoints} urdfModel={genericModel ?? undefined} urdfJoints={visibleJoints}
+          <RobotScene ref={sceneHandle} initialCamera={initialScene?.camera} robotPresent={robotPresent} model={model} joints={visibleJoints} urdfModel={genericModel ?? undefined} urdfJoints={visibleJoints}
             targetPose={selectedPointWorld} path={planningPreview?.path ?? EMPTY_PATH}
             showFrames={showFrames} view={view} viewRevision={viewRevision}
-            jogEnabled={!genericModel && selection.kind === 'robot' && activeView === 'scene' && jogEnabled && !executing && !sourceBusy && !poseError}
+            jogEnabled={robotPresent && !homeBusy && selection.kind === 'robot' && activeView === 'scene' && jogEnabled && !executing && !sourceBusy && !poseError}
             jogMode={jogMode} jogSpace={jogSpace} jogPending={jogStatus.pending} jogResetRevision={jogResetRevision}
-            onJogStart={beginJog} onJogMove={pose => jogController.current?.update(worldTcpToBaseFlange(graph, pose))} onJogEnd={() => setJogDragging(false)}
+            onJogStart={beginJog} onJogMove={pose => jogController.current?.update(pose)} onJogEnd={() => setJogDragging(false)}
             dangerZones={sceneZones} selectedDangerZoneId={selectedZoneId ?? undefined}
-            zoneManipulationEnabled={selection.kind === 'zone' && activeView === 'scene' && !executing && !sourceBusy}
+            zoneManipulationEnabled={!homeBusy && selection.kind === 'zone' && activeView === 'scene' && !executing && !sourceBusy}
             onDangerZoneMove={(id, centerMm) => { collisionRun.current?.abort(); workspace.editZone(id, { center: centerMm.map(String) }); }}
             onDangerZoneDrag={setZoneDragging} scenePaths={scenePaths} selectedPointId={selectedPoint?.id ?? null}
             basePose={basePose} toolPose={toolPose} sceneFrames={sceneFrames} sceneTools={sceneTools} selectedJointIndex={selection.kind === 'joint' ? selection.index : null}/>
           <div className="viewport-toolbar"><div className="view-options" aria-label="观察视角">{([['iso', '透视'], ['front', '正视'], ['top', '俯视']] as const).map(([id, label]) => <button key={id} className={view === id ? 'selected' : ''} onClick={() => changeView(id)}>{label}</button>)}</div><button className="icon-button" title="重置视角" aria-label="重置视角" onClick={() => changeView('iso')}><Icon name="reset" size={15}/></button></div>
-          {!genericModel && selection.kind === 'robot' && <div className="object-jog-toolbar"><div className="view-options"><button type="button" aria-pressed={jogEnabled} className={jogEnabled ? 'selected' : ''} disabled={executing || sourceBusy || Boolean(poseError)} onClick={() => { stopJog(); clearPreview(); setJogEnabled(value => !value); }}>拖动法兰</button>{jogEnabled && <>{([['translate', '平移'], ['rotate', '旋转']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogMode === id} className={jogMode === id ? 'selected' : ''} onClick={() => { stopJog(); setJogMode(id); }}>{label}</button>)}{([['world', '世界坐标'], ['local', '工具坐标']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogSpace === id} className={jogSpace === id ? 'selected' : ''} onClick={() => { stopJog(); setJogSpace(id); }}>{label}</button>)}</>}</div></div>}
-          {jogEnabled && selection.kind === 'robot' && !genericModel && <div className="object-jog-status" role="status" aria-label="拖动状态">{jogStatus.error ? '已保持上一个有效姿态：' + jogStatus.error : configuration?.singular ? '当前姿态接近奇异位置，请调整关节或使用示例姿态。' : jogStatus.pending ? '正在检查拖动路径…' : '拖动控制柄调整法兰；无效目标不会移动机器人。'}</div>}
+          {robotPresent && selection.kind === 'robot' && <div className="object-jog-toolbar"><div className="view-options"><button type="button" aria-pressed={jogEnabled} className={jogEnabled ? 'selected' : ''} disabled={executing || sourceBusy || Boolean(poseError)} onClick={() => { stopJog(); clearPreview(); setJogEnabled(value => !value); }}>拖动法兰</button>{jogEnabled && <>{([['translate', '平移'], ['rotate', '旋转']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogMode === id} className={jogMode === id ? 'selected' : ''} onClick={() => { stopJog(); setJogMode(id); }}>{label}</button>)}{([['world', '世界坐标'], ['local', '工具坐标']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogSpace === id} className={jogSpace === id ? 'selected' : ''} onClick={() => { stopJog(); setJogSpace(id); }}>{label}</button>)}</>}</div></div>}
+          {robotPresent && jogEnabled && selection.kind === 'robot' && <div className="object-jog-status" role="status" aria-label="拖动状态">{jogStatus.error ? '已保持上一个有效姿态：' + jogStatus.error : configuration?.singular ? '当前姿态接近奇异位置，请调整关节或使用示例姿态。' : jogStatus.pending ? '正在检查拖动路径…' : '拖动控制柄调整当前 TCP；无效目标不会移动机器人。'}</div>}
           {selection.kind === 'zone' && <div className="object-jog-status" role="status">拖动世界坐标箭头移动危险区，或在右侧填写位置与尺寸。</div>}
           <div className="viewport-caption"><Icon name="circle" size={9} className="origin-icon"/>基座世界坐标 <code>[{basePose.position.map(value => numberText(value, 2)).join(', ')}]</code></div>
           <div className="scene-legend"><span><Icon name="dot" size={11} className="legend-current"/>当前 TCP</span>{selectedPoint && <span><Icon name="dot" size={11} className="legend-target"/>已记录目标</span>}</div>
         </div>
-        {previewSolution && <div className="endpoint-preview-notice" role="status" aria-label="端点预览"><div><strong>正在预览端点姿态</strong><span>仅改变三维显示，目标点、程序和原机器人姿态保持不变。</span><code>robconf [{previewSolution.configuration.join(', ')}]</code></div><button type="button" className="copy-button" onClick={() => setEndpointPreview(null)}>退出预览</button></div>}
+        {previewSolution && <div className="endpoint-preview-notice" role="status" aria-label="端点预览"><div><strong>正在预览端点姿态</strong><span>仅改变三维显示，目标点、程序和原机器人姿态保持不变。</span><code>{previewSolution.configuration ? 'robconf [' + previewSolution.configuration.join(', ') + ']' : '关节 [' + previewSolution.joints.map(value => numberText(value, 1)).join(', ') + ']°'}</code></div><button type="button" className="copy-button" onClick={() => setEndpointPreview(null)}>退出预览</button></div>}
         <div className="scene-display-options"><label className="frame-toggle"><input type="checkbox" checked={showFrames} onChange={event => setShowFrames(event.target.checked)}/>显示关节坐标系</label></div>
         {execution.message && <div className={'execution-status execution-' + execution.phase} role="status" aria-label="程序运行状态" data-run-path-id={execution.pathId ?? ''} data-run-phase={execution.phase} data-run-point-id={execution.pointId ?? ''} data-run-line={execution.line} data-run-cycle={execution.cycle}><span>{execution.message}</span>{executing && <button type="button" className="copy-button" onClick={() => stopExecution()}><Icon name="stop" size={13}/>停止运行</button>}</div>}
       </section>
 
       <aside className="control-panel" aria-label="对象属性" aria-hidden={activeView !== 'scene'} inert={activeView !== 'scene'}><fieldset disabled={executing || sourceBusy} className="inspector-fieldset">
-        {selection.kind === 'robot' && <><RobotInspector name={activeName} model={genericModel ? null : model} pose={currentPose} joints={displayJoints}
+        {selection.kind === 'robot' && !robotPresent && <div className="robot-absent"><h2>机器人本体已删除</h2><p>参考坐标系、工具、路径与模块文件仍保留。</p><button type="button" className="copy-button" onClick={() => setCatalogOpen(true)}>添加机器人</button></div>}
+        {selection.kind === 'robot' && robotPresent && <><RobotInspector name={activeName} model={genericModel ? null : model} urdf={genericModel?.description} pose={currentPose} joints={displayJoints}
           drafts={genericModel ? catalogDraft : jointDraft} limits={limits} euler={currentPose ? quaternionToEulerZYX(currentPose.orientation) : null}
           configuration={configuration?.configuration ?? null} poseError={poseError} captureDisabledReason={captureDisabledReason} speed={speed}
           onSpeed={setSpeed} onJoint={editJoint} onInitial={() => setRobotPose('ready')} onZero={() => setRobotPose('zero')}/>
           <AttachmentSelector object={{ kind: 'robot' }} parent={graph.robotBase.parent} frames={graph.frames} onReparent={reparentObject}/>
           <p className="field-hint">当前工具：{graph.tools.find(tool => tool.id === graph.activeToolId)?.name ?? '法兰原点'}。当前TCP显示世界坐标。</p></>}
-        {selection.kind === 'base' && <div className="base-inspector" data-local-pose={JSON.stringify(graph.robotBase.localPose)} data-world-pose={JSON.stringify(basePose)}>
+        {robotPresent && selection.kind === 'base' && <div className="base-inspector" data-local-pose={JSON.stringify(graph.robotBase.localPose)} data-world-pose={JSON.stringify(basePose)}>
           <div className="panel-title"><Icon name="base"/><h2>机器人基座</h2></div>
           <AttachmentSelector object={{ kind: 'robot' }} parent={graph.robotBase.parent} frames={graph.frames} onReparent={reparentObject}/>
           <PoseEditor label="机器人基座" value={graph.robotBase.localPose} onChange={pose => graphEdit(() => frameState.editBase(pose))}/>
           <PoseReadout label="基座世界位姿" pose={basePose}/></div>}
-        {selection.kind === 'flange' && currentFlangePose && <div className="flange-inspector"><div className="panel-title"><Icon name="flange"/><h2>末端法兰</h2></div>
+        {robotPresent && selection.kind === 'flange' && currentFlangePose && <div className="flange-inspector"><div className="panel-title"><Icon name="flange"/><h2>末端法兰</h2></div>
           <PoseReadout label="法兰世界位姿" pose={composePose(basePose, currentFlangePose)}/><PoseReadout label="法兰基座位姿" pose={currentFlangePose}/>
           <p className="field-hint">将工具拖到左侧法兰节点可以挂载。工具中心点由安装位姿和TCP偏置共同确定。</p></div>}
-        {selection.kind === 'joint' && <div className="joint-inspector" data-selected-joint-index={selection.index}>
+        {robotPresent && selection.kind === 'joint' && <div className="joint-inspector" data-selected-joint-index={selection.index}>
           <div className="panel-title"><Icon name="joint"/><h2>关节轴 {selection.index + 1}</h2></div>
           <label className="field-label">关节角 <span>deg</span><input type="number" step="any" aria-label={'机器人关节 J' + (selection.index + 1)} value={(genericModel ? catalogDraft : jointDraft)[selection.index] ?? ''} onChange={event => editJoint(selection.index, event.target.value)}/></label>
           <p className="field-hint">范围 {limits[selection.index]?.minDeg}° 至 {limits[selection.index]?.maxDeg}° · 额定最大速度 {limits[selection.index]?.maxSpeedDeg}°/s</p>{poseError && <p role="alert">{poseError}</p>}</div>}
@@ -759,16 +886,16 @@ export default function App() {
         {selectedZone && <div className="zone-inspector" data-selected-zone-id={selectedZone.id}>
           <div className="panel-title"><div className="section-number"><Icon name="zone" size={14}/></div><h2>危险区属性</h2></div>
           <label className="field-label danger-zone-name">名称<input aria-label="危险区名称" maxLength={80} value={selectedZone.name} onChange={event => editZone({ name: event.target.value })}/></label>
-          <div className="danger-zone-actions"><label className="danger-zone-toggle"><input type="checkbox" aria-label="显示干涉区域" checked={selectedZone.enabled} onChange={event => editZone({ enabled: event.target.checked })}/>{genericModel ? '启用禁入区' : '显示并检测'}</label><button type="button" className="text-button" onClick={() => { collisionRun.current?.abort(); workspace.removeSelectedZone(); }}>删除危险区</button></div>
+          <div className="danger-zone-actions"><label className="danger-zone-toggle"><input type="checkbox" aria-label="显示干涉区域" checked={selectedZone.enabled} onChange={event => editZone({ enabled: event.target.checked })}/>显示并检测</label><button type="button" className="text-button" onClick={() => { collisionRun.current?.abort(); workspace.removeSelectedZone(); }}>删除危险区</button></div>
           {(['center', 'size'] as const).map(field => <section key={field}><label className="field-label danger-zone-size-label">{field === 'center' ? '世界坐标中心' : '区域尺寸'} <span>mm</span></label><div className="position-grid">{axes.map((axis, index) => <label key={axis}><span>{axis}</span><input type="number" aria-label={'危险区' + (field === 'center' ? '中心 ' : '尺寸 ') + axis} step="any" min={field === 'size' ? 0.001 : -1e6} max={1e6} value={selectedZone[field][index]} onChange={event => editZone({ [field]: selectedZone[field].map((value, i) => i === index ? event.target.value : value) })}/></label>)}</div></section>)}
           <button type="button" className="text-button danger-zone-reset" onClick={() => { collisionRun.current?.abort(); workspace.resetSelectedZone(); }}>恢复默认区域</button>
           {zoneConfiguration.errors.map(error => <p className="danger-zone-error" role="alert" key={error.id}>{error.message} 当前不能完成端点检测。</p>)}
-          <p className="field-hint">路径规划会检查机器人和工具包络与禁入区的整段间距。{genericModel ? '此型号尚未支持独立端点网格检测。' : '目标点另提供机器人本体端点网格检测。'}</p>
+          <p className="field-hint">路径规划会检查机器人和工具包络与禁入区的整段间距。目标点另提供机器人本体端点网格检测。</p>
         </div>}
         {selectedPath && <div className="path-inspector" data-local-pose={JSON.stringify(pathAttachment(graph, selectedPath.id).localPose)} data-world-pose={JSON.stringify(pathWorldPose(graph, selectedPath.id))}><div className="panel-title"><div className="section-number"><Icon name="path" size={14}/></div><h2>{selectedPath.name}</h2></div>
           <p className="field-hint">调整机器人姿态后向 Path 添加点。转换为程序会新建独立模块；之后修改 Path 不会覆盖模块。</p>
           <AttachmentSelector object={{ kind: 'path', id: selectedPath.id }} parent={pathAttachment(graph, selectedPath.id).parent} frames={graph.frames} onReparent={reparentObject}/>
-          <button type="button" className="copy-button" onClick={() => openPathPlanning(selectedPath.id)}><Icon name="route" size={14}/>路径规划</button>
+          <button type="button" className="copy-button" disabled={!robotPresent} onClick={() => openPathPlanning(selectedPath.id)}><Icon name="route" size={14}/>路径规划</button>
           <details className="path-frame-details"><summary>路径坐标与姿态<Icon name="chevron-right" size={13}/></summary><PoseEditor label="路径坐标" value={pathAttachment(graph, selectedPath.id).localPose} onChange={pose => graphEdit(() => frameState.editPath(selectedPath.id, pose))}/><PoseReadout label="路径世界位姿" pose={pathWorldPose(graph, selectedPath.id)}/></details>
           <div className="path-actions"><button type="button" className="copy-button" disabled={Boolean(captureDisabledReason)} title={captureDisabledReason ?? undefined} onClick={() => captureToPath(selectedPath.id)}>添加当前点到 Path</button><button type="button" className="copy-button" disabled={moduleGenerationDisabled || !selectedPath.pointIds.length} onClick={() => generatePathModule(selectedPath.id)}>转换为程序</button></div>
           <ol className="path-point-list">{selectedPath.pointIds.map(id => {
@@ -776,14 +903,14 @@ export default function App() {
             return point && <li key={id}><button type="button" className="copy-button" onClick={() => chooseObject({ kind: 'target', id })}>{point.pointName}</button><span>{point.motionRole === 'transfer' ? '转移' : point.motionRole === 'process' ? '加工' : profile.linearInstruction} · {point.speedMmPerSecond} mm/s</span></li>;
           })}</ol>
           <div className="path-run-controls"><button type="button" className="copy-button" disabled={Boolean(pathRunDisabledReason(selectedPath.id))} title={pathRunDisabledReason(selectedPath.id) ?? undefined} onClick={() => void runPath(selectedPath.id)}><Icon name="play" size={13}/>运行 Path</button><label><input type="checkbox" checked={loop} onChange={event => setLoop(event.target.checked)}/>循环运行</label></div>
-          <p className="field-hint">{selectedPath.planning ? '统一工具方向路径：运行前按当前基座、工具和禁入区重新验证每段，转移段不代表贴合工件加工。' : '只运行此路径，开始前逐段检查运动。虚线表示点顺序；使用路径规划可进行整段禁入区检查。'}</p>
+          <p className="field-hint">{selectedPath.planning ? '规划路径保留各目标点的位置和姿态；运行前重新验证每段运动与禁入区，转移段不代表贴合工件加工。' : '只运行此路径，开始前逐段检查运动。虚线表示点顺序；使用路径规划可进行整段禁入区检查。'}</p>
           <button type="button" className="text-button" onClick={() => setRemoveObject({ kind: 'path', id: selectedPath.id, modelId: activeModelId })}>删除 Path</button>
         </div>}
         {selectedPoint && <TargetInspector modelKey={activeModelId} point={selectedPoint} worldPose={selectedPointWorld!} referenceName={program.paths.find(path => path.id === selectedPoint.pathId)?.name ?? '路径'} updateDisabledReason={poseCaptureDisabledReason} previewing={Boolean(previewSolution)} onUpdate={updatePointFromCurrent}>
-          {!genericModel && <section className="endpoint-details"><div className="field-heading"><h3>端点姿态与干涉检测</h3><button type="button" className="text-button" disabled={executing} onClick={() => { cancelInspections(); setInspectionRevision(value => value + 1); }}>重新检查端点解</button></div>
+          {robotPresent && <section className="endpoint-details"><div className="field-heading"><h3>端点姿态与干涉检测</h3><button type="button" className="text-button" disabled={executing} onClick={() => { cancelInspections(); setInspectionRevision(value => value + 1); }}>重新检查端点解</button></div>
             <p className="field-hint" role="status" aria-label="端点检查状态">{inspection.key !== pointKey || inspection.pending ? '正在检查端点逆解…' : inspection.error || (solutions.length ? '预览仅显示候选姿态，不修改目标点或原机器人姿态。' : '没有找到有效的端点逆解。')}</p>
             <div className="endpoint-list">{solutions.map((solution, index) => <div key={solution.id} className={'endpoint-solution' + (previewSolution?.id === solution.id ? ' endpoint-previewed' : '')} role="group" aria-label={'端点解 ' + (index + 1)} data-endpoint-joints={JSON.stringify(solution.joints)} data-collision-state={collisionInfo(solution.id).state} data-collision-zone-ids={JSON.stringify(collisionIds(solution.id))} data-collision-uncertain-zone-ids={JSON.stringify(collisionIds(solution.id, true))}>
-              <div className="endpoint-solution-heading"><code>{'[' + solution.configuration.join(', ') + ']'}</code>{solution.configuration.every((value, i) => value === selectedPoint.configuration?.[i]) && <small>已记录配置</small>}<button type="button" className="copy-button endpoint-preview" aria-label={'预览姿态 ' + (index + 1)} aria-pressed={previewSolution?.id === solution.id} disabled={executing} onClick={() => previewEndpoint(solution)}>预览</button></div>
+              <div className="endpoint-solution-heading"><code>{solution.configuration ? '[' + solution.configuration.join(', ') + ']' : '候选 ' + (index + 1)}</code>{(solution.configuration ? solution.configuration.every((value, i) => value === selectedPoint.configuration?.[i]) : solution.joints.every((value, i) => Math.abs(value - selectedPoint.joints[i]) < .01)) && <small>已记录配置</small>}<button type="button" className="copy-button endpoint-preview" aria-label={'预览姿态 ' + (index + 1)} aria-pressed={previewSolution?.id === solution.id} disabled={executing} onClick={() => previewEndpoint(solution)}>预览</button></div>
               <span className="endpoint-joints">{solution.joints.map(value => numberText(value, 1)).join(' / ')}°</span>{collisionBadge(solution.id)}
             </div>)}</div>
             <p className="field-hint collision-legend"><span><Icon name="warning" size={13}/>确认干涉</span><span><Icon name="question" size={13}/>无法可靠判断内部</span>。检测只覆盖端点与危险区，未检查整段路径或自碰撞。</p>
@@ -803,22 +930,24 @@ export default function App() {
       contextKey={planningContextKey}
       onPlan={(input, signal) => planGrindingPath(makeGrindingRequest({ ...input, startJoints: [...displayJoints] as JointAngles, allowDetours: true }), signal)}
       onPreview={setPlanningPreview} onApply={applyGrindingPath} onClose={() => { setPlanningPathId(null); setPlanningPreview(null); }}/>}
-    {closeState === null && objectMenu && <SceneObjectMenu x={objectMenu.x} y={objectMenu.y} trigger={objectMenu.trigger} label={objectMenu.kind === 'path' ? 'Path 右键菜单' : '目标点右键菜单'} onClose={() => setObjectMenu(null)} actions={objectMenu.kind === 'path' ? [
-      { label: '路径规划', icon: 'route', disabled: executing || sourceBusy, onSelect: () => openPathPlanning(objectMenu.id) },
+    {closeState === null && objectMenu && <SceneObjectMenu x={objectMenu.x} y={objectMenu.y} trigger={objectMenu.trigger} label={objectMenu.kind === 'path' ? 'Path 右键菜单' : objectMenu.kind === 'target' ? '目标点右键菜单' : sceneRemovalLabel(objectMenu.kind).replace(/^删除/, '') + '右键菜单'} onClose={() => setObjectMenu(null)} actions={objectMenu.kind === 'path' ? [
+      { label: '路径规划', icon: 'route', disabled: !robotPresent || executing || sourceBusy, onSelect: () => openPathPlanning(objectMenu.id) },
       { label: '运行', icon: 'play', disabled: Boolean(pathRunDisabledReason(objectMenu.id)), title: pathRunDisabledReason(objectMenu.id) ?? undefined, onSelect: () => void runPath(objectMenu.id) },
       { label: '添加当前点到 Path', icon: 'plus', disabled: Boolean(captureDisabledReason), title: captureDisabledReason ?? undefined, onSelect: () => captureToPath(objectMenu.id) },
       { label: '转换为程序', icon: 'code', disabled: moduleGenerationDisabled || !program.paths.find(path => path.id === objectMenu.id)?.pointIds.length, onSelect: () => generatePathModule(objectMenu.id) },
       { label: '删除 Path', icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: 'path', id: objectMenu.id, modelId: activeModelId }) },
-    ] : [
-      { label: '移动至此', icon: 'target', disabled: executing || sourceBusy || jogStatus.pending || jogDragging, title: '定位到记录姿态；不验证移动路径', onSelect: () => moveToPoint(objectMenu.id) },
+    ] : objectMenu.kind === 'target' ? [
+      { label: '移动至此', icon: 'target', disabled: !robotPresent || executing || sourceBusy || jogStatus.pending || jogDragging, title: '定位到记录姿态；不验证移动路径', onSelect: () => moveToPoint(objectMenu.id) },
       { label: '删除点', icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: 'target', id: objectMenu.id, modelId: activeModelId }) },
-    ]}/>}
-    {closeState === null && removeObject && <ObjectRemovalDialog kind={removeObject.kind} name={removeObject.kind === 'path' ? program.paths.find(path => path.id === removeObject.id)?.name ?? 'Path' : program.points.find(point => point.id === removeObject.id)?.pointName ?? '目标点'} count={program.paths.find(path => path.id === removeObject.id)?.pointIds.length ?? 0} onCancel={() => setRemoveObject(null)} onConfirm={confirmRemoveObject}/>}
-    {catalogOpen && <RobotCatalogDialog currentModelId={activeModelId} onSelect={selectCatalogModel} onClose={() => setCatalogOpen(false)}/>}
-    {closeState && <div className="source-close-backdrop"><section className="source-close-dialog" role="dialog" aria-modal="true" aria-label="关闭前保存草稿" onKeyDown={event => {
+    ] : [{ label: sceneRemovalLabel(objectMenu.kind), icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: objectMenu.kind, id: objectMenu.id, modelId: activeModelId }) }]}/>}
+    {closeState === null && removeObject && <ObjectRemovalDialog kind={removeObject.kind} name={removeObject.kind === 'robot' ? activeName : removeObject.kind === 'frame' ? graph.frames.find(frame => frame.id === removeObject.id)?.name ?? '参考坐标系' : removeObject.kind === 'tool' ? graph.tools.find(tool => tool.id === removeObject.id)?.name ?? '工具' : removeObject.kind === 'zone' ? zones.find(zone => zone.id === removeObject.id)?.name ?? '危险区' : removeObject.kind === 'path' ? program.paths.find(path => path.id === removeObject.id)?.name ?? 'Path' : program.points.find(point => point.id === removeObject.id)?.pointName ?? '目标点'} count={program.paths.find(path => path.id === removeObject.id)?.pointIds.length ?? 0} onCancel={() => setRemoveObject(null)} onConfirm={confirmRemoveObject}/>}
+    {catalogOpen && <RobotCatalogDialog currentModelId={robotPresent ? activeModelId : ''} onSelect={selectCatalogModel} onClose={() => setCatalogOpen(false)}/>}
+    {closeState && <div className="source-close-backdrop"><section className="source-close-dialog" role="dialog" aria-modal="true" aria-label="关闭前保存项目和模块草稿" onKeyDown={event => {
       if (event.key === 'Escape' && closeState === 'error') { event.preventDefault(); setCloseState(null); }
       if (event.key === 'Tab') { const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')], first = buttons[0], last = buttons.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }
-    }}><h2>{closeState === 'saving' ? '正在保存草稿' : '草稿尚未保存'}</h2><p role="status">{closeState === 'saving' ? '正在保存各型号的本地草稿，完成后关闭窗口。' : closeError}</p>{closeState === 'error' && <div className="source-close-actions"><button autoFocus type="button" onClick={() => setCloseState(null)}>继续编辑</button><button type="button" onClick={() => void finishNativeClose()}>重试保存并关闭</button><button type="button" className="source-discard" onClick={() => void finishNativeClose(true)}>放弃未保存草稿并关闭</button></div>}</section></div>}
+    }}><h2>{closeState === 'saving' ? '正在保存项目和模块草稿' : '项目和模块草稿尚未保存'}</h2><p role="status">{closeState === 'saving' ? '正在保存项目场景与各型号的本地模块草稿，完成后关闭窗口。' : closeError}</p>{closeState === 'error' && <div className="source-close-actions"><button autoFocus type="button" onClick={() => setCloseState(null)}>继续编辑</button><button type="button" onClick={() => void finishNativeClose()}>重试保存并关闭</button><button type="button" className="source-discard" onClick={() => void finishNativeClose(true)}>放弃未保存的项目和模块草稿并关闭</button></div>}</section></div>}
+    {homeBusy && <div className="source-close-backdrop"><section className="source-close-dialog" role="status"><h2>正在保存项目</h2><p>保存模块与场景，更新三维封面…</p></section></div>}
+    {homeError && <div className="source-close-backdrop"><section className="source-close-dialog" role="alertdialog" aria-label="项目保存失败"><h2>项目尚未保存</h2><p>{homeError}</p><button type="button" onClick={() => setHomeError('')}>继续编辑</button><button type="button" onClick={() => void returnHome()}>重试返回主页</button></section></div>}
     <footer className="app-footer"><span><Icon name="info" size={13}/>{genericModel ? '基于源 URDF 的直线运动仿真；品牌模板未完成控制器验证。' : '路径运行前逐段检查运动；打磨路径另检查机器人与工具的禁入区间距。'}</span><span>世界坐标 Z 向上 · 长度 mm · 角度 deg</span></footer>
   </div>;
 }

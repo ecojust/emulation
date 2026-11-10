@@ -21,7 +21,10 @@ impl TemporaryDirectory {
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
         std::fs::create_dir(&path).unwrap();
-        Self(path)
+        // Match ModelCache's canonical-root invariant, including macOS /var and
+        // /tmp aliases and Windows extended-path prefixes. The direct collision
+        // source fixtures below otherwise reject their own legitimate files.
+        Self(std::fs::canonicalize(path).unwrap())
     }
 }
 impl Drop for TemporaryDirectory {
@@ -466,4 +469,79 @@ async fn cache_symlinks_cannot_redirect_a_download_or_authorized_result() {
     );
     assert_eq!(std::fs::read_dir(&outside.0).unwrap().count(), 1);
     no_partials(&manager);
+}
+
+#[test]
+fn collision_source_reads_only_pinned_cache_bytes_and_honors_cancellation() {
+    use std::sync::atomic::AtomicBool;
+    let temporary = TemporaryDirectory::new();
+    let (catalog, files) = fixture();
+    let relative = PathBuf::from("verified-model");
+    let directory = temporary.0.join(&relative);
+    std::fs::create_dir_all(directory.join("meshes")).unwrap();
+    for (path, bytes) in &files {
+        std::fs::write(directory.join(path), bytes).unwrap();
+    }
+    let handle = CollisionMeshSource {
+        root: temporary.0.clone(),
+        relative,
+        files: catalog.models[0].files.clone(),
+    };
+    let file = handle
+        .files
+        .iter()
+        .find(|file| file.path.ends_with(".stl"))
+        .unwrap();
+    let source = emulation_core::generic_collision::MeshSource {
+        path: file.path.clone(),
+        bytes: file.bytes as usize,
+        sha256: file.sha256.clone(),
+    };
+    let cancel = AtomicBool::new(false);
+    assert_eq!(handle.read(&source, &cancel).unwrap(), files[&source.path]);
+    let mut forged = source.clone();
+    forged.sha256 = "0".repeat(64);
+    assert!(handle.read(&forged, &cancel).is_err());
+    cancel.store(true, Ordering::Relaxed);
+    assert!(handle.read(&source, &cancel).is_err());
+    cancel.store(false, Ordering::Relaxed);
+    let mut corrupt = files[&source.path].to_vec();
+    corrupt[0] ^= 1;
+    std::fs::write(directory.join(&source.path), corrupt).unwrap();
+    assert!(handle
+        .read(&source, &cancel)
+        .unwrap_err()
+        .contains("校验失败"));
+}
+
+#[test]
+fn collision_source_cannot_escape_through_cached_symlinks() {
+    #[cfg(unix)]
+    {
+        use std::sync::atomic::AtomicBool;
+        let temporary = TemporaryDirectory::new();
+        let (catalog, files) = fixture();
+        let relative = PathBuf::from("model");
+        let directory = temporary.0.join(&relative);
+        std::fs::create_dir_all(directory.join("meshes")).unwrap();
+        let file = catalog.models[0]
+            .files
+            .iter()
+            .find(|file| file.path.ends_with(".stl"))
+            .unwrap();
+        let external = temporary.0.join("outside.stl");
+        std::fs::write(&external, &files[&file.path]).unwrap();
+        std::os::unix::fs::symlink(external, directory.join(&file.path)).unwrap();
+        let source = emulation_core::generic_collision::MeshSource {
+            path: file.path.clone(),
+            bytes: file.bytes as usize,
+            sha256: file.sha256.clone(),
+        };
+        let handle = CollisionMeshSource {
+            root: temporary.0.clone(),
+            relative,
+            files: catalog.models[0].files.clone(),
+        };
+        assert!(handle.read(&source, &AtomicBool::new(false)).is_err());
+    }
 }

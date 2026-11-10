@@ -1,4 +1,4 @@
-import type { JointAngles, JointLimit, Mat4, MotionSample, PlanFailure, Pose, Vec3 } from './types';
+import type { JointAngles, JointLimit, Mat4, MotionSample, PlanFailure, Pose, Quaternion, Vec3 } from './types';
 
 /** Exact URDF ancestry from the root link to tool0/flange; origins are row-major millimetres. */
 export interface GenericChainStep {
@@ -46,3 +46,30 @@ export interface GenericPlanFailure {
 
 /** A URDF kinematic simulation; no manufacturer controller configuration is invented. */
 export type GenericPlanResult = GenericPlanSuccess | GenericPlanFailure;
+
+/** Endpoint inspection uses the robot-base flange frame, without manufacturer posture codes. */
+export interface GenericEndpointRequest { chain: GenericChain; pose: Pose; seedJoints: JointAngles }
+export interface GenericIkSolution {
+  id: string;
+  joints: JointAngles;
+  pose: Pose;
+  positionErrorMm: number;
+  orientationErrorDeg: number;
+  score: number;
+}
+
+/** Target and returned sample poses are world TCP, including both base and tool transforms. */
+export interface GenericPosePlanRequest {
+  chain: GenericChain;
+  startJoints: JointAngles;
+  target: { position: Vec3; orientation: Quaternion | null };
+  basePose?: Pose;
+  toolPose?: Pose;
+  speedMmPerSecond: number;
+}
+export interface GenericPosePlanSuccess extends GenericPlanSuccess {
+  /** Unlike endpoint inspection, selected.pose is the world TCP pose. */
+  selected: GenericIkSolution;
+  automaticOrientation: boolean;
+}
+export type GenericPosePlanResult = GenericPosePlanSuccess | GenericPlanFailure;

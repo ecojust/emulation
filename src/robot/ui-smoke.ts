@@ -1,15 +1,19 @@
 import { invoke } from '@tauri-apps/api/core';
 import { nativeDesktop, solveMotion } from './client';
-import type { PlanRequest, PlanResult, Pose } from './types';
+import type { JointAngles, PlanRequest, PlanResult, Pose } from './types';
 import type { GrindingRequest, GrindingResult } from './grinding-types';
 import { validateGrindingResult } from './grinding-validation';
-import { forwardKinematics, quaternionDistanceDeg } from './kinematics';
+import { forwardKinematics, normalizeQuaternion, quaternionDistanceDeg } from './kinematics';
 import { getRobotModel } from './model';
 import { composePose } from '../workspace/frame-graph';
 import type { CollisionResult } from './collision-geometry';
 import { inspectEndpoint } from './endpoint-inspection';
 import { buildGenericChain } from './generic-motion-chain';
 import { solveGenericMotion } from './generic-motion';
+import { forwardGenericKinematics } from './generic-kinematics';
+import { inspectGenericEndpoint } from './generic-endpoint';
+import { solveGenericPoseMotion } from './generic-pose-motion';
+import { checkGenericCollisions, genericCollisionParts } from './generic-collision';
 import { listModelCache, loadCatalogModel, MODEL_CATALOG, type LoadedCatalogModel } from '../catalog/client';
 
 let started = false;
@@ -18,8 +22,50 @@ type DiagnosticsWindow = Window & {
   __EMULATION_UI_DIAGNOSTICS__?: { consoleErrors: string[]; events: string[] };
 };
 interface ResourceCheck { resource: string; status?: number; bytes?: number; error?: string }
+/** Compare physical rotations directly; acos(dot) loses precision near equality. */
+function samePhysicalOrientation(actual: Pose['orientation'], expected: Pose['orientation']): boolean {
+  const a = normalizeQuaternion(actual), b = normalizeQuaternion(expected);
+  return Math.min(Math.hypot(...a.map((value, index) => value - b[index])),
+    Math.hypot(...a.map((value, index) => value + b[index]))) <= 1e-12;
+}
+
 export function isNativeUiSmoke(): boolean {
   return nativeDesktop && Boolean((window as DiagnosticsWindow).__EMULATION_UI_SMOKE__);
+}
+
+let projectBootstrapStarted = false;
+/** Exercise the real project-home entry when an installed app is explicitly tested. */
+export function startNativeUiSmokeFromProjectHome(): void {
+  if (!isNativeUiSmoke() || projectBootstrapStarted) return;
+  projectBootstrapStarted = true;
+  void (async () => {
+    async function waitFor(check: () => boolean, message: string) {
+      const until = performance.now() + 30_000;
+      while (!check()) {
+        if (performance.now() > until) throw new Error(message);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    const create = () => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="项目管理"] button')]
+      .find(button => button.textContent?.trim() === '新建项目' && !button.disabled);
+    await waitFor(() => Boolean(create()), 'Installed project home did not become ready');
+    create()!.click();
+    await waitFor(() => Boolean(document.querySelector('input[aria-label="项目名称"]')), 'Installed project creation dialog did not open');
+    const name = document.querySelector<HTMLInputElement>('input[aria-label="项目名称"]')!;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Installed UI verification');
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    const model = document.querySelector<HTMLSelectElement>('select[aria-label="项目机器人"]');
+    if (!model) throw new Error('Installed project dialog has no robot selection');
+    model.value = 'irb1100-4-0.58';
+    model.dispatchEvent(new Event('change', { bubbles: true }));
+    const submit = () => [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
+      .find(button => button.textContent?.trim() === '创建并打开' && !button.disabled);
+    await waitFor(() => Boolean(submit()), 'Installed project form did not accept its name and robot');
+    submit()!.click();
+    await waitFor(() => Boolean(document.querySelector('[data-project-id] .workspace')), 'Installed new project did not open the workspace');
+  })().catch(async cause => {
+    await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ stage: 'project-home', message: cause instanceof Error ? cause.message : String(cause), ...snapshot([]) }) });
+  });
 }
 
 function snapshot(resources: ResourceCheck[]) {
@@ -153,22 +199,31 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const grindingStart = composePose(grindingBase, composePose(forwardKinematics(getRobotModel(request.modelId), request.startJoints).pose, grindingTool));
     const grindingRequest: GrindingRequest = {
       robot: { kind: 'abb', modelId: request.modelId }, basePose: grindingBase, toolPose: grindingTool, toolRadiusMm: 2,
-      startJoints: [...request.startJoints], orientation: grindingStart.orientation, speedMmPerSecond: 100, clearanceMm: 1,
-      allowDetours: false, zones: [], targets: [3, 6].map(offset => ({ position: [grindingStart.position[0] + offset, grindingStart.position[1], grindingStart.position[2]], orientation: [...grindingStart.orientation] })),
+      startJoints: [...request.startJoints], orientation: null, speedMmPerSecond: 100, clearanceMm: 1,
+      allowDetours: false, zones: [], targets: [1, 2].map(scale => {
+        const joints = request.startJoints.map((q, axis) => q + (axis === 0 ? .4 * scale : axis === 5 ? scale : 0)) as JointAngles;
+        return composePose(grindingBase, composePose(forwardKinematics(getRobotModel(request.modelId), joints).pose, grindingTool));
+      }),
     };
     const grindingSnapshot = JSON.stringify(grindingRequest);
     const grinding = validateGrindingResult(await invoke<GrindingResult>('plan_grinding_path', { requestId: crypto.randomUUID(), request: grindingRequest }), grindingRequest);
     if (grinding.status !== 'success' || grinding.waypoints.length !== 2 || grinding.path.length < 3
       || grinding.path[0].joints.some((q, i) => Math.abs(q - request.startJoints[i]) > 1e-7)
-      || grinding.path.some(sample => quaternionDistanceDeg(sample.pose.orientation, grindingStart.orientation) > 0.002)
+      || !samePhysicalOrientation(grinding.path[0].pose.orientation, grindingStart.orientation)
+      || quaternionDistanceDeg(grindingRequest.targets[0].orientation, grindingRequest.targets[1].orientation) < .1
+      || grinding.waypoints.some((point, index) => point.targetIndex !== index
+        || point.pose.position.some((value, axis) => value !== grindingRequest.targets[index].position[axis])
+        || !samePhysicalOrientation(point.pose.orientation, grindingRequest.targets[index].orientation)
+        || point.configuration?.[3] !== grinding.waypoints[0].configuration?.[3])
+      || grinding.path.some((sample, index) => index > 0 && sample.joints.some((q, axis) => Math.abs(q - grinding.path[index - 1].joints[axis]) > 15.00001))
       || grinding.waypoints[0].kind !== 'transfer' || grinding.waypoints[1].kind !== 'process'
-      || JSON.stringify(grindingRequest) !== grindingSnapshot) throw new Error('Native grinding IPC did not preserve the TCP frames, start or target roles');
+      || JSON.stringify(grindingRequest) !== grindingSnapshot) throw new Error('Native grinding IPC did not preserve distinct target poses, continuous configurations, TCP frames or start');
     const blocked = await invoke<GrindingResult>('plan_grinding_path', { requestId: crypto.randomUUID(), request: { ...grindingRequest,
       zones: [{ id: 'grinding-blocked', enabled: true, centerMm: grindingBase.position, sizeMm: [4000, 4000, 4000] }],
     } });
     if (blocked.status !== 'failure' || blocked.code !== 'collision' || 'path' in blocked) throw new Error('Native grinding IPC accepted an obstructed approach or returned a partial path');
     nativeEvidence.grinding = { samples: grinding.path.length, waypoints: grinding.waypoints.length, checkedIntervals: grinding.checkedIntervals,
-      worldBase: grindingBase, flangeToTcp: grindingTool, fixedWorldDirection: true, startPreserved: true, blockedApproachRejected: true };
+      worldBase: grindingBase, flangeToTcp: grindingTool, targetPosesPreserved: true, continuousConfigurations: true, startPreserved: true, blockedApproachRejected: true };
     stage = 'bundled-model';
 
     // Check packaged files independently from rendering, so a missing GPU cannot
@@ -338,11 +393,85 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       if (genericMotion.status !== 'success' || genericMotion.path.length < 2
         || genericMotion.path.at(-1)!.joints.some((angle, index) => Math.abs(angle - genericRequest.targetJoints[index]) > 1e-6)) throw new Error('Native GP7 straight motion did not reach the recorded joints');
       nativeEvidence.genericMotionSamples = genericMotion.path.length;
+      stage = 'generic-native-endpoint';
+      const candidates = await inspectGenericEndpoint({ chain: genericRequest.chain, seedJoints: genericRequest.startJoints,
+        pose: forwardGenericKinematics(genericRequest.chain, genericRequest.startJoints).pose }, controller.signal);
+      if (candidates.length < 2) throw new Error('Native GP7 endpoint inspection did not return independent joint branches');
+      nativeEvidence.genericEndpointCandidates = candidates.length;
+      stage = 'generic-native-world-tcp';
+      const basePose: Pose = { position: [250, -170, 80], orientation: [Math.cos(Math.PI / 8), 0, 0, Math.sin(Math.PI / 8)] };
+      const toolPose: Pose = { position: [25, 5, 40], orientation: [Math.cos(Math.PI / 12), Math.sin(Math.PI / 12), 0, 0] };
+      const worldStart = composePose(composePose(basePose, forwardGenericKinematics(genericRequest.chain, genericRequest.startJoints).pose), toolPose);
+      const worldTarget: Pose = { position: [worldStart.position[0] + 3, worldStart.position[1] + 1, worldStart.position[2]], orientation: worldStart.orientation };
+      // The client independently checks every returned world TCP against URDF FK.
+      const poseMotion = await solveGenericPoseMotion({ chain: genericRequest.chain, startJoints: genericRequest.startJoints,
+        target: worldTarget, basePose, toolPose, speedMmPerSecond: 100 }, controller.signal);
+      if (poseMotion.status !== 'success' || poseMotion.path.length < 2
+        || !nearTuple(poseMotion.path[0].joints, genericRequest.startJoints, 1e-6)
+        || !nearTuple(poseMotion.selected.pose.position, worldTarget.position, 0.01)
+        || poseMotion.path.some(sample => quaternionDistanceDeg(sample.pose.orientation, worldStart.orientation) > 0.001)) throw new Error('Native GP7 world TCP Jog did not preserve the requested framed direction');
+      nativeEvidence.genericWorldTcp = { samples: poseMotion.path.length, basePose, toolPose, end: poseMotion.selected.pose };
+      stage = 'generic-native-mesh';
+      const collisionRequest = { modelId: entry.id, basePose,
+        solutions: [{ id: 'gp7-verified', joints: genericRequest.startJoints }],
+        zones: [{ id: 'containing', enabled: true, centerMm: [0, 0, 0] as [number, number, number], sizeMm: [10000, 10000, 10000] as [number, number, number] }] };
+      const meshHit = await checkGenericCollisions(collisionRequest, controller.signal);
+      const meshClear = await checkGenericCollisions({ ...collisionRequest, zones: [{ ...collisionRequest.zones[0], id: 'distant', centerMm: [100000, 100000, 100000] }] }, controller.signal);
+      if (meshHit[0]?.collidingLinks.length !== genericCollisionParts(entry.id).length || meshHit[0].uncertainLinks.length
+        || meshClear[0]?.collidingLinks.length || meshClear[0]?.uncertainLinks.length || meshClear[0]?.zones.length) throw new Error('Native GP7 verified mesh collision did not distinguish enclosed and distant zones');
+      nativeEvidence.genericMesh = { hitParts: meshHit[0].collidingLinks.length, distantClear: true };
+
       const activeGl = document.querySelector<HTMLCanvasElement>('.robot-scene canvas')?.getContext('webgl2');
       if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after the model switch');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
     } finally { clearTimeout(deadline); }
-    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path context-run and module workflow, WebView, native ABB/GP7 motion, endpoint/mesh IPC, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
+    stage = 'project-cover-and-persistence';
+    const projectId = document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId;
+    if (!projectId) throw new Error('Installed workspace has no persisted project identity');
+    await selectRobot();
+    const jointInput = document.querySelector<HTMLInputElement>('[aria-label="机器人关节 J1"]');
+    if (!jointInput) throw new Error('Installed GP7 joint editor is unavailable');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(jointInput, '5');
+    jointInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await waitForUi(() => currentJoints()[0] === 5 && Math.abs(currentPosition()[1]) > 1, 'Installed GP7 pose edit did not reach the scene');
+    const savedJoints = currentJoints(), savedPosition = currentPosition();
+    // Returning from a hidden scene must still render its real, current pixels.
+    await changeView('程序');
+    const home = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === '返回主页');
+    if (!home || home.disabled) throw new Error('Installed workspace has no available return-home action');
+    home.click();
+    const projectCard = () => [...document.querySelectorAll<HTMLElement>('[data-project-card]')].find(card => card.dataset.projectCard === projectId);
+    await waitForUi(() => Boolean(projectCard()?.querySelector<HTMLImageElement>('img')?.complete), 'Installed project did not save its actual cover');
+    const cover = projectCard()!.querySelector<HTMLImageElement>('img')!;
+    if (cover.naturalWidth < 100 || cover.naturalHeight < 100 || !cover.src.startsWith('data:image/jpeg;base64,')) throw new Error('Installed project cover is not a rendered image');
+    const pixels = document.createElement('canvas'); pixels.width = 32; pixels.height = 32;
+    const context = pixels.getContext('2d'); if (!context) throw new Error('Cannot inspect installed project cover');
+    context.drawImage(cover, 0, 0, 32, 32);
+    const rgba = context.getImageData(0, 0, 32, 32).data, colors = new Set<string>();
+    for (let i = 0; i < rgba.length; i += 4) colors.add(`${rgba[i]},${rgba[i + 1]},${rgba[i + 2]}`);
+    if (colors.size < 16) throw new Error('Installed project cover contains no rendered scene detail');
+    projectCard()!.querySelector<HTMLButtonElement>('.project-card-open')!.click();
+    await waitForUi(() => document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId === projectId
+      && document.querySelector('[data-loaded-parts]')?.getAttribute('data-loaded-parts') === '7', 'Installed persisted project failed to reopen', 30_000);
+    await changeView('场景');
+    await selectRobot();
+    await waitForUi(() => document.querySelector('[aria-label="选择机器人型号"]')?.textContent?.includes('GP7') === true
+      && nearTuple(currentJoints(), savedJoints, 1e-5) && nearTuple(currentPosition(), savedPosition, 0.02), 'Installed project did not restore the selected robot and pose');
+    // Use the live catalog UI, never the callback of the unmounted workspace.
+    document.querySelector<HTMLButtonElement>('[aria-label="选择机器人型号"]')!.click();
+    const catalogDialog = () => document.querySelector<HTMLDialogElement>('dialog.robot-catalog-dialog[open]');
+    await waitForUi(() => Boolean(catalogDialog()), 'Installed robot catalog did not reopen');
+    const abbCard = catalogDialog()!.querySelector('[data-catalog-model-id="irb1100-4-0.58"]');
+    const loadAbb = abbCard?.querySelector<HTMLButtonElement>('button[aria-label^="加载 "]');
+    if (!loadAbb || loadAbb.disabled) throw new Error('Installed robot catalog lost the bundled ABB model');
+    loadAbb.click();
+    await waitForUi(() => !catalogDialog(), 'Installed ABB project scene did not restore');
+    await changeView('程序');
+    await waitForUi(() => moduleOptions().some(option => option.dataset.sourceFileId === moduleId), 'Installed project lost its ABB source module while saving another robot');
+    moduleOptions().find(option => option.dataset.sourceFileId === moduleId)!.click();
+    await waitForUi(() => /\bMoveL\b/.test(document.querySelector('.robot-code-workspace .cm-content')?.textContent ?? ''), 'Installed project source content was not restored');
+    nativeEvidence.project = { id: projectId, actualCover: [cover.naturalWidth, cover.naturalHeight], coverColors: colors.size, restoredModel: 'yaskawa-gp7', restoredJoints: savedJoints, previousModelSourcePreserved: true };
+    await invoke('ui_smoke_report', { success: true, detail: JSON.stringify({ message: 'Installed offline language worker, Path context-run and module workflow, WebView, native ABB/GP7 motion, framed TCP Jog, endpoint/mesh IPC, project cover and persistence, packaged meshes, verified GP7 download, asset protocol, URDF rendering and cache reuse passed', stage, nativeEvidence, catalogEvidence, ...snapshot(resources) }) });
   } catch (cause) {
     await invoke('ui_smoke_report', { success: false, detail: JSON.stringify({ message: cause instanceof Error ? cause.message : String(cause), stage, nativeEvidence, catalogEvidence, ...snapshot(resources), errors }) });
   }

@@ -201,9 +201,13 @@ pub(crate) fn orientation_error(target: &Quaternion, current: &Quaternion) -> Ve
     ]
 }
 
-fn residual(target: &Pose, current: &Pose, scale: f64) -> ([f64; 6], bool) {
+fn residual(target: &Pose, current: &Pose, scale: f64, position_only: bool) -> ([f64; 6], bool) {
     let position = sub(&target.position, &current.position);
-    let orientation = orientation_error(&target.orientation, &current.orientation);
+    let orientation = if position_only {
+        [0.; 3]
+    } else {
+        orientation_error(&target.orientation, &current.orientation)
+    };
     (
         [
             position[0] / scale,
@@ -260,6 +264,30 @@ pub(crate) fn solve_unchecked<F: FnMut() -> bool>(
     seed: &JointAngles,
     cancel: &mut F,
 ) -> Result<Option<JointAngles>, ()> {
+    solve_task_unchecked(chain, target, seed, None, false, cancel)
+}
+
+/// Position-only objectives include the flange-to-TCP transform in the Jacobian.
+pub(crate) fn solve_task_unchecked<F: FnMut() -> bool>(
+    chain: &GenericChain,
+    target: &Pose,
+    seed: &JointAngles,
+    tool: Option<&Mat4>,
+    position_only: bool,
+    cancel: &mut F,
+) -> Result<Option<JointAngles>, ()> {
+    let task_pose = |fk: &GenericFkResult| -> Pose {
+        match tool {
+            None => fk.pose,
+            Some(tool) => {
+                let transform = multiply_matrices(&fk.transform, tool);
+                Pose {
+                    position: translation(&transform),
+                    orientation: matrix_to_quaternion(&transform),
+                }
+            }
+        }
+    };
     let scale = chain
         .steps
         .iter()
@@ -273,7 +301,8 @@ pub(crate) fn solve_unchecked<F: FnMut() -> bool>(
             return Err(());
         }
         let fk = forward_unchecked(chain, &joints, cancel)?;
-        let (error, converged) = residual(target, &fk.pose, scale);
+        let current = task_pose(&fk);
+        let (error, converged) = residual(target, &current, scale, position_only);
         if converged {
             return Ok(Some(joints));
         }
@@ -282,11 +311,15 @@ pub(crate) fn solve_unchecked<F: FnMut() -> bool>(
         for column in 0..6 {
             let linear = cross(
                 &fk.joint_axes[column],
-                &sub(&fk.pose.position, &fk.joint_origins[column]),
+                &sub(&current.position, &fk.joint_origins[column]),
             );
             for row in 0..3 {
                 jacobian[row][column] = linear[row] / scale;
-                jacobian[row + 3][column] = fk.joint_axes[column][row];
+                jacobian[row + 3][column] = if position_only {
+                    0.
+                } else {
+                    fk.joint_axes[column][row]
+                };
             }
         }
         let normal: [[f64; 6]; 6] = std::array::from_fn(|row| {
@@ -321,7 +354,7 @@ pub(crate) fn solve_unchecked<F: FnMut() -> bool>(
                     .clamp(chain.limits[i].min_deg, chain.limits[i].max_deg)
             });
             let trial_fk = forward_unchecked(chain, &trial, cancel)?;
-            let (trial_error, done) = residual(target, &trial_fk.pose, scale);
+            let (trial_error, done) = residual(target, &task_pose(&trial_fk), scale, position_only);
             let trial_cost = trial_error.iter().map(|value| value * value).sum::<f64>();
             if done || trial_cost < cost * (1. - 1e-10) {
                 joints = trial;

@@ -2,8 +2,11 @@
 use emulation_core::{
     collision::{check_collisions, CollisionRequest},
     endpoint_inspection::{inspect_endpoint, EndpointInspectionRequest},
+    generic_endpoint_inspection::{inspect_generic_endpoint, GenericEndpointRequest},
     generic_kinematics::{forward_generic_kinematics, GenericChain},
     generic_planner::{plan_generic_move_l, GenericPlanRequest},
+    generic_pose_planner::{plan_generic_pose_move_l, GenericPosePlanRequest},
+    grinding::{plan_grinding, GrindingRequest},
     kinematics, model, planner,
     types::{JointAngles, PlanRequest, Pose},
 };
@@ -39,6 +42,15 @@ enum Command {
         chain: GenericChain,
         joints: JointAngles,
     },
+    Grinding {
+        request: GrindingRequest,
+    },
+    GenericInspect {
+        request: GenericEndpointRequest,
+    },
+    GenericPosePlan {
+        request: GenericPosePlanRequest,
+    },
     GenericPlan {
         request: GenericPlanRequest,
     },
@@ -72,6 +84,17 @@ fn execute(command: Command) -> Result<Value, String> {
         }
         Command::GenericFk { chain, joints } => {
             serde_json::to_value(forward_generic_kinematics(&chain, &joints)?)
+                .map_err(|e| e.to_string())
+        }
+        Command::Grinding { request } => {
+            serde_json::to_value(plan_grinding(&request, &AtomicBool::new(false)))
+                .map_err(|e| e.to_string())
+        }
+        Command::GenericInspect { request } => {
+            serde_json::to_value(inspect_generic_endpoint(&request)?).map_err(|e| e.to_string())
+        }
+        Command::GenericPosePlan { request } => {
+            serde_json::to_value(plan_generic_pose_move_l(&request, &AtomicBool::new(false)))
                 .map_err(|e| e.to_string())
         }
         Command::GenericPlan { request } => {

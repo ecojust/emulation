@@ -7,8 +7,8 @@ import {
 } from './frame-graph';
 
 /** Scene frame/attachment edits survive view changes and remain isolated by robot model. */
-export function useFrameGraph(modelId: string) {
-  const [store, setStore] = useState<FrameGraphStore>(() => Object.freeze({ [modelId]: createFrameGraph(modelId) }));
+export function useFrameGraph(modelId: string, initialStore?: FrameGraphStore) {
+  const [store, setStore] = useState<FrameGraphStore>(() => Object.freeze(initialStore ? { ...initialStore } : { [modelId]: createFrameGraph(modelId) }));
   const current = useRef(store); current.current = store;
   const graph = useMemo(() => store[modelId] ?? createFrameGraph(modelId), [store, modelId]);
   const active = () => current.current[modelId] ?? createFrameGraph(modelId);
@@ -18,6 +18,7 @@ export function useFrameGraph(modelId: string) {
     current.current = updated; setStore(updated);
   }
   return {
+    store, getStore: () => current.current, replaceGraph: commit,
     graph, frames: graph.frames, tools: graph.tools, robotBase: graph.robotBase, paths: graph.paths,
     activeToolId: graph.activeToolId, revision: graph.revision,
     addFrame(options?: Parameters<typeof addReferenceFrame>[1]) {

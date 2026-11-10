@@ -99,6 +99,13 @@ async function verifiedCache(entry: RobotCatalogModel, signal?: AbortSignal): Pr
   return files;
 }
 
+/** Read-only verified cache access for geometry workers; never starts a download. */
+export async function readVerifiedCatalogFiles(id: string, signal?: AbortSignal): Promise<Map<string, ArrayBuffer>> {
+  const files = await verifiedCache(getEntry(id), signal);
+  if (!files) throw new Error('机器人网格缓存未准备好，请重新选择型号完成下载。');
+  return files;
+}
+
 /** Cache status is verified, never inferred merely from a previous download flag. */
 export async function listModelCache(signal?: AbortSignal): Promise<Record<string, boolean>> {
   checkAbort(signal);

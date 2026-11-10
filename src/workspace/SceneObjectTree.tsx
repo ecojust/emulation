@@ -3,14 +3,16 @@ import Icon from '../ui/Icon';
 import type { FrameObjectRef, FrameParent, ReferenceFrame, ToolFrame } from './frame-graph';
 import type { ProgramPath, ProgramPoint } from './program';
 import type { DangerZoneDraft } from './useWorkspace';
+import type { SceneRemovalKind } from './scene-removal';
 import './scene-objects.css';
 
 export type SceneTreeSelection = { kind: 'robot' } | { kind: 'base' } | { kind: 'flange' } | { kind: 'joint'; index: number }
   | { kind: 'frame' | 'tool' | 'path' | 'target' | 'zone'; id: string };
-export interface SceneTreeMenu { kind: 'path' | 'target'; id: string; x: number; y: number; trigger: HTMLElement }
+export interface SceneTreeMenu { kind: SceneRemovalKind; id: string; x: number; y: number; trigger: HTMLElement }
 export interface SceneTreePath extends ProgramPath { parent?: FrameParent }
 export interface SceneObjectTreeProps {
   robotName: string;
+  robotPresent?: boolean;
   joints: readonly number[];
   robotParent: FrameParent;
   frames: readonly ReferenceFrame[];
@@ -87,19 +89,21 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
       } catch (cause) { setError(cause instanceof Error ? cause.message : '挂接失败，原位置保持不变。'); }
     },
   });
-  const context = (kind: 'path' | 'target', id: string, event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLButtonElement>) => {
-    event.preventDefault(); props.onSelect({ kind, id });
+  const context = (kind: SceneRemovalKind, id: string, event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLButtonElement>) => {
+    event.preventDefault(); event.stopPropagation(); props.onSelect(kind === 'robot' ? { kind } : { kind, id });
     const rect = event.currentTarget.getBoundingClientRect();
     props.onContextMenu({ kind, id, x: 'clientX' in event ? event.clientX : rect.left, y: 'clientY' in event ? event.clientY : rect.bottom, trigger: event.currentTarget });
   };
-  const menuKeys = (kind: 'path' | 'target', id: string, event: KeyboardEvent<HTMLButtonElement>) => {
+  const menuKeys = (kind: SceneRemovalKind, id: string, event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) context(kind, id, event);
   };
   const toolNode = (tool: ToolFrame) => <button type="button" key={tool.id} data-object-kind="tool" data-object-id={tool.id} {...parentAttributes(tool.parent)} {...draggable({ kind: 'tool', id: tool.id })}
+    onContextMenu={event => context('tool', tool.id, event)} onKeyDown={event => menuKeys('tool', tool.id, event)}
     aria-label={'选择工具 ' + tool.name} className={selected('tool', tool.id) ? 'selected' : ''} onClick={() => props.onSelect({ kind: 'tool', id: tool.id })}>
     <Icon name="tool" size={13}/><span>{tool.name}</span></button>;
   const robotNode = () => <details className="scene-tree-branch scene-robot-branch" open key="robot"><summary>
     <Icon name="chevron-right" className="summary-icon" size={13}/><button type="button" aria-label="选择机器人" data-object-kind="robot" {...parentAttributes(props.robotParent)} {...draggable({ kind: 'robot' })}
+      onContextMenu={event => context('robot', 'robot', event)} onKeyDown={event => menuKeys('robot', 'robot', event)}
       className={selected('robot') ? 'selected' : ''} onClick={event => { event.preventDefault(); props.onSelect({ kind: 'robot' }); }}><Icon name="robot" size={14}/><span>{props.robotName}</span></button>
     </summary><div className="scene-tree-children">
       <button type="button" aria-label="选择机器人基座" data-object-kind="base" {...parentAttributes(props.robotParent)} {...draggable({ kind: 'robot' })} className={selected('base') ? 'selected' : ''} onClick={() => props.onSelect({ kind: 'base' })}><Icon name="base" size={13}/><span>机器人基座</span></button>
@@ -117,9 +121,10 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
         onContextMenu={event => context('target', id, event)} onKeyDown={event => menuKeys('target', id, event)} onClick={() => props.onSelect({ kind: 'target', id })}><Icon name="target" size={12}/><span>{point.pointName}</span></button>;
     })}{!path.pointIds.length && <p className="field-hint object-empty">右键路径，添加当前点或规划路径。</p>}</div></details>;
   const children = (parent: FrameParent, visited = new Set<string>()): ReactNode => <>
-    {parentKey(props.robotParent) === parentKey(parent) && robotNode()}
+    {props.robotPresent !== false && parentKey(props.robotParent) === parentKey(parent) && robotNode()}
     {props.frames.filter(frame => parentKey(frame.parent) === parentKey(parent) && !visited.has(frame.id)).map(frame => <details key={frame.id} className="scene-tree-branch scene-frame-branch" data-frame-id={frame.id} open><summary>
       <Icon name="chevron-right" className="summary-icon" size={13}/><button type="button" aria-label={'选择参考坐标系 ' + frame.name} data-object-kind="frame" data-object-id={frame.id} {...parentAttributes(frame.parent)} {...droppable({ kind: 'frame', id: frame.id })} className={selected('frame', frame.id) ? 'selected' : ''}
+        onContextMenu={event => context('frame', frame.id, event)} onKeyDown={event => menuKeys('frame', frame.id, event)}
         onClick={event => { event.preventDefault(); props.onSelect({ kind: 'frame', id: frame.id }); }}><Icon name="frame" size={13}/><span>{frame.name}</span></button>
       </summary><div className="scene-tree-children">{children({ kind: 'frame', id: frame.id }, new Set([...visited, frame.id]))}</div></details>)}
     {props.paths.filter(path => parentKey(path.parent ?? WORLD) === parentKey(parent)).map(pathNode)}
@@ -136,7 +141,7 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
     {props.tools.filter(tool => tool.parent.kind === 'world').map(toolNode)}
     {!props.paths.length && <p className="field-hint object-empty">添加路径后，可记录当前点或进行路径规划。</p>}
     <div className="object-section-label"><span>禁入区</span></div>
-    {props.zones.map(zone => <button key={zone.id} type="button" data-object-kind="zone" data-object-id={zone.id} data-zone-id={zone.id} aria-label={'选择危险区 ' + (zone.name.trim() || '未命名禁入区')} className={selected('zone', zone.id) ? 'selected' : ''} onClick={() => props.onSelect({ kind: 'zone', id: zone.id })}><Icon name="zone" size={13} className={'zone-object-icon ' + (zone.enabled ? '' : 'disabled')}/><span>{zone.name.trim() || '未命名禁入区'}</span>{props.invalidZoneIds?.includes(zone.id) && <Icon name="warning" size={13} className="zone-invalid-icon"/>}</button>)}
+    {props.zones.map(zone => <button key={zone.id} type="button" data-object-kind="zone" data-object-id={zone.id} data-zone-id={zone.id} aria-label={'选择危险区 ' + (zone.name.trim() || '未命名禁入区')} className={selected('zone', zone.id) ? 'selected' : ''} onContextMenu={event => context('zone', zone.id, event)} onKeyDown={event => menuKeys('zone', zone.id, event)} onClick={() => props.onSelect({ kind: 'zone', id: zone.id })}><Icon name="zone" size={13} className={'zone-object-icon ' + (zone.enabled ? '' : 'disabled')}/><span>{zone.name.trim() || '未命名禁入区'}</span>{props.invalidZoneIds?.includes(zone.id) && <Icon name="warning" size={13} className="zone-invalid-icon"/>}</button>)}
     {dragged && <p className="field-hint tree-drag-hint" role="status">{dragged.kind === 'tool' ? '拖到末端法兰或世界坐标。' : '拖到参考坐标系或世界坐标。'}世界位置与姿态保持不变。</p>}
     {error && <p className="danger-zone-error" role="alert">{error}</p>}
   </div>;

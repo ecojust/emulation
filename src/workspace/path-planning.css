@@ -3,17 +3,15 @@
 .path-planning-dialog::backdrop { background:#172e4960 }
 .path-planning-dialog>header { display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; padding:18px 22px; border-bottom:1px solid #e5ebf4 }
 .path-planning-dialog h2 { margin:0 0 5px; font-size:18px; color:#344d6f }
-.path-planning-dialog h3 { margin:10px 0; font-size:12px }
 .path-planning-dialog p { margin:5px 0; font-size:11px; line-height:1.7 }
 .path-planning-dialog button { display:inline-flex; align-items:center; gap:6px; border:1px solid #d6e1ee; border-radius:5px; background:#f8fbff; color:#4b6c96; padding:7px 11px; font-size:11px; cursor:pointer }
 .path-planning-dialog button:disabled { opacity:.45; cursor:not-allowed }
 .path-planning-body { min-height:0; overflow:auto; overscroll-behavior:contain; padding:14px 22px }
 .path-planning-body textarea { display:block; width:100%; min-height:138px; resize:vertical; margin-top:7px; padding:10px; border:1px solid #d7e1ef; border-radius:5px; color:#43617f; background:#fbfdff; font:11px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace }
 .path-planning-body .field-label { margin-top:15px }
-.planning-orientation { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px }
 .planning-options { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:18px }
-.planning-orientation label,.planning-options label { min-width:0; font-size:11px }
-.planning-orientation input,.planning-options input { display:block; width:100%; margin-top:5px; padding:7px; border:1px solid #d7e1ef; border-radius:4px; color:#43617f; background:#fff; font-size:11px }
+.planning-options label { min-width:0; font-size:11px }
+.planning-options input { display:block; width:100%; margin-top:5px; padding:7px; border:1px solid #d7e1ef; border-radius:4px; color:#43617f; background:#fff; font-size:11px }
 .path-planning-body small { font-weight:400; color:#8b9aaf; font-size:10px }
 .planning-result { margin-top:13px; padding:9px 11px; background:#f0f7ff; border:1px solid #dce9f6; border-radius:5px }
 .planning-error { color:#a65748; background:#fff7f5; border-color:#efd8d2 }

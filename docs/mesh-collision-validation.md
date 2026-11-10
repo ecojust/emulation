@@ -1,8 +1,40 @@
 # 实际网格干涉：输入审查与独立验证
 
-本记录针对 `public/models/` 中两款 ABB IRB1100 的 14 份原始 STL，合计 **294,340 个三角形**。来源为 work-r-labs/robots 固定提交 `ab6aa489855256de07ba46c7b45887fdbc42b607`，来源、原始许可及哈希见 [vendor/work-r-labs/SOURCE.json](../vendor/work-r-labs/SOURCE.json)，逐部件包围范围及 SHA-256 见 [link-bounds.json](../src/robot/link-bounds.json)。坐标沿用源网格的机械零位共同基座坐标，单位为 mm。
+当前端点实际网格检查支持目录内六款机器人：两款内置ABB IRB1100，以及首次下载的两款FANUC、两款Yaskawa。各型号使用自己的原始STL和坐标变换，不复用其他机器人的外形。
+
+下文原始拓扑审查、十个独立回归用例与性能表针对 `public/models/` 中两款 ABB IRB1100 的 14 份原始 STL，合计 **294,340 个三角形**。来源为 work-r-labs/robots 固定提交 `ab6aa489855256de07ba46c7b45887fdbc42b607`，来源、原始许可及哈希见 [vendor/work-r-labs/SOURCE.json](../vendor/work-r-labs/SOURCE.json)，逐部件包围范围及 SHA-256 见 [link-bounds.json](../src/robot/link-bounds.json)。坐标沿用源网格的机械零位共同基座坐标，单位为 mm。
 
 审查日期：2026-11-09。审查不修改、补洞、重定向或焊接原始 STL。本文件说明真实输入和回归用例；不将网格检查等同于完整路径、控制器或实体机器人验收。
+
+## FANUC／Yaskawa实际网格接入
+
+[generic-collision.json](../src/catalog/generic-collision.json)由已锁定URDF和目录清单生成，逐个visual记录原始STL路径、大小、SHA-256、完整父子链、visual原点与缩放。它包含法兰链外的固定侧分支；R-2000的balancer和balancer_shaft是独立部件，不能丢弃或当作额外运动轴。部件索引通过对应描述中的名称解释，不再假设所有型号只有索引0至6。
+
+| 型号 | visual部件数 | 目录锁定二进制STL三角形总数 |
+| --- | ---: | ---: |
+| FANUC CRX-10iA/L | 7 | 79,574 |
+| FANUC R-2000iB/165F | 9 | 23,942 |
+| Yaskawa MOTOMAN GP7 | 7 | 76,756 |
+| Yaskawa MOTOMAN GP110 | 7 | 55,056 |
+
+这里的数量来自固定清单的二进制STL长度，运行时仍核对实际文件；它不是这些网格的独立闭合拓扑审查。不能把下文ABB的拓扑计数、空腔用例或耗时推广到这四款型号。
+
+通用部件的世界变换为 `基座世界变换 × URDF父子链 × visual原点`，网格顶点另按其URDF缩放换成mm。ABB共同零位网格仍采用 `基座世界变换 × F_i(q) × inverse(F_i(0))`。两种放置方式分别与各自渲染FK对照，不能互换。
+
+桌面IPC只提供型号、基座、候选关节及区域，不接受网格路径或任意顶点。原生工作线程从应用已验证目录缓存读取文件，首次构建前再次核对固定长度与SHA-256；文件缺失、损坏或取消均报错，不使用包围盒替代成“无干涉”。完成的网格索引按四个通用型号缓存，取消的构建不进入缓存。浏览器从同一固定清单的已验证资源创建Worker内索引，原生错误不会回退浏览器算法。
+
+所有型号沿用相同检测语义：包围范围只作快速排除，重叠后查询实际三角面；接触计入命中，数值接触容差为0.000001 mm。完整闭合、边方向一致的网格才用于可靠的包含判断；开放、非流形、退化或射线不确定的网格在不能排除时返回`uncertainLinks`。明确表面命中不受这一限制，未发现表面交点则不能自动证明实体外部。不会焊接、补洞或替原网格伪造封闭实体。
+
+输入上限为64个区域、256个候选姿态，每型号最多64个visual、每份STL最多500,000个三角形。数值逆解的端点列表另限制为32个候选；这些上限不代表所有上限组合都可在相同时间内完成。检查有取消和超时，失效结果不能显示为通过。这是机器人原始visual对世界轴对齐禁入区的候选姿态检查，不包括自碰撞、用户工具精确网格或完整路径网格扫掠；打磨规划中的工具包络与连续区间验证属于另一流程。
+
+可复查描述与测试入口：
+
+```sh
+node scripts/generate-generic-chains.mjs --check
+cargo test -p emulation-core --locked generic_collision
+```
+
+描述生成会核对已固定URDF字节与哈希，并比较整个生成文件。通用几何与客户端回归位于[generic-collision.test.ts](../tests/generic-collision.test.ts)；这些用例与下文ABB独立Python审查的证据范围分别记录，不将未执行的输入检查写成已通过。
 
 ## 可复查命令
 

@@ -136,11 +136,11 @@ function publishRelease(context) {
   writeFileSync(sums, staged.map(path => `${sha256(readFileSync(path))}  ${basename(path)}`).sort().join('\n') + '\n'); staged.push(sums);
   const intelVerified = selected.some(platform => platform.artifact === 'macOS-x64');
   const notes = [
-    "修复 macOS 与 Windows 客户端左侧对象树拖动后无法挂接的问题。机器人标题行或基座可拖到参考坐标系，整条 Path 可拖到参考坐标系，工具可拖到末端法兰；拖回世界坐标可解除挂接。",
+    "新增项目主页：新建时选择名称和机器人，项目独立保存场景与程序模块，每次返回主页都用实际三维渲染更新封面。场景对象支持右键删除，机器人只能删除整机，解除挂接的独立对象保持世界位姿。",
     "",
-    "主窗口现在将树内拖放交给 WebView，避免原生文件拖放处理器截获事件。挂接仍保持世界位置与姿态，之后编辑父级会带动子对象；原生文件对话框导入保持可用。",
+    "目录内四款 FANUC／安川模型补齐 TCP 拖拽 Jog、多端点逆解预览、实际网格干涉检查、关节与 URDF 参数显示，支持挂接后的基座和工具坐标变换。各品牌控制器配置映射与文件导出仍按已实现范围提供，不套用 ABB robconf。",
     "",
-    "补充机器人标题行挂接及解除挂接的真实鼠标回归，并保留基座、Path、工具的世界位姿、TCP、示教与模块转换验证。运动求解与坐标变换算法未改动。",
+    "打磨规划保留每个 target 的位置和姿态，通过有界候选搜索选择连续关节解。ABB 保持实际逆解分支连续，允许正常象限变化，避免翻腕或关节突变；不再把所有目标改成相同旋转。整条轨迹继续检查禁入区和工具包络，无法验证时不生成通过结果。",
     "",
     '安装包及校验：',
     '- macOS Apple Silicon 与 Windows x64 均已完成实际安装、原生引擎和 WebView／3D 检查。',

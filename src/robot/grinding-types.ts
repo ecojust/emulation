@@ -12,16 +12,16 @@ export interface GrindingBody {
 export type GrindingRobot = { kind: 'abb'; modelId: RobotId }
   | { kind: 'generic'; chain: GenericChain; bodies: GrindingBody[] };
 export interface GrindingInput {
-  /** Input target poses and the common tool direction use world coordinates. */
+  /** Preserve every input target position and orientation, in world coordinates. */
   targets: Pose[];
-  orientation: Quaternion;
   clearanceMm: number;
   speedMmPerSecond: number;
 }
-export interface GrindingRequest extends Omit<GrindingInput, 'orientation'> {
+export interface GrindingRequest extends GrindingInput {
+  /** Legacy constraint only: must agree with all targets; never replaces their poses. */
   orientation?: Quaternion | null;
   allowDetours?: boolean;
-  /** The request boundary converts targets/orientation into world coordinates. */
+  /** The request boundary converts each target into world coordinates. */
   robot: GrindingRobot;
   basePose: Pose;
   /** Transform from the flange to the active tool TCP. */

@@ -9,7 +9,7 @@ use crate::collision::{
 };
 use crate::configuration::get_configuration;
 use crate::generic_kinematics::{
-    forward_unchecked, generic_joints_within_limits, solve_unchecked, validate_generic_chain,
+    forward_unchecked, generic_joints_within_limits, solve_task_unchecked, validate_generic_chain,
     GenericChain,
 };
 use crate::kinematics::{forward_kinematics, inverse_kinematics_cancellable, joints_within_limits};
@@ -31,6 +31,8 @@ pub const TRANSLATION_STEP_MM: f64 = 2.;
 pub const ORIENTATION_STEP_DEG: f64 = 1.;
 pub const MAX_JOINT_STEP_DEG: f64 = 15.;
 pub const FIXED_ORIENTATION_TOLERANCE_DEG: f64 = 0.1;
+pub const SEARCH_BEAM_WIDTH: usize = 4;
+pub const MAX_LEG_REFINEMENTS: usize = 3;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -220,7 +222,17 @@ impl<'a> Context<'a> {
             pose_matrix(target)?;
         }
         if let Some(q) = request.orientation {
-            normalize_orientation(&q).map_err(|m| fail("invalid_input", &m))?;
+            let expected = normalize_orientation(&q).map_err(|m| fail("invalid_input", &m))?;
+            for target in &request.targets {
+                let actual = normalize_orientation(&target.orientation)
+                    .map_err(|m| fail("invalid_input", &m))?;
+                if quaternion_distance_deg(&expected, &actual) > 1e-5 {
+                    return Err(fail(
+                        "invalid_input",
+                        "旧版统一方向参数与目标姿态不一致；不会覆盖输入目标。",
+                    ));
+                }
+            }
         }
         let mut ids = std::collections::HashSet::new();
         for zone in &request.zones {
@@ -349,59 +361,108 @@ impl<'a> Context<'a> {
             _ => Ok(None),
         }
     }
-    fn ik<F: FnMut() -> bool>(
+    fn ik_candidates<F: FnMut() -> bool>(
         &mut self,
         pose: &Pose,
         seed: &JointAngles,
+        explore: bool,
         cancel: &mut F,
-    ) -> Checked<JointAngles> {
+    ) -> Checked<Vec<JointAngles>> {
         if cancel() {
             return Err(cancelled());
         }
-        self.ik_calls += 1;
-        if self.ik_calls > MAX_IK_CALLS {
-            return Err(fail(
-                "resource_limit",
-                "路径搜索达到逆解预算，未返回部分路径。",
-            ));
-        }
+        let base_tcp = matrix_pose(&multiply_matrices(&self.base_inverse, &pose_matrix(pose)?));
         let target = matrix_pose(&multiply_matrices(
-            &multiply_matrices(&self.base_inverse, &pose_matrix(pose)?),
+            &pose_matrix(&base_tcp)?,
             &self.tool_inverse,
         ));
-        let joints = match &self.request.robot {
+        let mut candidates = Vec::new();
+        match &self.request.robot {
             GrindingRobot::Abb { model_id } => {
+                self.ik_calls += 1;
+                if self.ik_calls > MAX_IK_CALLS {
+                    return Err(fail(
+                        "resource_limit",
+                        "路径搜索达到逆解预算，未返回部分路径。",
+                    ));
+                }
                 let model = get_robot_model(model_id).unwrap();
                 let conf = self
                     .config(seed)?
                     .ok_or_else(|| fail("singular_path", "起点没有有效机器人配置。"))?;
-                inverse_kinematics_cancellable(&model, &target, seed, &mut *cancel)
+                // cf1/cf4/cf6 are quadrant counters, not branch identities. Crossing
+                // 0/90 degrees smoothly must not be mistaken for a wrist flip.
+                candidates = inverse_kinematics_cancellable(&model, &target, seed, &mut *cancel)
                     .map_err(|_| cancelled())?
                     .into_iter()
-                    .find(|s| s.configuration[3] == conf[3])
+                    .filter(|s| s.configuration[3] == conf[3])
                     .map(|s| s.joints)
+                    .collect();
             }
             GrindingRobot::Generic { chain, .. } => {
-                solve_unchecked(chain, &target, seed, cancel).map_err(|_| cancelled())?
+                let mut seeds = vec![*seed];
+                if explore {
+                    for axis in 0..6 {
+                        for offset in [-10., 10.] {
+                            let mut next = *seed;
+                            next[axis] = (next[axis] + offset)
+                                .clamp(chain.limits[axis].min_deg, chain.limits[axis].max_deg);
+                            seeds.push(next);
+                        }
+                    }
+                }
+                for trial in seeds {
+                    if cancel() {
+                        return Err(cancelled());
+                    }
+                    self.ik_calls += 1;
+                    if self.ik_calls > MAX_IK_CALLS {
+                        return Err(fail(
+                            "resource_limit",
+                            "路径搜索达到逆解预算，未返回部分路径。",
+                        ));
+                    }
+                    if let Some(q) = solve_task_unchecked(
+                        chain,
+                        &base_tcp,
+                        &trial,
+                        Some(&self.tool),
+                        false,
+                        cancel,
+                    )
+                    .map_err(|_| cancelled())?
+                    {
+                        if !candidates.iter().any(|old| same_joints(old, &q)) {
+                            candidates.push(q);
+                        }
+                    }
+                }
             }
         }
-        .ok_or_else(|| {
-            fail(
-                "unreachable",
-                "目标方向或路径上的逆解不可达，不能跳换关节分支。",
-            )
-        })?;
-        if joints
-            .iter()
-            .zip(seed)
-            .any(|(a, b)| (a - b).abs() > MAX_JOINT_STEP_DEG + 1e-8)
-        {
+        let had_candidates = !candidates.is_empty();
+        candidates.retain(|q| {
+            q.iter()
+                .zip(seed)
+                .all(|(a, b)| (a - b).abs() <= MAX_JOINT_STEP_DEG + 1e-8)
+        });
+        if had_candidates && candidates.is_empty() {
             return Err(fail(
                 "configuration_change",
-                "相邻采样关节变化超过15°，未生成跳跃姿态。",
+                "相邻采样关节变化超过15°，需要细化路径。",
             ));
         }
-        Ok(joints)
+        candidates.sort_by(|a, b| {
+            joint_cost(seed, a)
+                .total_cmp(&joint_cost(seed, b))
+                .then_with(|| compare_joints(a, b))
+        });
+        if candidates.is_empty() {
+            return Err(fail(
+                "unreachable",
+                "未找到保持目标姿态且连续的逆解，不能跳换关节分支。",
+            ));
+        }
+        Ok(candidates)
     }
     fn boxes<F: FnMut() -> bool>(
         &self,
@@ -512,7 +573,7 @@ impl<'a> Context<'a> {
         a: &JointAngles,
         b: &JointAngles,
         depth: usize,
-        fixed: Option<&Quaternion>,
+        expected: Option<(&Quaternion, &Quaternion)>,
         cancel: &mut F,
     ) -> Checked<()> {
         if cancel() {
@@ -533,15 +594,29 @@ impl<'a> Context<'a> {
                 .map(|(x, y)| (x - y).to_radians().abs())
                 .sum::<f64>()
             / 2.;
-        let orientation_clear = if let Some(expected) = fixed {
-            let error = quaternion_distance_deg(&self.tcp(&mid, cancel)?.orientation, expected);
+        let expected_mid = expected.map(|(a, b)| slerp_quaternion(a, b, 0.5));
+        if matches!(self.request.robot, GrindingRobot::Abb { .. }) {
+            if self.config(&mid)?.map(|q| q[3]) != self.config(a)?.map(|q| q[3]) {
+                return Err(fail(
+                    "configuration_change",
+                    "关节插值跨越机器人分支，未生成路径。",
+                ));
+            }
+        }
+        let orientation_clear = if let Some((expected_a, expected_b)) = expected {
+            let error = quaternion_distance_deg(
+                &self.tcp(&mid, cancel)?.orientation,
+                &expected_mid.unwrap(),
+            );
             if error > FIXED_ORIENTATION_TOLERANCE_DEG + 1e-8 {
                 return Err(fail(
                     "orientation_tolerance",
-                    "关节插值的工具方向偏差超过0.1°，未生成路径。",
+                    "关节插值偏离目标姿态插值超过0.1°，需要细化路径。",
                 ));
             }
-            error + a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum::<f64>() / 2.
+            error
+                + a.iter().zip(b).map(|(x, y)| (x - y).abs()).sum::<f64>() / 2.
+                + quaternion_distance_deg(expected_a, expected_b) / 2.
                 <= FIXED_ORIENTATION_TOLERANCE_DEG
         } else {
             true
@@ -555,31 +630,81 @@ impl<'a> Context<'a> {
         if depth >= MAX_CERT_DEPTH {
             return Err(fail(
                 "uncertain",
-                "连续运动包络或固定方向无法在检查精度内完成验证，未生成路径。",
+                "连续运动包络或姿态插值无法在检查精度内完成验证，未生成路径。",
             ));
         }
-        self.certify(a, &mid, depth + 1, fixed, cancel)?;
-        self.certify(&mid, b, depth + 1, fixed, cancel)
+        self.certify(
+            a,
+            &mid,
+            depth + 1,
+            expected.map(|(qa, _)| (qa, expected_mid.as_ref().unwrap())),
+            cancel,
+        )?;
+        self.certify(
+            &mid,
+            b,
+            depth + 1,
+            expected.map(|(_, qb)| (expected_mid.as_ref().unwrap(), qb)),
+            cancel,
+        )
     }
-    fn leg<F: FnMut() -> bool>(
+    fn legs<F: FnMut() -> bool>(
         &mut self,
         start: JointAngles,
         target: Pose,
+        explore: bool,
         cancel: &mut F,
-    ) -> Checked<Leg> {
+    ) -> Checked<Vec<Leg>> {
         let origin = self.tcp(&start, cancel)?;
         let length = norm(&sub(&target.position, &origin.position));
         let angle = quaternion_distance_deg(&origin.orientation, &target.orientation);
-        let count = (length / TRANSLATION_STEP_MM)
+        let initial = (length / TRANSLATION_STEP_MM)
             .ceil()
             .max((angle / ORIENTATION_STEP_DEG).ceil())
             .max(1.) as usize;
-        if count >= MAX_RETURN_SAMPLES {
-            return Err(fail("resource_limit", "单段路径超过采样上限。"));
+        let mut last_error = fail("unreachable", "未找到连续运动。");
+        for refinement in 0..=MAX_LEG_REFINEMENTS {
+            let count = initial.saturating_mul(1 << refinement);
+            if count >= MAX_RETURN_SAMPLES {
+                return Err(fail("sample_limit", "单段路径超过采样上限。"));
+            }
+            match self
+                .legs_at_resolution(start, origin, target, length, angle, count, explore, cancel)
+            {
+                Ok(legs) => return Ok(legs),
+                Err(error)
+                    if matches!(
+                        error.code.as_str(),
+                        "orientation_tolerance" | "configuration_change"
+                    ) =>
+                {
+                    last_error = error
+                }
+                Err(error) => return Err(error),
+            }
         }
-        let mut samples = Vec::with_capacity(count);
-        let mut previous = start;
-        let mut duration = (length / self.request.speed_mm_per_second).max(angle / 500.);
+        Err(last_error)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn legs_at_resolution<F: FnMut() -> bool>(
+        &mut self,
+        start: JointAngles,
+        origin: Pose,
+        target: Pose,
+        length: f64,
+        angle: f64,
+        count: usize,
+        explore: bool,
+        cancel: &mut F,
+    ) -> Checked<Vec<Leg>> {
+        let mut beam = vec![Leg {
+            samples: Vec::with_capacity(count),
+            duration: (length / self.request.speed_mm_per_second)
+                .max(angle / 500.)
+                .max(0.001),
+            length,
+            cost: length * 0.01,
+        }];
         for index in 1..=count {
             if cancel() {
                 return Err(cancelled());
@@ -591,51 +716,135 @@ impl<'a> Context<'a> {
                 }),
                 orientation: slerp_quaternion(&origin.orientation, &target.orientation, t),
             };
-            let q = self.ik(&wanted, &previous, cancel)?;
-            self.certify(
-                &previous,
-                &q,
-                0,
-                if angle <= 0.01 {
-                    Some(&target.orientation)
-                } else {
-                    None
-                },
-                cancel,
-            )?;
-            for j in 0..6 {
-                duration =
-                    duration.max((q[j] - previous[j]).abs() / self.speed_limits[j] * count as f64);
+            let previous_orientation = slerp_quaternion(
+                &origin.orientation,
+                &target.orientation,
+                (index - 1) as f64 / count as f64,
+            );
+            let mut next = Vec::new();
+            let mut error = fail("unreachable", "未找到连续运动。");
+            for state in &beam {
+                let previous = state.samples.last().map(|s| s.joints).unwrap_or(start);
+                let candidates = match self.ik_candidates(&wanted, &previous, explore, cancel) {
+                    Ok(candidates) => candidates,
+                    Err(e) if retryable(&e) => {
+                        error = e;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
+                let mut accepted = 0;
+                for q in candidates {
+                    match self.certify(
+                        &previous,
+                        &q,
+                        0,
+                        Some((&previous_orientation, &wanted.orientation)),
+                        cancel,
+                    ) {
+                        Ok(()) => (),
+                        Err(e) if retryable(&e) => {
+                            error = e;
+                            continue;
+                        }
+                        Err(e) => return Err(e),
+                    }
+                    let actual = self.tcp(&q, cancel)?;
+                    if norm(&sub(&actual.position, &wanted.position)) > 0.002
+                        || quaternion_distance_deg(&actual.orientation, &wanted.orientation) > 0.002
+                    {
+                        error = fail("unreachable", "实际TCP未达到输入位姿精度，未生成路径。");
+                        continue;
+                    }
+                    let mut child = state.clone();
+                    for j in 0..6 {
+                        child.duration = child
+                            .duration
+                            .max((q[j] - previous[j]).abs() / self.speed_limits[j] * count as f64);
+                    }
+                    if !child.duration.is_finite() {
+                        return Err(fail(
+                            "invalid_input",
+                            "关节速度产生非有限运动时间，未生成路径。",
+                        ));
+                    }
+                    child.cost += joint_cost(&previous, &q);
+                    child.samples.push(MotionSample {
+                        t,
+                        pose: actual,
+                        joints: q,
+                    });
+                    next.push(child);
+                    accepted += 1;
+                    if accepted == SEARCH_BEAM_WIDTH {
+                        break;
+                    }
+                }
             }
-            samples.push(MotionSample {
-                t,
-                pose: self.tcp(&q, cancel)?,
-                joints: q,
+            next.sort_by(|a, b| {
+                a.cost.total_cmp(&b.cost).then_with(|| {
+                    compare_joints(
+                        &a.samples.last().unwrap().joints,
+                        &b.samples.last().unwrap().joints,
+                    )
+                })
             });
-            previous = q;
+            let mut distinct: Vec<Leg> = Vec::new();
+            for state in next {
+                if !distinct.iter().any(|s| {
+                    same_joints(
+                        &s.samples.last().unwrap().joints,
+                        &state.samples.last().unwrap().joints,
+                    )
+                }) {
+                    distinct.push(state);
+                    if distinct.len() == SEARCH_BEAM_WIDTH {
+                        break;
+                    }
+                }
+            }
+            if distinct.is_empty() {
+                return Err(error);
+            }
+            beam = distinct;
         }
-        if !duration.is_finite() {
-            return Err(fail(
-                "invalid_input",
-                "关节速度产生非有限运动时间，未生成路径。",
-            ));
-        }
-        Ok(Leg {
-            samples,
-            duration: duration.max(0.001),
-            length,
-        })
+        Ok(beam)
     }
 }
+#[derive(Clone)]
 struct Leg {
     samples: Vec<MotionSample>,
     duration: f64,
     length: f64,
+    cost: f64,
+}
+fn same_joints(a: &JointAngles, b: &JointAngles) -> bool {
+    a.iter().zip(b).all(|(a, b)| (a - b).abs() <= 0.001)
+}
+fn compare_joints(a: &JointAngles, b: &JointAngles) -> std::cmp::Ordering {
+    a.iter()
+        .zip(b)
+        .map(|(a, b)| a.total_cmp(b))
+        .find(|order| *order != std::cmp::Ordering::Equal)
+        .unwrap_or(std::cmp::Ordering::Equal)
+}
+fn joint_cost(a: &JointAngles, b: &JointAngles) -> f64 {
+    a.iter()
+        .zip(b)
+        .enumerate()
+        .map(|(i, (a, b))| (a - b).abs() * if i >= 3 { 1.5 } else { 1. })
+        .sum()
 }
 fn retryable(error: &GrindingFailure) -> bool {
     matches!(
         error.code.as_str(),
-        "collision" | "uncertain" | "unreachable" | "configuration_change" | "singular_path"
+        "collision"
+            | "uncertain"
+            | "unreachable"
+            | "configuration_change"
+            | "singular_path"
+            | "orientation_tolerance"
+            | "sample_limit"
     )
 }
 
@@ -645,11 +854,203 @@ pub fn plan_grinding_cancellable<F: FnMut() -> bool>(
 ) -> GrindingResult {
     match run(request, &mut cancel) {
         Ok(value) => GrindingResult::Success(value),
-        Err(error) => GrindingResult::Failure(error),
+        Err(mut error) => {
+            if error.code == "sample_limit" {
+                error.code = "resource_limit".into();
+            }
+            GrindingResult::Failure(error)
+        }
     }
 }
 pub fn plan_grinding(request: &GrindingRequest, cancel: &AtomicBool) -> GrindingResult {
     plan_grinding_cancellable(request, || cancel.load(Ordering::Relaxed))
+}
+#[derive(Clone)]
+struct SearchState {
+    current: JointAngles,
+    path: Vec<MotionSample>,
+    waypoints: Vec<GrindingWaypoint>,
+    duration: f64,
+    length: f64,
+    cost: f64,
+    used_detour: bool,
+}
+fn prune_states(mut states: Vec<SearchState>) -> Vec<SearchState> {
+    states.sort_by(|a, b| {
+        a.cost
+            .total_cmp(&b.cost)
+            .then_with(|| compare_joints(&a.current, &b.current))
+    });
+    let mut kept: Vec<SearchState> = Vec::new();
+    for state in states {
+        if !kept
+            .iter()
+            .any(|other| same_joints(&other.current, &state.current))
+        {
+            kept.push(state);
+            if kept.len() == SEARCH_BEAM_WIDTH {
+                break;
+            }
+        }
+    }
+    kept
+}
+fn routes(request: &GrindingRequest, start: Pose, target: Pose, explore: bool) -> Vec<Vec<Pose>> {
+    let mut routes = vec![vec![target]];
+    if !explore || !request.allow_detours || !request.zones.iter().any(|z| z.enabled) {
+        return routes;
+    }
+    for extra in [25., 75.] {
+        for axis in 0..3 {
+            for sign in [-1., 1.] {
+                let edge = request
+                    .zones
+                    .iter()
+                    .filter(|z| z.enabled)
+                    .map(|z| z.center_mm[axis] + sign * z.size_mm[axis] / 2.)
+                    .fold(
+                        if sign < 0. {
+                            f64::INFINITY
+                        } else {
+                            f64::NEG_INFINITY
+                        },
+                        |a, b| if sign < 0. { a.min(b) } else { a.max(b) },
+                    );
+                let plane = edge + sign * (request.tool_radius_mm + request.clearance_mm + extra);
+                let mut p1 = start;
+                p1.position[axis] = plane;
+                // Transfer orientations follow the endpoint interpolation; input target is untouched.
+                p1.orientation = slerp_quaternion(&start.orientation, &target.orientation, 1. / 3.);
+                let mut p2 = target;
+                p2.position[axis] = plane;
+                p2.orientation = slerp_quaternion(&start.orientation, &target.orientation, 2. / 3.);
+                if [p1, p2]
+                    .iter()
+                    .all(|p| p.position.iter().all(|x| x.is_finite() && x.abs() <= 1e6))
+                {
+                    routes.push(vec![p1, p2, target]);
+                }
+            }
+        }
+    }
+    routes
+}
+fn search<F: FnMut() -> bool>(
+    context: &mut Context,
+    initial: &SearchState,
+    explore: bool,
+    cancel: &mut F,
+) -> Checked<SearchState> {
+    let mut beam = vec![initial.clone()];
+    for target_index in 0..context.request.targets.len() {
+        let input = context.request.targets[target_index];
+        let target = Pose {
+            position: input.position,
+            orientation: normalize_orientation(&input.orientation)
+                .map_err(|m| fail("invalid_input", &m))?,
+        };
+        let mut next = Vec::new();
+        let mut failure = fail("unreachable", "有界搜索未找到保留全部目标位姿的连续路径。");
+        for state in &beam {
+            let start = context.tcp(&state.current, cancel)?;
+            for route in routes(context.request, start, target, explore) {
+                let mut origin = start;
+                let mut estimate = state.path.len();
+                for pose in &route {
+                    estimate += (norm(&sub(&pose.position, &origin.position)) / TRANSLATION_STEP_MM)
+                        .ceil()
+                        .max(
+                            (quaternion_distance_deg(&origin.orientation, &pose.orientation)
+                                / ORIENTATION_STEP_DEG)
+                                .ceil(),
+                        )
+                        .max(1.) as usize;
+                    origin = *pose;
+                }
+                if estimate > MAX_RETURN_SAMPLES {
+                    failure = fail("sample_limit", "整条路径超过采样上限，未返回部分结果。");
+                    continue;
+                }
+                let detour = route.len() > 1;
+                let mut partial = vec![state.clone()];
+                for (route_index, pose) in route.iter().enumerate() {
+                    let mut children = Vec::new();
+                    for prefix in &partial {
+                        let legs = match context.legs(prefix.current, *pose, explore, cancel) {
+                            Ok(legs) => legs,
+                            Err(error) if retryable(&error) => {
+                                failure = error;
+                                continue;
+                            }
+                            Err(error) => return Err(error),
+                        };
+                        for leg in legs {
+                            if prefix.path.len() + leg.samples.len() > MAX_RETURN_SAMPLES {
+                                failure =
+                                    fail("sample_limit", "整条路径超过采样上限，未返回部分结果。");
+                                continue;
+                            }
+                            let mut child = prefix.clone();
+                            let endpoint = leg.samples.last().unwrap();
+                            child.current = endpoint.joints;
+                            child.waypoints.push(GrindingWaypoint {
+                                pose: *pose,
+                                joints: endpoint.joints,
+                                configuration: context.config(&endpoint.joints)?,
+                                target_index: if route_index == route.len() - 1 {
+                                    Some(target_index)
+                                } else {
+                                    None
+                                },
+                                kind: if !detour && target_index > 0 {
+                                    "process"
+                                } else {
+                                    "transfer"
+                                }
+                                .into(),
+                            });
+                            for mut sample in leg.samples {
+                                sample.t = child.duration + sample.t * leg.duration;
+                                child.path.push(sample);
+                            }
+                            child.duration += leg.duration;
+                            child.length += leg.length;
+                            child.cost += leg.cost;
+                            child.used_detour |= detour;
+                            if !child.duration.is_finite()
+                                || !child.length.is_finite()
+                                || !child.cost.is_finite()
+                            {
+                                return Err(fail(
+                                    "resource_limit",
+                                    "累计路径长度或时间超过数值范围。",
+                                ));
+                            }
+                            children.push(child);
+                        }
+                    }
+                    partial = prune_states(children);
+                    if partial.is_empty() {
+                        break;
+                    }
+                }
+                next.extend(partial);
+                // Keep memory bounded while still comparing every deterministic route.
+                next = prune_states(next);
+                if target_index + 1 == context.request.targets.len() && !next.is_empty() {
+                    return Ok(next.remove(0));
+                }
+            }
+        }
+        if next.is_empty() {
+            failure.failed_target = Some(target_index);
+            return Err(failure);
+        }
+        beam = prune_states(next);
+    }
+    beam.into_iter()
+        .next()
+        .ok_or_else(|| fail("unreachable", "未找到完整路径。"))
 }
 fn run<F: FnMut() -> bool>(request: &GrindingRequest, cancel: &mut F) -> Checked<GrindingSuccess> {
     if cancel() {
@@ -670,194 +1071,49 @@ fn run<F: FnMut() -> bool>(request: &GrindingRequest, cancel: &mut F) -> Checked
         None,
         cancel,
     )?;
-    let mut current = request.start_joints;
-    let mut path = vec![MotionSample {
-        t: 0.,
-        pose: context.tcp(&current, cancel)?,
-        joints: current,
-    }];
-    let mut waypoints = Vec::new();
-    let mut duration = 0.;
-    let mut length = 0.;
-    let mut used_detour = false;
-    for (target_index, input) in request.targets.iter().enumerate() {
-        let target = Pose {
-            position: input.position,
-            orientation: orientation.unwrap_or(
-                normalize_orientation(&input.orientation).map_err(|m| fail("invalid_input", &m))?,
-            ),
-        };
-        let direct = context.leg(current, target, cancel);
-        let mut route = match direct {
-            Ok(leg) => vec![leg],
-            Err(mut error) => {
-                error.failed_target = Some(target_index);
-                if !request.allow_detours
-                    || !retryable(&error)
-                    || !request.zones.iter().any(|z| z.enabled)
-                {
-                    return Err(error);
-                }
-                let start = context.tcp(&current, cancel)?;
-                let mut found = None;
-                'search: for extra in [25., 75.] {
-                    for axis in 0..3 {
-                        for sign in [-1., 1.] {
-                            if cancel() {
-                                return Err(cancelled());
-                            }
-                            let edge = request
-                                .zones
-                                .iter()
-                                .filter(|z| z.enabled)
-                                .map(|z| z.center_mm[axis] + sign * z.size_mm[axis] / 2.)
-                                .fold(
-                                    if sign < 0. {
-                                        f64::INFINITY
-                                    } else {
-                                        f64::NEG_INFINITY
-                                    },
-                                    |a, b| if sign < 0. { a.min(b) } else { a.max(b) },
-                                );
-                            let plane = edge
-                                + sign * (request.tool_radius_mm + request.clearance_mm + extra);
-                            let mut p1 = start;
-                            p1.position[axis] = plane;
-                            p1.orientation = target.orientation;
-                            let mut p2 = target;
-                            p2.position[axis] = plane;
-                            if [p1, p2]
-                                .iter()
-                                .any(|p| p.position.iter().any(|x| !x.is_finite() || x.abs() > 1e6))
-                            {
-                                continue;
-                            }
-                            let candidate_poses = [start, p1, p2, target];
-                            let estimate = candidate_poses
-                                .windows(2)
-                                .map(|p| {
-                                    (norm(&sub(&p[1].position, &p[0].position))
-                                        / TRANSLATION_STEP_MM)
-                                        .ceil()
-                                        .max(
-                                            (quaternion_distance_deg(
-                                                &p[0].orientation,
-                                                &p[1].orientation,
-                                            ) / ORIENTATION_STEP_DEG)
-                                                .ceil(),
-                                        )
-                                        .max(1.) as usize
-                                })
-                                .sum::<usize>();
-                            if estimate + path.len() > MAX_RETURN_SAMPLES {
-                                continue;
-                            }
-                            let mut q = current;
-                            let mut candidate = Vec::new();
-                            let mut valid = true;
-                            for p in [p1, p2, target] {
-                                match context.leg(q, p, cancel) {
-                                    Ok(leg) => {
-                                        q = leg.samples.last().unwrap().joints;
-                                        candidate.push(leg);
-                                    }
-                                    Err(next) => {
-                                        if !retryable(&next) {
-                                            return Err(next);
-                                        }
-                                        valid = false;
-                                        break;
-                                    }
-                                }
-                            }
-                            if valid {
-                                found = Some(candidate);
-                                break 'search;
-                            }
-                        }
-                    }
-                }
-                match found {
-                    Some(route) => {
-                        used_detour = true;
-                        route
-                    }
-                    None => {
-                        error.message =
-                            format!("{} 有界绕行搜索未找到完整可验证路径。", error.message);
-                        return Err(error);
-                    }
-                }
-            }
-        };
-        let last = route.len() - 1;
-        for (i, leg) in route.drain(..).enumerate() {
-            if path.len() + leg.samples.len() > MAX_RETURN_SAMPLES {
-                return Err(fail(
-                    "resource_limit",
-                    "整条路径超过采样上限，未返回部分结果。",
-                ));
-            }
-            let endpoint = leg.samples.last().unwrap();
-            current = endpoint.joints;
-            waypoints.push(GrindingWaypoint {
-                pose: endpoint.pose,
-                joints: current,
-                configuration: context.config(&current)?,
-                target_index: if i == last { Some(target_index) } else { None },
-                // The role describes the incoming motion, not the identity of its endpoint.
-                // Preserve target_index even when reaching it via an approach/detour.
-                kind: if last == 0 && target_index > 0 {
-                    "process"
-                } else {
-                    "transfer"
-                }
-                .into(),
-            });
-            for mut sample in leg.samples {
-                sample.t = duration + sample.t * leg.duration;
-                path.push(sample);
-            }
-            duration += leg.duration;
-            length += leg.length;
-            if !duration.is_finite() || !length.is_finite() {
-                return Err(fail("resource_limit", "累计路径长度或时间超过数值范围。"));
-            }
-        }
-    }
+    let initial = SearchState {
+        current: request.start_joints,
+        path: vec![MotionSample {
+            t: 0.,
+            pose: context.tcp(&request.start_joints, cancel)?,
+            joints: request.start_joints,
+        }],
+        waypoints: Vec::new(),
+        duration: 0.,
+        length: 0.,
+        cost: 0.,
+        used_detour: false,
+    };
+    let mut found = match search(&mut context, &initial, false, cancel) {
+        Ok(found) => found,
+        Err(error) if retryable(&error) => search(&mut context, &initial, true, cancel)?,
+        Err(error) => return Err(error),
+    };
     if cancel() {
         return Err(cancelled());
     }
-    let mut previous_time = -1.;
-    for sample in &mut path {
-        sample.t /= duration;
-        if !sample.t.is_finite() || !(0. ..=1.).contains(&sample.t) || sample.t <= previous_time {
+    let mut previous = -1.;
+    for sample in &mut found.path {
+        sample.t /= found.duration;
+        if !sample.t.is_finite() || !(0. ..=1.).contains(&sample.t) || sample.t <= previous {
             return Err(fail(
                 "resource_limit",
                 "路径采样时间超出数值精度，未返回部分路径。",
             ));
         }
-        previous_time = sample.t;
+        previous = sample.t;
     }
-    let mut warnings=vec!["已验证声明的机器人／工具保守包络与禁入区在关节插值全程分离；未包含自碰撞、实际工件接触、控制器或动力学验收。".into()];
-    if used_detour {
+    let mut warnings = vec!["输入目标的位置和姿态保持不变；使用有界候选搜索选择连续关节路径，不保证全局最优或穷举全部解。".into(), "已验证声明的机器人／工具保守包络与禁入区在关节插值全程分离；姿态跟随目标间的四元数插值；未包含自碰撞、实际工件接触、控制器或动力学验收。".into()];
+    if found.used_detour {
         warnings.push(
             "绕行点为转移运动，须在加工工艺中关闭打磨接触；不得将绕行当作表面加工轨迹。".into(),
         );
     }
-    if orientation.is_some()
-        && request
-            .targets
-            .iter()
-            .any(|p| quaternion_distance_deg(&p.orientation, &orientation.unwrap()) > 0.1)
-    {
-        warnings.push("输入点的方向已按统一工具方向调整；原输入数据未修改。".into());
-    }
     Ok(GrindingSuccess {
-        path,
-        waypoints,
-        duration_seconds: duration,
-        length_mm: length,
+        path: found.path,
+        waypoints: found.waypoints,
+        duration_seconds: found.duration,
+        length_mm: found.length,
         orientation,
         checked_intervals: context.checked_intervals,
         warnings,

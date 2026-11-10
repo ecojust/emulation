@@ -3,7 +3,10 @@
 use emulation_core::{
     collision::{CollisionRequest, CollisionResult},
     endpoint_inspection::EndpointInspectionRequest,
+    generic_collision::GenericCollisionRequest,
+    generic_endpoint_inspection::{GenericEndpointRequest, GenericIkSolution},
     generic_planner::{GenericPlanRequest, GenericPlanResult},
+    generic_pose_planner::{GenericPosePlanRequest, GenericPosePlanResult},
     grinding::{GrindingRequest, GrindingResult},
     program::ProgramExportRequest,
     types::{IkSolution, PlanRequest, PlanResult},
@@ -178,6 +181,58 @@ async fn solve_generic_motion(
 }
 
 #[tauri::command]
+async fn solve_generic_pose_motion(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: GenericPosePlanRequest,
+) -> Result<GenericPosePlanResult, String> {
+    match engine
+        .submit(request_id, Work::GenericPosePlan(request))?
+        .await
+        .map_err(|_| "原生 URDF 位姿运动计算未完成")??
+    {
+        Reply::GenericPosePlan(result) => Ok(result),
+        _ => Err("原生 URDF 位姿计算返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
+async fn inspect_generic_endpoint(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: GenericEndpointRequest,
+) -> Result<Vec<GenericIkSolution>, String> {
+    match engine
+        .submit(request_id, Work::InspectGenericEndpoint(request))?
+        .await
+        .map_err(|_| "原生 URDF 端点逆解检查未完成")??
+    {
+        Reply::InspectGenericEndpoint(result) => Ok(result),
+        _ => Err("原生 URDF 端点检查返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
+async fn check_generic_collisions(
+    engine: State<'_, Arc<Engine>>,
+    cache: State<'_, model_cache::ModelCacheState>,
+    request_id: String,
+    request: GenericCollisionRequest,
+) -> Result<Vec<CollisionResult>, String> {
+    // Resolve only trusted catalog metadata here; cancellable disk reads,
+    // verification, BVH construction and checks run on the bounded CPU worker.
+    let source = cache.cache()?.collision_source(&request.model_id)?;
+    match engine
+        .submit(request_id, Work::GenericCollision { request, source })?
+        .await
+        .map_err(|_| "原生 URDF 网格干涉检查未完成")??
+    {
+        Reply::GenericCollision(result) => Ok(result),
+        _ => Err("原生 URDF 网格检查返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
 async fn check_collisions(
     engine: State<'_, Arc<Engine>>,
     request_id: String,
@@ -346,6 +401,9 @@ fn main() {
             open_robot_sources,
             save_robot_source,
             solve_generic_motion,
+            solve_generic_pose_motion,
+            inspect_generic_endpoint,
+            check_generic_collisions,
             plan_grinding_path,
             check_collisions,
             inspect_endpoint,

@@ -2,15 +2,30 @@
 //! Background endpoint and collision inspection never cancel a solve or export.
 //! Foreground work may interrupt inspection, including a cold mesh-index build.
 //! Cancellation never creates an unbounded spawn_blocking queue.
+#[cfg(feature = "model-cache")]
+use crate::model_cache::CollisionMeshSource;
+#[cfg(feature = "model-cache")]
+use emulation_core::generic_collision::{
+    check_generic_collisions, validate_generic_collision_request, GenericCollisionModel,
+    GenericCollisionRequest,
+};
 use emulation_core::{
     collision::{check_collisions, CollisionRequest, CollisionResult},
     endpoint_inspection::{inspect_endpoint_with_cancel, EndpointInspectionRequest},
+    generic_endpoint_inspection::{
+        inspect_generic_endpoint_with_cancel, GenericEndpointRequest, GenericIkSolution,
+    },
     generic_planner::{plan_generic_move_l, GenericPlanRequest, GenericPlanResult},
+    generic_pose_planner::{
+        plan_generic_pose_move_l, GenericPosePlanRequest, GenericPosePlanResult,
+    },
     grinding::{plan_grinding, GrindingRequest, GrindingResult},
     planner::plan_move_l_with_cancel,
     program::{export_program_with_cancel, ProgramExportRequest, ProgramFile},
     types::{IkSolution, PlanRequest, PlanResult},
 };
+#[cfg(feature = "model-cache")]
+use std::collections::HashMap;
 use std::{
     collections::VecDeque,
     panic::{catch_unwind, AssertUnwindSafe},
@@ -24,6 +39,13 @@ use tokio::sync::oneshot;
 pub enum Work {
     Plan(PlanRequest),
     GenericPlan(GenericPlanRequest),
+    GenericPosePlan(GenericPosePlanRequest),
+    InspectGenericEndpoint(GenericEndpointRequest),
+    #[cfg(feature = "model-cache")]
+    GenericCollision {
+        request: GenericCollisionRequest,
+        source: CollisionMeshSource,
+    },
     Grinding(GrindingRequest),
     Export(ProgramExportRequest),
     Collision(CollisionRequest),
@@ -32,11 +54,60 @@ pub enum Work {
 pub enum Reply {
     Plan(PlanResult),
     GenericPlan(GenericPlanResult),
+    GenericPosePlan(GenericPosePlanResult),
+    InspectGenericEndpoint(Vec<GenericIkSolution>),
+    #[cfg(feature = "model-cache")]
+    GenericCollision(Vec<CollisionResult>),
     Grinding(GrindingResult),
     Export(ProgramFile),
     Collision(Vec<CollisionResult>),
     InspectEndpoint(Vec<IkSolution>),
 }
+impl Work {
+    fn is_background(&self) -> bool {
+        match self {
+            Self::Collision(_) | Self::InspectEndpoint(_) | Self::InspectGenericEndpoint(_) => true,
+            #[cfg(feature = "model-cache")]
+            Self::GenericCollision { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+#[cfg(feature = "model-cache")]
+fn generic_collision_work(
+    models: &mut HashMap<String, GenericCollisionModel>,
+    request: &GenericCollisionRequest,
+    source: &CollisionMeshSource,
+    cancelled: &AtomicBool,
+) -> Result<Vec<CollisionResult>, String> {
+    if cancelled.load(Ordering::Acquire) {
+        return Err("计算已取消".into());
+    }
+    validate_generic_collision_request(request)?;
+    if !models.contains_key(&request.model_id) {
+        // Only the four pinned generic catalog models are supported. The cache
+        // lives on this sole CPU worker; IPC never supplies a filesystem path.
+        if models.len() >= 4 {
+            return Err("原生机器人网格缓存已达上限".into());
+        }
+        let model = GenericCollisionModel::load(
+            &request.model_id,
+            |part| source.read(part, cancelled),
+            cancelled,
+        )?;
+        if cancelled.load(Ordering::Acquire) {
+            return Err("计算已取消".into());
+        }
+        models.insert(request.model_id.clone(), model);
+    }
+    check_generic_collisions(
+        request,
+        models.get(&request.model_id).expect("model loaded"),
+        cancelled,
+    )
+}
+
 type Response = Result<Reply, String>;
 struct Job {
     id: String,
@@ -73,72 +144,93 @@ impl Engine {
         let worker = shared.clone();
         std::thread::Builder::new()
             .name("robot-motion".into())
-            .spawn(move || loop {
-                let job = {
+            .spawn(move || {
+                #[cfg(feature = "model-cache")]
+                let mut generic_models = HashMap::new();
+                loop {
+                    let job = {
+                        let mut queue = worker.queue.lock().unwrap_or_else(|e| e.into_inner());
+                        while queue.pending.is_none()
+                            && queue.endpoint.is_none()
+                            && queue.background.is_none()
+                            && !queue.stopped
+                        {
+                            queue = worker
+                                .changed
+                                .wait(queue)
+                                .unwrap_or_else(|e| e.into_inner());
+                        }
+                        if queue.stopped {
+                            break;
+                        }
+                        let job = queue
+                            .pending
+                            .take()
+                            .or_else(|| queue.endpoint.take())
+                            .or_else(|| queue.background.take())
+                            .expect("pending job checked");
+                        queue.active = Some((
+                            job.id.clone(),
+                            job.cancelled.clone(),
+                            job.work.is_background(),
+                        ));
+                        job
+                    };
+                    let result = catch_unwind(AssertUnwindSafe(|| match job.work {
+                        Work::Plan(request) => Ok(Reply::Plan(plan_move_l_with_cancel(
+                            &request,
+                            &job.cancelled,
+                        ))),
+                        Work::GenericPlan(request) => Ok(Reply::GenericPlan(plan_generic_move_l(
+                            &request,
+                            &job.cancelled,
+                        ))),
+                        Work::GenericPosePlan(request) => Ok(Reply::GenericPosePlan(
+                            plan_generic_pose_move_l(&request, &job.cancelled),
+                        )),
+                        Work::InspectGenericEndpoint(request) => {
+                            inspect_generic_endpoint_with_cancel(&request, &job.cancelled)
+                                .map(Reply::InspectGenericEndpoint)
+                        }
+                        #[cfg(feature = "model-cache")]
+                        Work::GenericCollision { request, source } => generic_collision_work(
+                            &mut generic_models,
+                            &request,
+                            &source,
+                            &job.cancelled,
+                        )
+                        .map(Reply::GenericCollision),
+                        Work::Grinding(request) => {
+                            Ok(Reply::Grinding(plan_grinding(&request, &job.cancelled)))
+                        }
+                        Work::Export(request) => {
+                            export_program_with_cancel(&request, &job.cancelled)
+                                .map(Reply::Export)
+                                .map_err(|e| e.to_string())
+                        }
+                        Work::Collision(request) => {
+                            check_collisions(&request, &job.cancelled).map(Reply::Collision)
+                        }
+                        Work::InspectEndpoint(request) => {
+                            inspect_endpoint_with_cancel(&request, &job.cancelled)
+                                .map(Reply::InspectEndpoint)
+                        }
+                    }))
+                    .unwrap_or_else(|_| Err("原生运动计算异常，请调整输入后重试".into()));
+                    let result = if job.cancelled.load(Ordering::Acquire) {
+                        Err("计算已取消".into())
+                    } else {
+                        result
+                    };
+                    let _ = job.reply.send(result);
                     let mut queue = worker.queue.lock().unwrap_or_else(|e| e.into_inner());
-                    while queue.pending.is_none()
-                        && queue.endpoint.is_none()
-                        && queue.background.is_none()
-                        && !queue.stopped
+                    if queue
+                        .active
+                        .as_ref()
+                        .is_some_and(|(id, _, _)| id == &job.id)
                     {
-                        queue = worker
-                            .changed
-                            .wait(queue)
-                            .unwrap_or_else(|e| e.into_inner());
+                        queue.active = None;
                     }
-                    if queue.stopped {
-                        break;
-                    }
-                    let job = queue
-                        .pending
-                        .take()
-                        .or_else(|| queue.endpoint.take())
-                        .or_else(|| queue.background.take())
-                        .expect("pending job checked");
-                    queue.active = Some((
-                        job.id.clone(),
-                        job.cancelled.clone(),
-                        matches!(&job.work, Work::Collision(_) | Work::InspectEndpoint(_)),
-                    ));
-                    job
-                };
-                let result = catch_unwind(AssertUnwindSafe(|| match job.work {
-                    Work::Plan(request) => Ok(Reply::Plan(plan_move_l_with_cancel(
-                        &request,
-                        &job.cancelled,
-                    ))),
-                    Work::GenericPlan(request) => Ok(Reply::GenericPlan(plan_generic_move_l(
-                        &request,
-                        &job.cancelled,
-                    ))),
-                    Work::Grinding(request) => {
-                        Ok(Reply::Grinding(plan_grinding(&request, &job.cancelled)))
-                    }
-                    Work::Export(request) => export_program_with_cancel(&request, &job.cancelled)
-                        .map(Reply::Export)
-                        .map_err(|e| e.to_string()),
-                    Work::Collision(request) => {
-                        check_collisions(&request, &job.cancelled).map(Reply::Collision)
-                    }
-                    Work::InspectEndpoint(request) => {
-                        inspect_endpoint_with_cancel(&request, &job.cancelled)
-                            .map(Reply::InspectEndpoint)
-                    }
-                }))
-                .unwrap_or_else(|_| Err("原生运动计算异常，请调整输入后重试".into()));
-                let result = if job.cancelled.load(Ordering::Acquire) {
-                    Err("计算已取消".into())
-                } else {
-                    result
-                };
-                let _ = job.reply.send(result);
-                let mut queue = worker.queue.lock().unwrap_or_else(|e| e.into_inner());
-                if queue
-                    .active
-                    .as_ref()
-                    .is_some_and(|(id, _, _)| id == &job.id)
-                {
-                    queue.active = None;
                 }
             })
             .expect("cannot create native motion worker");
@@ -161,15 +253,17 @@ impl Engine {
         if queue.stopped || queue.cancelled_ids.contains(&id) {
             return Err("计算已取消".into());
         }
-        let is_background = matches!(&work, Work::Collision(_) | Work::InspectEndpoint(_));
+        let is_background = work.is_background();
         if !is_background {
             if let Some((_, cancelled, _)) = &queue.active {
                 cancelled.store(true, Ordering::Release);
             }
         }
         let slot = match &work {
-            Work::InspectEndpoint(_) => &mut queue.endpoint,
+            Work::InspectEndpoint(_) | Work::InspectGenericEndpoint(_) => &mut queue.endpoint,
             Work::Collision(_) => &mut queue.background,
+            #[cfg(feature = "model-cache")]
+            Work::GenericCollision { .. } => &mut queue.background,
             _ => &mut queue.pending,
         };
         if let Some(previous) = slot.take() {
@@ -733,5 +827,336 @@ mod tests {
         assert!(queue.endpoint.is_none());
         assert!(queue.background.is_some());
         assert!(!foreground_cancelled.load(Ordering::Acquire));
+    }
+
+    fn generic_endpoint_request() -> GenericEndpointRequest {
+        let plan = generic_request();
+        let pose = emulation_core::generic_kinematics::forward_generic_kinematics(
+            &plan.chain,
+            &plan.start_joints,
+        )
+        .unwrap()
+        .pose;
+        GenericEndpointRequest {
+            chain: plan.chain,
+            pose,
+            seed_joints: plan.start_joints,
+        }
+    }
+
+    fn generic_pose_request() -> GenericPosePlanRequest {
+        let plan = generic_request();
+        let end = emulation_core::generic_kinematics::forward_generic_kinematics(
+            &plan.chain,
+            &plan.target_joints,
+        )
+        .unwrap()
+        .pose;
+        let identity = emulation_core::types::Pose {
+            position: [0.; 3],
+            orientation: [1., 0., 0., 0.],
+        };
+        GenericPosePlanRequest {
+            chain: plan.chain,
+            start_joints: plan.start_joints,
+            target: Target {
+                position: end.position,
+                orientation: Some(end.orientation),
+            },
+            base_pose: identity,
+            tool_pose: identity,
+            speed_mm_per_second: 100.,
+        }
+    }
+
+    #[test]
+    fn generic_pose_and_endpoint_worker_recover_after_bad_requests_without_fallback() {
+        let engine = Engine::new();
+        let mut bad_endpoint = generic_endpoint_request();
+        bad_endpoint.chain.steps.clear();
+        assert!(engine
+            .submit(
+                "bad-generic-endpoint".into(),
+                Work::InspectGenericEndpoint(bad_endpoint)
+            )
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .is_err());
+        let endpoint = generic_endpoint_request();
+        let result = engine
+            .submit(
+                "good-generic-endpoint".into(),
+                Work::InspectGenericEndpoint(endpoint.clone()),
+            )
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+        let Reply::InspectGenericEndpoint(solutions) = result else {
+            panic!("expected generic endpoint alternatives");
+        };
+        assert!(!solutions.is_empty());
+        for solution in solutions {
+            let pose = emulation_core::generic_kinematics::forward_generic_kinematics(
+                &endpoint.chain,
+                &solution.joints,
+            )
+            .unwrap()
+            .pose;
+            assert!(pose
+                .position
+                .iter()
+                .zip(endpoint.pose.position)
+                .all(|(a, b)| (a - b).abs() < 0.001));
+            assert!(
+                emulation_core::math::quaternion_distance_deg(
+                    &pose.orientation,
+                    &endpoint.pose.orientation
+                ) < 0.001
+            );
+        }
+        let mut bad_pose = generic_pose_request();
+        bad_pose.speed_mm_per_second = 0.;
+        assert!(matches!(
+            engine
+                .submit("bad-generic-pose".into(), Work::GenericPosePlan(bad_pose))
+                .unwrap()
+                .blocking_recv()
+                .unwrap()
+                .unwrap(),
+            Reply::GenericPosePlan(GenericPosePlanResult::Failure(_))
+        ));
+        let request = generic_pose_request();
+        let result = engine
+            .submit(
+                "good-generic-pose".into(),
+                Work::GenericPosePlan(request.clone()),
+            )
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .unwrap();
+        let Reply::GenericPosePlan(GenericPosePlanResult::Success(plan)) = result else {
+            panic!("expected native generic pose path");
+        };
+        assert_eq!(plan.path[0].joints, request.start_joints);
+        assert!(plan.path.len() > 1);
+        let last = plan.path.last().unwrap();
+        assert!(last
+            .pose
+            .position
+            .iter()
+            .zip(request.target.position)
+            .all(|(a, b)| (a - b).abs() < 0.001));
+    }
+
+    #[test]
+    fn generic_endpoint_and_pose_share_existing_bounded_slots_with_precancel() {
+        let active = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("export-active".into(), active.clone(), false)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let old_endpoint = engine
+            .submit(
+                "abb-endpoint-old".into(),
+                Work::InspectEndpoint(endpoint_request()),
+            )
+            .unwrap();
+        let old_motion = engine
+            .submit("motion-old".into(), Work::Plan(request()))
+            .unwrap();
+        active.store(false, Ordering::Release);
+        let latest_endpoint = engine
+            .submit(
+                "generic-endpoint-new".into(),
+                Work::InspectGenericEndpoint(generic_endpoint_request()),
+            )
+            .unwrap();
+        assert!(old_endpoint.blocking_recv().unwrap().is_err());
+        assert!(!active.load(Ordering::Acquire));
+        engine.cancel("precancel-generic-endpoint");
+        engine.cancel("precancel-generic-pose");
+        assert!(engine
+            .submit(
+                "precancel-generic-endpoint".into(),
+                Work::InspectGenericEndpoint(generic_endpoint_request())
+            )
+            .is_err());
+        assert!(engine
+            .submit(
+                "precancel-generic-pose".into(),
+                Work::GenericPosePlan(generic_pose_request())
+            )
+            .is_err());
+        let latest_motion = engine
+            .submit(
+                "generic-pose-new".into(),
+                Work::GenericPosePlan(generic_pose_request()),
+            )
+            .unwrap();
+        assert!(old_motion.blocking_recv().unwrap().is_err());
+        assert!(active.load(Ordering::Acquire));
+        {
+            let queue = engine.shared.queue.lock().unwrap();
+            assert_eq!(queue.pending.as_ref().unwrap().id, "generic-pose-new");
+            assert_eq!(queue.endpoint.as_ref().unwrap().id, "generic-endpoint-new");
+            assert!(queue.background.is_none());
+        }
+        engine.cancel("abb-endpoint-old");
+        assert!(engine.shared.queue.lock().unwrap().endpoint.is_some());
+        engine.cancel("generic-endpoint-new");
+        assert!(latest_endpoint.blocking_recv().unwrap().is_err());
+        engine.cancel("generic-pose-new");
+        assert!(latest_motion.blocking_recv().unwrap().is_err());
+        assert!(engine.shared.queue.lock().unwrap().pending.is_none());
+    }
+
+    #[cfg(feature = "model-cache")]
+    fn generic_collision_fixture() -> (
+        GenericCollisionRequest,
+        CollisionMeshSource,
+        std::path::PathBuf,
+    ) {
+        use emulation_core::collision::{CollisionCandidate, CollisionZone};
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "emulation-engine-collision-{}-{unique}",
+            std::process::id()
+        ));
+        let cache = crate::model_cache::ModelCache::new(directory.clone()).unwrap();
+        let source = cache.collision_source("yaskawa-gp7").unwrap();
+        (
+            GenericCollisionRequest {
+                model_id: "yaskawa-gp7".into(),
+                base_pose: None,
+                zones: vec![CollisionZone {
+                    id: "fixture".into(),
+                    enabled: true,
+                    center_mm: [0., 0., 400.],
+                    size_mm: [1000.; 3],
+                }],
+                solutions: vec![CollisionCandidate {
+                    id: "pose".into(),
+                    joints: [0., 15., -25., 25., 35., 10.],
+                }],
+            },
+            source,
+            directory,
+        )
+    }
+
+    #[cfg(feature = "model-cache")]
+    #[test]
+    fn generic_collision_uses_shared_background_slot_and_precancel_without_interrupting_motion() {
+        let (request, source, directory) = generic_collision_fixture();
+        let active = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("motion-active".into(), active.clone(), false)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        let previous = engine
+            .submit(
+                "abb-collision".into(),
+                Work::Collision(CollisionRequest {
+                    model_id: "irb1100-4-0.58".into(),
+                    base_pose: None,
+                    zones: vec![],
+                    solutions: vec![],
+                }),
+            )
+            .unwrap();
+        let endpoint = engine
+            .submit(
+                "generic-endpoint".into(),
+                Work::InspectGenericEndpoint(generic_endpoint_request()),
+            )
+            .unwrap();
+        let latest = engine
+            .submit(
+                "generic-collision".into(),
+                Work::GenericCollision {
+                    request: request.clone(),
+                    source: source.clone(),
+                },
+            )
+            .unwrap();
+        assert!(previous.blocking_recv().unwrap().is_err());
+        assert!(!active.load(Ordering::Acquire));
+        {
+            let queue = engine.shared.queue.lock().unwrap();
+            assert!(queue.pending.is_none());
+            assert_eq!(queue.background.as_ref().unwrap().id, "generic-collision");
+            assert_eq!(queue.endpoint.as_ref().unwrap().id, "generic-endpoint");
+        }
+        engine.cancel("precancel-collision");
+        assert!(engine
+            .submit(
+                "precancel-collision".into(),
+                Work::GenericCollision { request, source }
+            )
+            .is_err());
+        engine.cancel("abb-collision");
+        assert!(engine.shared.queue.lock().unwrap().background.is_some());
+        engine.cancel("generic-collision");
+        assert!(latest.blocking_recv().unwrap().is_err());
+        assert!(engine.shared.queue.lock().unwrap().endpoint.is_some());
+        engine.cancel("generic-endpoint");
+        assert!(endpoint.blocking_recv().unwrap().is_err());
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(feature = "model-cache")]
+    #[test]
+    fn failed_or_cancelled_generic_mesh_load_does_not_poison_cache_or_worker() {
+        let (request, source, directory) = generic_collision_fixture();
+        let mut models = HashMap::new();
+        assert!(
+            generic_collision_work(&mut models, &request, &source, &AtomicBool::new(true))
+                .unwrap_err()
+                .contains("取消")
+        );
+        assert!(models.is_empty());
+        let error = generic_collision_work(&mut models, &request, &source, &AtomicBool::new(false))
+            .unwrap_err();
+        assert!(error.contains("缓存"), "{error}");
+        assert!(models.is_empty());
+        let engine = Engine::new();
+        assert!(engine
+            .submit(
+                "cold-mesh".into(),
+                Work::GenericCollision { request, source }
+            )
+            .unwrap()
+            .blocking_recv()
+            .unwrap()
+            .is_err());
+        assert!(matches!(
+            engine
+                .submit(
+                    "motion-after-cache-error".into(),
+                    Work::GenericPosePlan(generic_pose_request())
+                )
+                .unwrap()
+                .blocking_recv()
+                .unwrap()
+                .unwrap(),
+            Reply::GenericPosePlan(GenericPosePlanResult::Success(_))
+        ));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
