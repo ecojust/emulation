@@ -42,6 +42,18 @@ test('dragging base and a complete Path under a rotated reference frame preserve
   const frame = objects(page, 'frame').last(), id = (await frame.getAttribute('data-object-id'))!;
   await applyReference(page, [120, -80, 30], [90, 0, 0]);
   const base = page.getByRole('button', { name: '选择机器人基座', exact: true });
+  const robot = page.getByRole('button', { name: '选择机器人', exact: true });
+  // Both the robot's summary row and its base child are draggable entry points.
+  await robot.dragTo(frame);
+  await expect(robot).toHaveAttribute('data-parent-id', id);
+  await expect(base).toHaveAttribute('data-parent-id', id);
+  await expectPose(page, 'data-robot-base-pose', originalBase);
+  await expectPose(page, 'data-robot-pose', originalBody);
+  await robot.dragTo(objects(page, 'world'));
+  await expect(robot).toHaveAttribute('data-parent-kind', 'world');
+  await expect(base).toHaveAttribute('data-parent-kind', 'world');
+  await expectPose(page, 'data-robot-base-pose', originalBase);
+  await expectPose(page, 'data-robot-pose', originalBody);
   await base.dragTo(frame);
   await expect(base).toHaveAttribute('data-parent-kind', 'frame');
   await expect(base).toHaveAttribute('data-parent-id', id);
