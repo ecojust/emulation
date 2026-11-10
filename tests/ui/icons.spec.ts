@@ -173,7 +173,9 @@ test('module and CodeMirror SVG icons retain folding, completion, search and dia
     const style = getComputedStyle(element);
     return [style.content, style.backgroundImage, style.maskImage].join(' ');
   })).toContain('image/svg+xml');
-  await codeEditor(page).press('ControlOrMeta+Shift+m');
+  // Physical KeyM emits Shift's uppercase key; a literal lowercase "m"
+  // incorrectly reaches CodeMirror's separate Ctrl-m tab-focus command.
+  await codeEditor(page).press('ControlOrMeta+Shift+KeyM');
   const lintPanel = page.locator('.cm-panel-lint');
   await expect(lintPanel).toBeVisible();
   const lintClose = lintPanel.locator('button[name="close"]');
