@@ -33,7 +33,7 @@ export default function TargetInspector({ modelKey, point, worldPose, referenceN
     {worldPose && <PoseReadout label="目标世界位姿" pose={worldPose}/>}
     {point.motionRole && <p className="field-hint">用途：{point.motionRole === 'transfer' ? '转移段' : '加工段'}</p>}
     {formatted.configurationNote && <p className="field-hint">{formatted.configurationNote}</p>}
-    <button type="button" className="example-button" disabled={previewing || Boolean(updateDisabledReason)} title={previewing ? '请先退出端点预览。' : updateDisabledReason ?? ''} onClick={onUpdate}>用当前姿态更新点</button>
+    <button type="button" className="example-button" disabled={Boolean(updateDisabledReason)} title={updateDisabledReason ?? (previewing ? '将预览的关节姿态与轴配置保存到此点，保留目标位置、方向和速度。' : '')} onClick={onUpdate}>用当前姿态更新点</button>
     {updateDisabledReason && <p className="field-hint" role="status">{updateDisabledReason}</p>}
     {profile.brand !== 'ABB' && <p className="field-hint">候选解使用此型号的运动链求解；品牌位置数据为仿真模板，控制器配置与现场标定仍需核对。</p>}
     {children}

@@ -14,7 +14,7 @@ async function ready(page: Page) {
   await expect(bodyCanvas(page)).toHaveAttribute('data-camera-distance', /\d/);
 }
 async function returnHome(page: Page) {
-  await page.getByRole('button', { name: '返回主页', exact: true }).click();
+  await page.getByRole('navigation', { name: '项目导航', exact: true }).getByRole('button', { name: '返回主页', exact: true }).click();
   await expect(home(page)).toBeVisible({ timeout: 20_000 });
 }
 async function noDocumentScroll(page: Page) {
@@ -83,6 +83,13 @@ test('home requires a name and a catalog robot, and stays inside the viewport', 
   await ready(page);
   await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toContainText('IRB 1100-4/0.475');
   await expect(page.locator('.project-context')).toHaveText('短臂工作站');
+  const navigation = page.getByRole('navigation', { name: '项目导航', exact: true });
+  const back = navigation.getByRole('button', { name: '返回主页', exact: true });
+  await expect(back).toBeVisible();
+  await expect(page.getByRole('button', { name: '返回主页', exact: true })).toHaveCount(1);
+  await expect(page.locator('.header-right').getByRole('button', { name: '返回主页', exact: true })).toHaveCount(0);
+  const backBox = (await back.boundingBox())!, modelBox = (await page.getByRole('button', { name: '选择机器人型号', exact: true }).boundingBox())!;
+  expect(backBox.x + backBox.width).toBeLessThanOrEqual(modelBox.x);
   await noDocumentScroll(page);
   await returnHome(page);
   await expect(home(page).getByRole('button', { name: '打开项目 短臂工作站', exact: true })).toBeVisible();
@@ -234,26 +241,64 @@ test('failed cover capture keeps the editor and data available until the user re
   expect(errors).toEqual([]);
 });
 
-test('generic project preload failures can cancel and retry without mounting another robot or creating stray module drafts', async ({ page }) => {
+test('generic project downloads stay centered, cancel in flight and retry failures without mounting another robot or creating stray module drafts', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   const catalog = await readCatalog(), model = catalog.models.find(entry => entry.id === 'yaskawa-gp7')!;
   const fixtures = await prepareCatalogFixtures({ ...catalog, models: [model] });
   const broken = model.files.find(file => file.path.endsWith('.stl'))!.url;
-  let corrupt = true;
+  let corrupt = true, hold = true, cancelled = false;
+  let releaseDownload!: () => void;
+  const delayedFile = new Promise<void>(resolve => { releaseDownload = resolve; });
+  const aborted: string[] = [];
+  page.on('requestfailed', request => { if (request.url() === broken) aborted.push(request.failure()?.errorText ?? ''); });
   await page.route(url => fixtures.has(url.href), async route => {
+    const wasHeld = hold && route.request().url() === broken;
+    if (wasHeld) { hold = false; await delayedFile; }
     const bytes = Buffer.from(fixtures.get(route.request().url())!);
     if (corrupt && route.request().url() === broken) bytes[bytes.length - 1] ^= 1;
-    await route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: bytes });
+    try { await route.fulfill({ status: 200, contentType: 'application/octet-stream', headers: { 'access-control-allow-origin': '*' }, body: bytes }); }
+    catch (cause) { if (!wasHeld || !cancelled) throw cause; }
   });
   await page.goto('/');
   const id = await enterProject(page, 'GP7 下载重试', model.id);
   const barrier = page.getByRole('main', { name: '打开项目', exact: true });
-  await expect(barrier.getByRole('alert')).toContainText(/校验|SHA|完整/);
-  await expect(page.locator('canvas')).toHaveCount(0); await expect(codeWorkspace(page)).toHaveCount(0);
-  await barrier.getByRole('button', { name: '返回项目主页', exact: true }).click();
+  const loadingCard = barrier.locator('.project-model-card');
+  const progress = barrier.getByRole('progressbar', { name: '模型下载进度', exact: true });
+  try {
+    await expect(loadingCard).toHaveAttribute('data-model-load-state', 'downloading');
+    await expect(progress).toBeVisible();
+    // The first actual URDF has arrived; the following mesh response is held.
+    await expect.poll(async () => Number(await progress.getAttribute('value'))).toBeGreaterThan(0);
+    expect(Number(await progress.getAttribute('max'))).toBe(model.downloadBytes);
+    await expect(loadingCard).toContainText(model.name);
+    await expect(loadingCard).toContainText('GP7 下载重试');
+    await expect(loadingCard.getByRole('status')).toContainText('正在下载机器人模型');
+    await expect(page.locator('canvas')).toHaveCount(0); await expect(codeWorkspace(page)).toHaveCount(0);
+    for (const size of [{ width: 1000, height: 720 }, { width: 1440, height: 1000 }]) {
+      await page.setViewportSize(size);
+      await expect.poll(async () => {
+        const content = (await barrier.locator('.project-model-content').boundingBox())!, panel = (await loadingCard.boundingBox())!;
+        return Math.max(Math.abs(panel.x + panel.width / 2 - (content.x + content.width / 2)), Math.abs(panel.y + panel.height / 2 - (content.y + content.height / 2)));
+      }).toBeLessThanOrEqual(1);
+      const box = (await loadingCard.boundingBox())!;
+      expect(box.width).toBeLessThanOrEqual(520); expect(box.x).toBeGreaterThan(0); expect(box.y).toBeGreaterThan(0);
+      expect(box.x + box.width).toBeLessThan(size.width); expect(box.y + box.height).toBeLessThan(size.height);
+      await noDocumentScroll(page);
+    }
+    await page.screenshot({ path: '/tmp/emulation-project-model-download.png' });
+    cancelled = true;
+    await barrier.getByRole('button', { name: '返回项目主页', exact: true }).click();
+    await expect(home(page)).toBeVisible();
+  } finally { releaseDownload(); }
+  await expect.poll(() => aborted.length).toBeGreaterThan(0);
   await expect(card(page, id)).toBeVisible(); await expect(card(page, id).getByRole('img')).toHaveCount(0);
+  await expect(page.locator('canvas')).toHaveCount(0); await expect(codeWorkspace(page)).toHaveCount(0);
   await card(page, id).getByRole('button', { name: '打开项目 GP7 下载重试', exact: true }).click();
   await expect(barrier.getByRole('alert')).toContainText(/校验|SHA|完整/);
+  await expect(loadingCard).toHaveAttribute('data-model-load-state', 'error');
+  await expect(barrier.getByRole('button', { name: '重新加载模型', exact: true })).toBeEnabled();
+  await expect(page.locator('canvas')).toHaveCount(0); await expect(codeWorkspace(page)).toHaveCount(0);
+  await noDocumentScroll(page);
   corrupt = false;
   await barrier.getByRole('button', { name: '重新加载模型', exact: true }).click();
   await ready(page);

@@ -39,3 +39,18 @@
 .return-home-button { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0 }
 
 .topbar .project-context { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.topbar .project-breadcrumbs { gap:8px; min-width:0; flex:0 1 auto }
+.topbar .project-breadcrumbs .project-context { display:block; min-width:0; color:#7d8da3 }
+.topbar .project-breadcrumbs .project-separator,.breadcrumb-separator { display:block; flex-shrink:0; color:#9aa8b9 }
+.breadcrumb-home { display:inline-flex; align-items:center; gap:5px; flex-shrink:0; padding:6px 4px; border:0; border-radius:5px; background:transparent; color:#607b9d; font:inherit; cursor:pointer }
+.project-breadcrumbs .breadcrumb-home span { color:inherit }
+.breadcrumb-home:hover:not(:disabled) { color:#347fda; background:#edf4fc }
+.breadcrumb-home:focus-visible { outline:2px solid #5599e4; outline-offset:2px }
+.breadcrumb-home:disabled { opacity:.5; cursor:default }
+@media(max-width:1150px) {
+  .topbar .project-breadcrumbs { gap:5px }
+  .topbar .project-breadcrumbs .project-context { max-width:100px }
+}
+@media(max-width:700px) {
+  .topbar .project-breadcrumbs .project-context,.topbar .project-breadcrumbs .breadcrumb-project-separator { display:none }
+}

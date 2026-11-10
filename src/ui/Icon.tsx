@@ -2,6 +2,7 @@ import type { ReactNode, SVGProps } from 'react';
 import './icons.css';
 
 const shapes = {
+  home: <><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/></>,
   cube: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9M8 5.3l8 4.5"/></>,
   arrow: <path d="M5 12h14m-6-6 6 6-6 6"/>,
   play: <path d="m8 5 11 7-11 7Z"/>,

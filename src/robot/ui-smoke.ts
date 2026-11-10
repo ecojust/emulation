@@ -437,7 +437,7 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     const savedJoints = currentJoints(), savedPosition = currentPosition();
     // Returning from a hidden scene must still render its real, current pixels.
     await changeView('程序');
-    const home = [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === '返回主页');
+    const home = document.querySelector<HTMLButtonElement>('[aria-label="项目导航"] button[aria-label="返回主页"]');
     if (!home || home.disabled) throw new Error('Installed workspace has no available return-home action');
     home.click();
     const projectCard = () => [...document.querySelectorAll<HTMLElement>('[data-project-card]')].find(card => card.dataset.projectCard === projectId);

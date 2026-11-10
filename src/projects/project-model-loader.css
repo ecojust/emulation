@@ -1,0 +1,37 @@
+.project-model-loading .project-home-header { padding:20px 32px }
+.project-model-opening-label { color:#8b99ab; font-size:12px }
+.project-model-content { flex:1; min-height:0; display:grid; grid-template-rows:minmax(0,1fr); place-items:center; padding:32px }
+.project-model-card { width:min(100%,520px); max-height:100%; overflow:auto; padding:28px; border:1px solid #e1e8f1; border-radius:14px; background:#fff; box-shadow:0 12px 40px #1b39560b }
+.project-model-heading { display:flex; align-items:center; gap:16px; margin-bottom:26px }
+.project-model-symbol { display:flex; align-items:center; justify-content:center; flex:none; width:58px; height:58px; border-radius:13px; color:#347fda; background:#edf5ff }
+.project-model-heading h1 { margin:0 0 7px; font-size:20px; line-height:1.4; font-weight:650; color:#354961 }
+.project-model-heading p { margin:0; color:#8b99ab; font-size:12px }
+.project-model-details { display:grid; gap:14px; margin:0 0 27px; padding:18px; border:1px solid #e9eef5; border-radius:8px; background:#f8fafc }
+.project-model-details>div { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:baseline; gap:12px }
+.project-model-details dt { color:#8b99ab; font-size:12px }
+.project-model-details dd { margin:0; color:#4b607a; font-size:13px; line-height:1.6; overflow-wrap:anywhere }
+.project-model-progress-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:12px; color:#5c7390; margin-bottom:12px }
+.project-model-progress-heading>span { display:inline-flex; align-items:center; gap:8px; min-width:0 }
+.project-model-progress-heading strong { font-weight:600; font-variant-numeric:tabular-nums; color:#347fda }
+.project-model-progress progress { appearance:none; display:block; width:100%; height:7px; border:0; border-radius:5px; overflow:hidden; background:#edf2f8; accent-color:#347fda }
+.project-model-progress progress::-webkit-progress-bar { background:#edf2f8; border-radius:5px }
+.project-model-progress progress::-webkit-progress-value { background:#347fda; border-radius:5px }
+.project-model-progress progress::-moz-progress-bar { background:#347fda; border-radius:5px }
+.project-model-progress progress:indeterminate { opacity:.55 }
+.project-model-progress p { color:#8b99ab; font-size:11px; font-variant-numeric:tabular-nums; text-align:right; margin:9px 0 0 }
+.project-model-note { margin:20px 0 0; color:#8b99ab; font-size:12px; line-height:1.75; overflow-wrap:anywhere }
+.project-model-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:10px; padding-top:23px; margin-top:23px; border-top:1px solid #edf1f6 }
+.project-model-actions:empty { display:none }
+.project-model-error { color:#a34a57; background:#fff4f5; border:1px solid #efd4d8; padding:13px 15px; border-radius:8px; margin:0; font-size:12px; line-height:1.75; overflow-wrap:anywhere }
+.project-model-card.is-error .project-model-symbol { color:#b2515e; background:#fff2f3 }
+.project-model-spinner { animation:project-model-spin 1.4s linear infinite }
+@keyframes project-model-spin { to { transform:rotate(360deg) } }
+@media (max-width:600px) {
+  .project-model-loading .project-home-header { padding:16px 20px }
+  .project-model-content { padding:18px }
+  .project-model-card { padding:20px }
+  .project-model-heading { gap:12px }
+  .project-model-heading h1 { font-size:18px }
+  .project-model-symbol { width:48px; height:48px }
+}
+@media (prefers-reduced-motion:reduce) { .project-model-spinner { animation:none } }
