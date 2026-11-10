@@ -688,7 +688,7 @@ export default function App() {
       <a className="brand" href="./" aria-label="Emulation 首页"><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
       <div className="header-divider"/><div className="project-label"><span className="project-context">运动工作台</span><Icon name="chevron-right" size={13} className="project-separator"/><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={executing || sourceBusy} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span><Icon name="chevron-down" size={13}/></button></div>
       <div className="workspace-view-switch" aria-label="工作区视图">{(['scene', 'program'] as const).map(item => <button key={item} type="button" aria-pressed={activeView === item} disabled={executing && item === 'program'} className={activeView === item ? 'selected' : ''} onClick={() => changeWorkspaceView(item)}>{item === 'scene' ? '场景' : '程序'}</button>)}</div>
-      <div className="header-right"><span className="version">v0.2.2</span></div>
+      <div className="header-right"><span className="version">v0.3.0</span></div>
     </header>
     <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={closeState !== null || removeObject !== null}>
       <aside className="object-panel" aria-label={activeView === 'program' ? '程序模块' : '场景对象'}>
