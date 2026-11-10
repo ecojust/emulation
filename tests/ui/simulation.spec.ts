@@ -54,7 +54,7 @@ test('creating a Path first and capturing its ordered points generates a module 
   const pathTree = page.locator(`details.object-path`).filter({ has: page.locator(`[data-object-id="${pathId}"]`) });
   await expect(pathTree.locator('[data-object-kind="target"]')).toHaveText([first.name, second.name]);
   for (const point of [first, second]) await expect(page.getByRole('button', { name: `选择目标点 ${point.name}`, exact: true })).toBeInViewport();
-  const sectionLabel = page.locator('.object-section-label').filter({ hasText: '危险区域' }).locator('span');
+  const sectionLabel = page.locator('.object-section-label').filter({ hasText: '禁入区' }).locator('span');
   expect((await sectionLabel.boundingBox())!.height).toBeLessThan(25);
   await expect(page.getByRole('heading', { name: 'Path 1', exact: true })).toBeVisible();
   await selectPoint(page, first);

@@ -696,7 +696,7 @@ export default function App() {
         <div className="object-panel-content" aria-hidden={leftCollapsed} inert={leftCollapsed}>
           {activeView === 'program' ? <ModuleList files={documents.files} activeFileId={documents.project.activeFileId} disabled={!documents.ready || sourceBusy || executing} onSelectFile={id => documents.selectFile(id)}/> : <SceneObjectTree robotName={activeName} joints={displayJoints} robotParent={graph.robotBase.parent} frames={graph.frames} tools={graph.tools}
             paths={program.paths.map(path => ({ ...path, parent: pathAttachment(graph, path.id).parent }))} points={program.points} zones={zones}
-            invalidZoneIds={zoneConfiguration.errors.map(error => error.id)} selection={selection} executingPointId={execution.pointId}
+            invalidZoneIds={zoneConfiguration.errors.map(error => error.id)} selection={selection} executingPointId={execution.phase === 'running' ? execution.pointId : null}
             disabled={executing || sourceBusy} canAddZone={workspace.canAddZone} onSelect={chooseObject} onContextMenu={setObjectMenu} onReparent={reparentObject}
             onAddFrame={addReferenceFrame} onAddTool={addTool} onAddPath={createPath}
             onAddZone={() => { clearPreview(); stopJog(); cancelInspections(); workspace.addZone(); }}/>}
