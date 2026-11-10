@@ -1,0 +1,4576 @@
+[
+  {
+    "modelId": "fanuc-crx10ia-l",
+    "chain": {
+      "modelId": "fanuc-crx10ia-l",
+      "steps": [
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            75.864,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 0
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            -119,
+            0,
+            0,
+            1,
+            169.136,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 1
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            44,
+            0,
+            0,
+            1,
+            710,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 2
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            154,
+            0,
+            1,
+            0,
+            75,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "jointIndex": 3
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            386,
+            0,
+            1,
+            0,
+            -64,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 4
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            99.5,
+            0,
+            1,
+            0,
+            -86,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": 5
+        },
+        {
+          "origin": [
+            0.0007963267107332633,
+            0,
+            0.9999996829318346,
+            80,
+            0,
+            1,
+            0,
+            0,
+            -0.9999996829318346,
+            0,
+            0.0007963267107332633,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        }
+      ],
+      "limits": [
+        {
+          "minDeg": -179.99984796050427,
+          "maxDeg": 179.99984796050427,
+          "maxSpeedDeg": 114.59155902616465
+        },
+        {
+          "minDeg": -130.06141949469688,
+          "maxDeg": 130.06141949469688,
+          "maxSpeedDeg": 114.59155902616465
+        },
+        {
+          "minDeg": -130.06141949469688,
+          "maxDeg": 130.06141949469688,
+          "maxSpeedDeg": 143.2394487827058
+        },
+        {
+          "minDeg": -199.96227050065733,
+          "maxDeg": 199.96227050065733,
+          "maxSpeedDeg": 200.53522829578813
+        },
+        {
+          "minDeg": -130.06141949469688,
+          "maxDeg": 130.06141949469688,
+          "maxSpeedDeg": 200.53522829578813
+        },
+        {
+          "minDeg": -359.81749534215703,
+          "maxDeg": 359.81749534215703,
+          "maxSpeedDeg": 286.4788975654116
+        }
+      ]
+    },
+    "parts": [
+      {
+        "index": 0,
+        "name": "base_link",
+        "path": "meshes/base_link.stl",
+        "bytes": 636084,
+        "sha256": "19705f5dbb544616ac3f21ee0c9a8320892b52bf4e451aec4ce0e59b2f65b46c",
+        "gitBlobSha1": "344d4816cbcd8d7065349d50bb8086bc39b2cc1b",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/base_link.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 1,
+        "name": "link_1",
+        "path": "meshes/link_1.stl",
+        "bytes": 583884,
+        "sha256": "8da27e169b4b752e3a51c4f3262bf45089bd004cef4c1ab2adc773db999202ab",
+        "gitBlobSha1": "3ce7373cb65e470088b5e66430fb907e4a6a2d2d",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_1.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              -75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 2,
+        "name": "link_2",
+        "path": "meshes/link_2.stl",
+        "bytes": 891684,
+        "sha256": "3042fbd2e41b989813bdd9e4a5f49311937b22ff5608b55e17aac86f4c9acb0e",
+        "gitBlobSha1": "58f7fc59c81298933873b6e301c1df3ca9c42acc",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_2.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              -119,
+              0,
+              0,
+              1,
+              169.136,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              119,
+              0,
+              0,
+              1,
+              -245,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 3,
+        "name": "link_3",
+        "path": "meshes/link_3.stl",
+        "bytes": 624484,
+        "sha256": "56b99a46906d91c5ed4b750530410ca22c0183acda11a27db12af855594f05e4",
+        "gitBlobSha1": "c8d5eb1e1f2b1c6e6773f0871acc1513f5df50af",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_3.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              -119,
+              0,
+              0,
+              1,
+              169.136,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              44,
+              0,
+              0,
+              1,
+              710,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              75,
+              0,
+              0,
+              1,
+              -955,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 4,
+        "name": "link_4",
+        "path": "meshes/link_4.stl",
+        "bytes": 578584,
+        "sha256": "7d19b173a2c4a27538e07b5393d2688ed4b099d253310ca8dab4b638bf60bbaf",
+        "gitBlobSha1": "602adb6358f6b17964caea3376affdf2c52e8225",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_4.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              -119,
+              0,
+              0,
+              1,
+              169.136,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              44,
+              0,
+              0,
+              1,
+              710,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              154,
+              0,
+              1,
+              0,
+              75,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -154,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              -955,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 5,
+        "name": "link_5",
+        "path": "meshes/link_5.stl",
+        "bytes": 524684,
+        "sha256": "501d73d43880458845b81f1e52b670d24319f611a43621352e6e55ef49e68816",
+        "gitBlobSha1": "373e10d51312a4325beddc0481e07175097646fd",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_5.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              -119,
+              0,
+              0,
+              1,
+              169.136,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              44,
+              0,
+              0,
+              1,
+              710,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              154,
+              0,
+              1,
+              0,
+              75,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              386,
+              0,
+              1,
+              0,
+              -64,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -540,
+              0,
+              1,
+              0,
+              64,
+              0,
+              0,
+              1,
+              -955,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 6,
+        "name": "link_6",
+        "path": "meshes/link_6.stl",
+        "bytes": 139884,
+        "sha256": "c842cab29f9f14fced8f50b0505387a999894fe96d7b96b5cc0e5a9fdcc7236d",
+        "gitBlobSha1": "c78b453d638c3291b0068d260921eacdbb5986f5",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/CRX_10iA_L_v1/meshes/link_6.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              75.864,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              -119,
+              0,
+              0,
+              1,
+              169.136,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              44,
+              0,
+              0,
+              1,
+              710,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              154,
+              0,
+              1,
+              0,
+              75,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              386,
+              0,
+              1,
+              0,
+              -64,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              99.5,
+              0,
+              1,
+              0,
+              -86,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": 5
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -639.5,
+              0,
+              1,
+              0,
+              150,
+              0,
+              0,
+              1,
+              -955,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "modelId": "fanuc-r2000ib-165f",
+    "chain": {
+      "modelId": "fanuc-r2000ib-165f",
+      "steps": [
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            212.5,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            -1
+          ],
+          "jointIndex": 0
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            312,
+            0,
+            1,
+            0,
+            91,
+            0,
+            0,
+            1,
+            457.5,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 1
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            206.5,
+            0,
+            0,
+            1,
+            1075,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            -1,
+            0
+          ],
+          "jointIndex": 2
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            1062,
+            0,
+            1,
+            0,
+            -297.5,
+            0,
+            0,
+            1,
+            225,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": 3
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            218,
+            0,
+            1,
+            0,
+            -55.5,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 4
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            175.5,
+            0,
+            1,
+            0,
+            55.5,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "jointIndex": 5
+        },
+        {
+          "origin": [
+            0.0007963267107332633,
+            0,
+            0.9999996829318346,
+            80,
+            0,
+            1,
+            0,
+            0,
+            -0.9999996829318346,
+            0,
+            0.0007963267107332633,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        }
+      ],
+      "limits": [
+        {
+          "minDeg": -179.99984796050427,
+          "maxDeg": 179.99984796050427,
+          "maxSpeedDeg": 85.94366926962348
+        },
+        {
+          "minDeg": -130.06141949469688,
+          "maxDeg": 130.06141949469688,
+          "maxSpeedDeg": 85.94366926962348
+        },
+        {
+          "minDeg": -199.96227050065733,
+          "maxDeg": 29.79380534680281,
+          "maxSpeedDeg": 114.59155902616465
+        },
+        {
+          "minDeg": -199.96227050065733,
+          "maxDeg": 199.96227050065733,
+          "maxSpeedDeg": 171.88733853924697
+        },
+        {
+          "minDeg": -130.06141949469688,
+          "maxDeg": 130.06141949469688,
+          "maxSpeedDeg": 171.88733853924697
+        },
+        {
+          "minDeg": -359.81749534215703,
+          "maxDeg": 359.81749534215703,
+          "maxSpeedDeg": 286.4788975654116
+        }
+      ]
+    },
+    "parts": [
+      {
+        "index": 0,
+        "name": "base_link",
+        "path": "meshes/base_link.stl",
+        "bytes": 154684,
+        "sha256": "9190e7af6027907803b9c2334cd711ceb490724b52b2dc5f810f142a07f5be60",
+        "gitBlobSha1": "0dbe8d90e6901e725bf25c8c28392d4434246d56",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/base_link.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 1,
+        "name": "balancer",
+        "path": "meshes/balancer.stl",
+        "bytes": 95084,
+        "sha256": "b8bfbae4cf84290c51f6ca2b740151e408f19eec7a31ff38fe95cff9c8e88836",
+        "gitBlobSha1": "0852b814316d94d8ec914ebb72269b3761c1f1fc",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/balancer.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -308,
+              0,
+              1,
+              0,
+              351,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              308,
+              0,
+              1,
+              0,
+              -351,
+              0,
+              0,
+              1,
+              -670,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 2,
+        "name": "balancer_shaft",
+        "path": "meshes/balancer_shaft.stl",
+        "bytes": 24884,
+        "sha256": "2a44d59bf60edad6b46fe173159a1b556b982543cca6b85287f578d72d9c4ce2",
+        "gitBlobSha1": "ff56ac616e8a9a76e9e6d6e846d2d73c34209057",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/balancer_shaft.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -308,
+              0,
+              1,
+              0,
+              351,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              327.5,
+              0,
+              1,
+              0,
+              -162,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -19.5,
+              0,
+              1,
+              0,
+              -189,
+              0,
+              0,
+              1,
+              -670,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 3,
+        "name": "link_1",
+        "path": "meshes/link_1.stl",
+        "bytes": 226084,
+        "sha256": "e1b5d9e596af1c46b5a53e407b11e57a1d2d464b7c2354e3a184fa572a9f3193",
+        "gitBlobSha1": "fbe13f129c756a33cd574a732465d8f1149b4aab",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_1.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              -212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 4,
+        "name": "link_2",
+        "path": "meshes/link_2.stl",
+        "bytes": 124184,
+        "sha256": "8cb605909b15761cc3aeba147498776c2429b2121f967a4cbced0b0aa6e303fc",
+        "gitBlobSha1": "013484f24df84ae9e61ee08f759f2174a25f5810",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_2.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              312,
+              0,
+              1,
+              0,
+              91,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -312,
+              0,
+              1,
+              0,
+              -91,
+              0,
+              0,
+              1,
+              -670,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 5,
+        "name": "link_3",
+        "path": "meshes/link_3.stl",
+        "bytes": 232184,
+        "sha256": "5b101f75c1d84d6d95f7d7bcaf8f123c6dc913d74501d052f1201e230ab5209b",
+        "gitBlobSha1": "c2e03d66e739f834b0cef2749e93eea44638f0af",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_3.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              312,
+              0,
+              1,
+              0,
+              91,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              206.5,
+              0,
+              0,
+              1,
+              1075,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -312,
+              0,
+              1,
+              0,
+              -297.5,
+              0,
+              0,
+              1,
+              -1745,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 6,
+        "name": "link_4",
+        "path": "meshes/link_4.stl",
+        "bytes": 93784,
+        "sha256": "bbf272572ba268077f7be0b5531963d2ace7382b44019bf868a180114491d399",
+        "gitBlobSha1": "04dfe5a1c1815da3c70c981f4724bd3bc43d5eef",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_4.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              312,
+              0,
+              1,
+              0,
+              91,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              206.5,
+              0,
+              0,
+              1,
+              1075,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              1062,
+              0,
+              1,
+              0,
+              -297.5,
+              0,
+              0,
+              1,
+              225,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -1374,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              -1970,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 7,
+        "name": "link_5",
+        "path": "meshes/link_5.stl",
+        "bytes": 154084,
+        "sha256": "aaf5696977233ed8ffc06483dbd6a26494a8116aa6b02111c6d5ac1c078c7d3e",
+        "gitBlobSha1": "4c738eeec4ca46509d527243c4da9cd7d55fbc86",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_5.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              312,
+              0,
+              1,
+              0,
+              91,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              206.5,
+              0,
+              0,
+              1,
+              1075,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              1062,
+              0,
+              1,
+              0,
+              -297.5,
+              0,
+              0,
+              1,
+              225,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              218,
+              0,
+              1,
+              0,
+              -55.5,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -1592,
+              0,
+              1,
+              0,
+              55.5,
+              0,
+              0,
+              1,
+              -1970,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "index": 8,
+        "name": "link_6",
+        "path": "meshes/link_6.stl",
+        "bytes": 92884,
+        "sha256": "34adaf3175d90e160569ff048e6f24cc6b8792cfbb7a3779d857c8b8288edefa",
+        "gitBlobSha1": "fbc3d9ca7a8ba0cdc2d1e979f5d6b43ac8b80e3c",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Fanuc/R_2000iB_165F_v1/meshes/link_6.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              212.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              -1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              312,
+              0,
+              1,
+              0,
+              91,
+              0,
+              0,
+              1,
+              457.5,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              206.5,
+              0,
+              0,
+              1,
+              1075,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              1062,
+              0,
+              1,
+              0,
+              -297.5,
+              0,
+              0,
+              1,
+              225,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              218,
+              0,
+              1,
+              0,
+              -55.5,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              175.5,
+              0,
+              1,
+              0,
+              55.5,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 5
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              -1767.5,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              -1970,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  {
+    "modelId": "yaskawa-gp7",
+    "chain": {
+      "modelId": "yaskawa-gp7",
+      "steps": [
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            330,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 0
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            40,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 1
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            445,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            -1,
+            0
+          ],
+          "jointIndex": 2
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            440,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            40,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "jointIndex": 3
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            -1,
+            0
+          ],
+          "jointIndex": 4
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "jointIndex": 5
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            80,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        },
+        {
+          "origin": [
+            -2.0510342851533115e-10,
+            4.102068570306623e-10,
+            1,
+            0,
+            0,
+            -1,
+            4.102068570306623e-10,
+            0,
+            1,
+            8.413483277748711e-20,
+            2.0510342851533115e-10,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        }
+      ],
+      "limits": [
+        {
+          "minDeg": -169.99999997763402,
+          "maxDeg": 169.99999997763402,
+          "maxSpeedDeg": 375.0000000012184
+        },
+        {
+          "minDeg": -65.00000001167034,
+          "maxDeg": 144.9999999775528,
+          "maxSpeedDeg": 315.0000000124826
+        },
+        {
+          "minDeg": -69.99999997730912,
+          "maxDeg": 190.00000001207644,
+          "maxSpeedDeg": 409.9999999325771
+        },
+        {
+          "minDeg": -190.00000001207644,
+          "maxDeg": 190.00000001207644,
+          "maxSpeedDeg": 550.0000000017869
+        },
+        {
+          "minDeg": -134.99999998897945,
+          "maxDeg": 134.99999998897945,
+          "maxSpeedDeg": 550.0000000017869
+        },
+        {
+          "minDeg": -359.9999999897105,
+          "maxDeg": 359.9999999897105,
+          "maxSpeedDeg": 1000.000000003249
+        }
+      ]
+    },
+    "parts": [
+      {
+        "index": 0,
+        "name": "base_link",
+        "path": "meshes/base_link.stl",
+        "bytes": 592184,
+        "sha256": "7a4a03ca7d25ccf3d18fe4cc202974a330516ebf38910cffa0e0e32b850270cc",
+        "gitBlobSha1": "7962055a81315e69ef82fa7884da46a3456dbe28",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/base_link.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 1,
+        "name": "link_1",
+        "path": "meshes/link_1.stl",
+        "bytes": 449484,
+        "sha256": "43673448234bedb04b582804839e69d6b7ad10c44f9be36ad69dc8833f2eb87c",
+        "gitBlobSha1": "58a9123b8f97a466576e035b582f849d7c169cac",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_1.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              330,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 2,
+        "name": "link_2",
+        "path": "meshes/link_2.stl",
+        "bytes": 1164484,
+        "sha256": "ae9b7a79720b37887b522bd650231e296f14e00eb4ec0e9282f06edb60b2cfbe",
+        "gitBlobSha1": "00e6bf86913cb680f16978b1618ef3fb4d023742",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_2.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              330,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              40,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 3,
+        "name": "link_3",
+        "path": "meshes/link_3.stl",
+        "bytes": 640984,
+        "sha256": "91df6894811f949a6850c3aa10c793e978b3f9b049c20c0313b0e17a9144e6d0",
+        "gitBlobSha1": "7a9426c5f56446c6d2b3a085b290a6039fdb264e",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_3.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              330,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              40,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              445,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 4,
+        "name": "link_4",
+        "path": "meshes/link_4.stl",
+        "bytes": 781684,
+        "sha256": "c8469700819c679147d37b2a364dd369bd91bd5541149d470087027a12d579fc",
+        "gitBlobSha1": "e2fa4bb14a9ceb19c992b04065651a685618fa95",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_4.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              330,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              40,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              445,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              440,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              40,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 5,
+        "name": "link_5",
+        "path": "meshes/link_5.stl",
+        "bytes": 146084,
+        "sha256": "a7b4da11fed68351b02f4e45eb4c914bd3307b0bf277af42606d76b836817eb1",
+        "gitBlobSha1": "bf31278bf124a04f6758ddb68730b755ccfb8039",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_5.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              330,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              40,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              445,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              440,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              40,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 6,
+        "name": "link_6",
+        "path": "meshes/link_6.stl",
+        "bytes": 63484,
+        "sha256": "ed6c6ecfe6c4204b7b0e8f08d19f861b64eafb6172563d61cacc169ec97855a3",
+        "gitBlobSha1": "0e9bf46a8b9b4d6faefde9421e6f5b67a2d8b11a",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP7_v1/meshes/link_6.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              330,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              40,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              445,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              440,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              40,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 5
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "modelId": "yaskawa-gp110",
+    "chain": {
+      "modelId": "yaskawa-gp110",
+      "steps": [
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            540,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 0
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            320,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            1,
+            0
+          ],
+          "jointIndex": 1
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            870,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            -1,
+            0
+          ],
+          "jointIndex": 2
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            235,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "jointIndex": 3
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            1020,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            -1,
+            0
+          ],
+          "jointIndex": 4
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            -1,
+            0,
+            0
+          ],
+          "jointIndex": 5
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            200,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        },
+        {
+          "origin": [
+            -2.0510342851533115e-10,
+            4.102068570306623e-10,
+            1,
+            0,
+            0,
+            -1,
+            4.102068570306623e-10,
+            0,
+            1,
+            8.413483277748711e-20,
+            2.0510342851533115e-10,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            1,
+            0,
+            0
+          ],
+          "jointIndex": null
+        }
+      ],
+      "limits": [
+        {
+          "minDeg": -180.00000002350313,
+          "maxDeg": 180.00000002350313,
+          "maxSpeedDeg": 140.000000011914
+        },
+        {
+          "minDeg": -90.00000001175157,
+          "maxDeg": 155.0000000234219,
+          "maxSpeedDeg": 109.99999998889824
+        },
+        {
+          "minDeg": -80.00000002317823,
+          "maxDeg": 90.00000001175157,
+          "maxSpeedDeg": 130.00000002334068
+        },
+        {
+          "minDeg": -359.9999999897105,
+          "maxDeg": 359.9999999897105,
+          "maxSpeedDeg": 175.00000000056858
+        },
+        {
+          "minDeg": -125.00000000040613,
+          "maxDeg": 125.00000000040613,
+          "maxSpeedDeg": 175.00000000056858
+        },
+        {
+          "minDeg": -359.9999999897105,
+          "maxDeg": 359.9999999897105,
+          "maxSpeedDeg": 255.00000019563413
+        }
+      ]
+    },
+    "parts": [
+      {
+        "index": 0,
+        "name": "base_link",
+        "path": "meshes/base_link.stl",
+        "bytes": 61184,
+        "sha256": "5dfe2b6286eeaf9d5c9eaeb1b479e3afb4567e62a70b60a5e88f5b5636fd1342",
+        "gitBlobSha1": "416486206e9b38e832f93b1a13971c98cbcc4372",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/base_link.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 1,
+        "name": "link_1",
+        "path": "meshes/link_1.stl",
+        "bytes": 714684,
+        "sha256": "bd8820d6a3c5a4c96d673defa2cbff5d2296340dbf6123351e750dd3c04b220b",
+        "gitBlobSha1": "867e7072b737737ef855f8e0855a559e6bc5749d",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_1.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              540,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 2,
+        "name": "link_2",
+        "path": "meshes/link_2.stl",
+        "bytes": 716434,
+        "sha256": "a2c966f071e8a18bed46626ab2094b1bfad808005718cbd27293ef92465eba0d",
+        "gitBlobSha1": "b235e7288f48fcc95237c592d5d4638d1e531cba",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_2.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              540,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              320,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 3,
+        "name": "link_3",
+        "path": "meshes/link_3.stl",
+        "bytes": 502384,
+        "sha256": "d7f993705d5c0e0a73ad810db7be080fd5a807ab71dac4c2eb7a3fe270ab1637",
+        "gitBlobSha1": "d5d78417c03af338f5e0df3730fd972a52634607",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_3.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              540,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              320,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              870,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 4,
+        "name": "link_4",
+        "path": "meshes/link_4.stl",
+        "bytes": 221384,
+        "sha256": "bf63934e1d8d824f4a4c5871e3e26cdbdb20f6245cce1c084972ffc9c6f66b70",
+        "gitBlobSha1": "bacccf040a58843ac85eaedc703170886961bee0",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_4.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              540,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              320,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              870,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              235,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 5,
+        "name": "link_5",
+        "path": "meshes/link_5.stl",
+        "bytes": 300434,
+        "sha256": "d73da915315f67f416a6f00e2e1f4f429f0b9819095650768d1b8b981cfdff38",
+        "gitBlobSha1": "fad312dad7bbed3877e751ace96a71ca96d7a37d",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_5.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              540,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              320,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              870,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              235,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              1020,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      },
+      {
+        "index": 6,
+        "name": "link_6",
+        "path": "meshes/link_6.stl",
+        "bytes": 236884,
+        "sha256": "0c42c1fcd60af3a6e8fcab2edc2f7b92fe96198e6d16c07523bb905166c1d005",
+        "gitBlobSha1": "3a9e0e0fd417928804bb96c864d8344cad004479",
+        "url": "https://raw.githubusercontent.com/work-r-labs/robots/ab6aa489855256de07ba46c7b45887fdbc42b607/library/Yaskawa/GP110_v1/meshes/link_6.stl",
+        "steps": [
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              540,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              0,
+              1
+            ],
+            "jointIndex": 0
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              320,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              1,
+              0
+            ],
+            "jointIndex": 1
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              870,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 2
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              235,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 3
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              1020,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              0,
+              -1,
+              0
+            ],
+            "jointIndex": 4
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              -1,
+              0,
+              0
+            ],
+            "jointIndex": 5
+          },
+          {
+            "origin": [
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              1
+            ],
+            "axis": [
+              1,
+              0,
+              0
+            ],
+            "jointIndex": null
+          }
+        ],
+        "scale": [
+          1000,
+          1000,
+          1000
+        ]
+      }
+    ]
+  }
+]

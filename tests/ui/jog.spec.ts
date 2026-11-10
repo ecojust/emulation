@@ -1,3 +1,4 @@
+import { openDefaultProject } from './project-helpers';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { quaternionDistanceDeg } from '../../src/robot/kinematics';
@@ -12,7 +13,7 @@ async function open(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/');
+  await openDefaultProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await expect(scene(page)).toHaveAttribute('data-camera-distance', /\d/);
   return errors;

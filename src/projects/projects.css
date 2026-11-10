@@ -1,0 +1,44 @@
+.project-editor { height:100%; width:100%; overflow:hidden }
+.project-home { width:100%; height:100%; display:flex; flex-direction:column; background:#f5f7fa; color:#263347 }
+.project-home-header { flex:none; display:flex; align-items:center; justify-content:space-between; padding:24px 5%; background:white; border-bottom:1px solid #e4eaf2 }
+.project-home-brand { display:flex; align-items:center; gap:12px; color:#3379ce }
+.project-home-brand strong { display:block; font-size:22px; letter-spacing:-.5px; color:#25364c }
+.project-home-brand span { display:block; font-size:11px; color:#8290a2; margin-top:3px }
+.project-home button { display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid #dce4ef; border-radius:7px; padding:9px 13px; background:white; color:#51647c }
+.project-home button:hover:not(:disabled) { border-color:#8db3e3; background:#f1f7ff }
+.project-home button:disabled { opacity:.5 }
+.project-home button.project-primary { background:#347fda; border-color:#347fda; color:white }
+.project-home button.project-danger { background:#bc4855; border-color:#bc4855; color:white }
+.project-home button.project-primary:hover:not(:disabled) { background:#286bbb; border-color:#286bbb }
+.project-home button.project-danger:hover:not(:disabled) { background:#a53845; border-color:#a53845 }
+.project-home-content { flex:1; min-height:0; overflow:auto; padding:30px 5% 40px }
+.project-list-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:26px }
+.project-list-heading h1 { font-size:23px; margin:0 0 7px; font-weight:650 }
+.project-list-heading p,.project-list-heading>span { color:#8895a7; margin:0; font-size:12px }
+.project-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:22px }
+.project-card { border:1px solid #e1e8f1; border-radius:11px; overflow:hidden; background:white; box-shadow:0 3px 12px #1b395608; min-width:0 }
+.project-home button.project-card-open { display:block; width:100%; padding:0; border:0; border-radius:0; text-align:left; color:inherit; background:white }
+.project-cover { width:100%; aspect-ratio:8/5; background:#edf2f7; overflow:hidden; display:flex; align-items:center; justify-content:center }
+.project-cover img { width:100%; height:100%; object-fit:contain }
+.project-cover-pending { display:flex; flex-direction:column; align-items:center; gap:14px; color:#9cabc0; font-size:11px }
+.project-card-info { padding:17px 18px 14px }
+.project-card-info h2 { margin:0 0 8px; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.project-card-info p { color:#71849c; font-size:11px; margin:0 0 12px }
+.project-card-info time { color:#a0adbd; font-size:10px }
+.project-card-actions { border-top:1px solid #eff2f7; padding:8px 14px; display:flex; gap:9px; justify-content:flex-end }
+.project-home .project-card-actions button { border:0; padding:6px; font-size:11px; color:#8392a7 }
+.project-empty { display:flex; flex-direction:column; align-items:center; padding:10vh 20px; text-align:center; color:#8b9bb1 }
+.project-empty h2 { color:#4a607b; font-size:18px; margin:22px 0 4px }
+.project-empty p { margin-bottom:24px }
+.project-error { color:#a34a57; background:#fff4f5; border:1px solid #efd4d8; padding:12px; border-radius:6px; margin-bottom:16px; overflow-wrap:anywhere }
+.project-error button { margin-left:12px }
+.project-modal-backdrop { position:fixed; inset:0; z-index:200; background:#182c4660; display:flex; align-items:center; justify-content:center; padding:24px }
+.project-modal { background:white; border-radius:12px; width:460px; max-width:100%; max-height:100%; overflow:auto; padding:24px; box-shadow:0 18px 70px #172c4c40 }
+.project-modal header { display:flex; align-items:center; justify-content:space-between; margin-bottom:23px }
+.project-modal h2 { margin:0; font-size:18px }
+.project-modal header button { border:0; padding:4px }
+.project-modal label { display:block; margin-bottom:20px; color:#65778d; font-size:12px }
+.project-modal input,.project-modal select { display:block; width:100%; margin-top:8px; padding:10px 12px; border:1px solid #dce4ef; border-radius:6px; color:#354961; background:white }
+.project-modal small { display:block; color:#98a5b6; margin-top:8px }
+.project-modal p { line-height:1.8 }
+.project-modal footer { display:flex; justify-content:flex-end; gap:10px; margin-top:25px }

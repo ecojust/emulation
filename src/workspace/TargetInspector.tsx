@@ -35,7 +35,7 @@ export default function TargetInspector({ modelKey, point, worldPose, referenceN
     {formatted.configurationNote && <p className="field-hint">{formatted.configurationNote}</p>}
     <button type="button" className="example-button" disabled={previewing || Boolean(updateDisabledReason)} title={previewing ? '请先退出端点预览。' : updateDisabledReason ?? ''} onClick={onUpdate}>用当前姿态更新点</button>
     {updateDisabledReason && <p className="field-hint" role="status">{updateDisabledReason}</p>}
-    {profile.brand !== 'ABB' && <p className="field-hint">此型号尚未支持端点候选枚举与危险区干涉检查。品牌位置数据为仿真模板，不是已验收的控制器文件。</p>}
+    {profile.brand !== 'ABB' && <p className="field-hint">候选解使用此型号的运动链求解；品牌位置数据为仿真模板，控制器配置与现场标定仍需核对。</p>}
     {children}
   </div>;
 }

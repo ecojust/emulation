@@ -35,3 +35,7 @@
 .path-frame-details[open]>summary>svg { transform:rotate(90deg) }
 .base-inspector,.flange-inspector,.joint-inspector { min-width:0 }
 .path-inspector>.copy-button { display:inline-flex; align-items:center; gap:6px }
+
+.return-home-button { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0 }
+
+.topbar .project-context { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }

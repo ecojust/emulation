@@ -1,3 +1,4 @@
+import { openDefaultProject } from './project-helpers';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { chooseCompletion, codeEditor, moduleList, newSource, readSource, replaceSource } from './programming-helpers';
 import { captureCurrent, expectNoPointMotionActions, observeBrowser, openPathMenu } from './workspace-helpers';
@@ -5,7 +6,7 @@ import { captureCurrent, expectNoPointMotionActions, observeBrowser, openPathMen
 test.setTimeout(90_000);
 
 async function openWorkspace(page: Page) {
-  await page.goto('/');
+  await openDefaultProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
 }
 

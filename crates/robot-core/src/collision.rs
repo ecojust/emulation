@@ -2,7 +2,7 @@
 //! OBBs are only a broad filter; cached triangle BVHs determine surface contact
 //! and closed-mesh containment. Invalid interiors remain explicitly uncertain.
 #[path = "collision_mesh.rs"]
-mod mesh;
+pub(crate) mod mesh;
 use crate::kinematics::{forward_kinematics, joints_within_limits};
 use crate::math::{dot, multiply_matrices, quaternion_to_matrix, sub, IDENTITY};
 use crate::model::get_robot_model;

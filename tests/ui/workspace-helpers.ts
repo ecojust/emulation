@@ -1,3 +1,4 @@
+import { openDefaultProject } from './project-helpers';
 import { expect, type Page } from '@playwright/test';
 import type { Pose } from '../../src/robot/types';
 
@@ -14,7 +15,7 @@ export function observeBrowser(page: Page) {
   return errors;
 }
 export async function openWorkspace(page: Page) {
-  await page.goto('/');
+  await openDefaultProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await expect(scene(page)).toHaveAttribute('data-camera-distance', /\d/);
 }

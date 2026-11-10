@@ -1,0 +1,384 @@
+{
+  "robot": {
+    "kind": "generic",
+    "chain": {
+      "modelId": "planar-redundant-regression",
+      "steps": [
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 0
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            80,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 1
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            70,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 2
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            60,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 3
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            40,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 4
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            30,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": 5
+        },
+        {
+          "origin": [
+            1,
+            0,
+            0,
+            20,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "axis": [
+            0,
+            0,
+            1
+          ],
+          "jointIndex": null
+        }
+      ],
+      "limits": [
+        {
+          "minDeg": -70,
+          "maxDeg": 70,
+          "maxSpeedDeg": 180
+        },
+        {
+          "minDeg": -70,
+          "maxDeg": 70,
+          "maxSpeedDeg": 180
+        },
+        {
+          "minDeg": -70,
+          "maxDeg": 70,
+          "maxSpeedDeg": 180
+        },
+        {
+          "minDeg": -70,
+          "maxDeg": 70,
+          "maxSpeedDeg": 180
+        },
+        {
+          "minDeg": -70,
+          "maxDeg": 70,
+          "maxSpeedDeg": 180
+        },
+        {
+          "minDeg": -70,
+          "maxDeg": 70,
+          "maxSpeedDeg": 180
+        }
+      ]
+    },
+    "bodies": [
+      {
+        "stepIndex": 0,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "stepIndex": 1,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "stepIndex": 2,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "stepIndex": 3,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "stepIndex": 4,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "stepIndex": 5,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "stepIndex": 6,
+        "centerMm": [
+          0,
+          0,
+          0
+        ],
+        "halfSizeMm": [
+          1,
+          1,
+          1
+        ]
+      }
+    ]
+  },
+  "basePose": {
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "orientation": [
+      1,
+      0,
+      0,
+      0
+    ]
+  },
+  "toolPose": {
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "orientation": [
+      1,
+      0,
+      0,
+      0
+    ]
+  },
+  "toolRadiusMm": 1,
+  "startJoints": [
+    62.4,
+    34,
+    51.3,
+    52.5,
+    50.2,
+    -36.3
+  ],
+  "targets": [
+    {
+      "position": [
+        -84.44288194337348,
+        127.33427724149252,
+        0
+      ],
+      "orientation": [
+        0.2545013359461925,
+        0,
+        0,
+        -0.9670724223146905
+      ]
+    },
+    {
+      "position": [
+        -118.54930261202831,
+        86.86496234051415,
+        0
+      ],
+      "orientation": [
+        0.25906091892478006,
+        0,
+        0,
+        -0.9658609839339451
+      ]
+    }
+  ],
+  "zones": [],
+  "clearanceMm": 1,
+  "speedMmPerSecond": 100,
+  "allowDetours": false
+}

@@ -1,3 +1,4 @@
+import { enterProject, openDefaultProject } from './project-helpers';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { RobotCatalog, RobotCatalogModel } from '../../src/catalog/types';
 import type { Pose } from '../../src/robot/types';
@@ -27,7 +28,7 @@ function observe(page: Page) {
   return errors;
 }
 async function open(page: Page) {
-  await page.goto('/');
+  await openDefaultProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
 }
 async function showPicker(page: Page) {
@@ -169,6 +170,7 @@ test('a corrupt asset cannot replace the robot, retry succeeds, and verified bro
   expect(onlineRequests).toBeGreaterThan(model.files.length);
   offline = true;
   await page.reload(); // Same origin/IndexedDB; the model host alone is offline.
+  await enterProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await showPicker(page);
   await expect(entry(page, model.id)).toContainText('已缓存');
@@ -198,7 +200,7 @@ test('all four downloadable robots render their own geometry, FK and brand-speci
     await expect(page.getByRole('spinbutton', { name: /^机器人关节 J/ })).toHaveCount(6);
     await expect.poll(async () => Math.max(...(await toolPose(page)).position.map((value, i) => Math.abs(value - expected.xyz[i])))).toBeLessThan(.001);
     await expect(page.getByRole('button', { name: '检查到此点的 MoveL', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '拖动法兰', exact: true })).toBeEnabled();
     await expectNoPointMotionActions(page);
     const before = await genericCanvas(page).screenshot();
     await page.getByRole('spinbutton', { name: '机器人关节 J1', exact: true }).fill('30');

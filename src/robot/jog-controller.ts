@@ -12,8 +12,21 @@ export interface JogOptions {
 }
 export interface JogController { update(target: Pose): void; reset(initial: JogInitial): void; cancel(): void; dispose(): void }
 
+export interface PoseJogInitial { modelId: string; joints: JointAngles; pose: Pose; speedMmPerSecond: number }
+export interface PoseJogRequest { modelId: string; startJoints: JointAngles; target: Pose; speedMmPerSecond: number }
+export interface PoseJogSuccess { status: 'success'; selected: { joints: JointAngles; pose: Pose } }
+export interface PoseJogFailure { status: 'failure'; message: string }
+export interface PoseJogController { update(target: Pose): void; reset(initial: PoseJogInitial): void; cancel(): void; dispose(): void }
+export interface PoseJogOptions<T extends PoseJogSuccess> {
+  initial: PoseJogInitial;
+  solve: (request: PoseJogRequest, signal: AbortSignal) => Promise<T | PoseJogFailure>;
+  onAccept: (result: T, request: PoseJogRequest) => void;
+  onStatus: (status: JogStatus) => void;
+  minimumIntervalMs?: number;
+}
+
 const clonePose = (pose: Pose): Pose => ({ position: [...pose.position], orientation: [...pose.orientation] });
-const cloneInitial = (initial: JogInitial): JogInitial => ({ ...initial, joints: [...initial.joints], pose: clonePose(initial.pose) });
+const cloneInitial = (initial: PoseJogInitial): PoseJogInitial => ({ ...initial, joints: [...initial.joints], pose: clonePose(initial.pose) });
 function samePose(a: Pose, b: Pose): boolean {
   try { return Math.hypot(...a.position.map((value, i) => value - b.position[i])) < 1e-5 && quaternionDistanceDeg(a.orientation, b.orientation) < 1e-5; }
   catch { return false; }
@@ -21,7 +34,7 @@ function samePose(a: Pose, b: Pose): boolean {
 
 /** Keep one in-flight solve and one latest absolute target. Accepted f64 joints
  * remain private here; UI formatting never becomes the next segment's seed. */
-export function createJogController(options: JogOptions): JogController {
+export function createPoseJogController<T extends PoseJogSuccess>(options: PoseJogOptions<T>): PoseJogController {
   let accepted = cloneInitial(options.initial);
   let desired: Pose | null = null;
   let active: AbortController | null = null;
@@ -55,7 +68,7 @@ export function createJogController(options: JogOptions): JogController {
     const controller = new AbortController();
     active = controller;
     const expected = generation;
-    const request: PlanRequest = { modelId: accepted.modelId, startJoints: [...accepted.joints], target: clonePose(target), speedMmPerSecond: accepted.speedMmPerSecond };
+    const request: PoseJogRequest = { modelId: accepted.modelId, startJoints: [...accepted.joints], target: clonePose(target), speedMmPerSecond: accepted.speedMmPerSecond };
     lastDispatch = performance.now();
     publish();
     void (async () => {
@@ -91,4 +104,13 @@ export function createJogController(options: JogOptions): JogController {
     cancel() { if (!disposed) stop(true); },
     dispose() { if (disposed) return; disposed = true; stop(false); },
   };
+}
+
+/** Legacy ABB adapter retains the original public contract; both paths share scheduling. */
+export function createJogController(options: JogOptions): JogController {
+  const request = (value: PoseJogRequest): PlanRequest => ({ ...value, modelId: value.modelId as RobotId });
+  return createPoseJogController<PlanSuccess>({ ...options,
+    solve: (value, signal) => options.solve(request(value), signal),
+    onAccept: (result, value) => options.onAccept(result, request(value)),
+  });
 }

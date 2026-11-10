@@ -8,19 +8,19 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
-pub(super) const CONTACT_EPSILON_MM: f64 = 1e-6;
+pub(crate) const CONTACT_EPSILON_MM: f64 = 1e-6;
 const LEAF_TRIANGLES: usize = 8;
 const MAX_TRIANGLES: usize = 500_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Contact {
+pub(crate) enum Contact {
     Hit,
     Clear,
     Uncertain,
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct QueryBox {
+pub(crate) struct QueryBox {
     pub center: Vec3,
     pub axes: [Vec3; 3],
     pub half: Vec3,
@@ -101,7 +101,7 @@ struct Node {
     count: usize,
 }
 
-pub(super) struct TriangleMesh {
+pub(crate) struct TriangleMesh {
     triangles: Vec<Triangle>,
     order: Vec<usize>,
     nodes: Vec<Node>,
@@ -117,7 +117,20 @@ fn cancelled(cancel: &AtomicBool) -> Result<(), String> {
 }
 
 impl TriangleMesh {
-    pub(super) fn from_stl(bytes: &[u8], cancel: &AtomicBool) -> Result<Self, String> {
+    pub(crate) fn from_stl(bytes: &[u8], cancel: &AtomicBool) -> Result<Self, String> {
+        Self::from_stl_scaled(bytes, &[1.; 3], cancel)
+    }
+    pub(crate) fn from_stl_scaled(
+        bytes: &[u8],
+        scale: &Vec3,
+        cancel: &AtomicBool,
+    ) -> Result<Self, String> {
+        if scale
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0. || *value > 1_000_000.)
+        {
+            return Err("机器人网格缩放无效。".into());
+        }
         cancelled(cancel)?;
         if bytes.len() < 84 {
             return Err("机器人三角网格资料不完整。".into());
@@ -145,7 +158,10 @@ impl TriangleMesh {
                         return Err("机器人 STL 包含无效顶点。".into());
                     }
                     key[axis] = if value == 0. { 0 } else { value.to_bits() };
-                    points[vertex][axis] = f64::from(value);
+                    points[vertex][axis] = f64::from(value) * scale[axis];
+                    if points[vertex][axis].abs() > 1_000_000. {
+                        return Err("机器人网格缩放后超出有效范围。".into());
+                    }
                 }
                 let next = vertices.len() as u32;
                 ids[vertex] = *vertices.entry(key).or_insert(next);
@@ -188,7 +204,7 @@ impl TriangleMesh {
         })
     }
 
-    pub(super) fn query(&self, query: &QueryBox, cancel: &AtomicBool) -> Result<Contact, String> {
+    pub(crate) fn query(&self, query: &QueryBox, cancel: &AtomicBool) -> Result<Contact, String> {
         cancelled(cancel)?;
         let world_half: Vec3 = std::array::from_fn(|axis| {
             (0..3)
@@ -416,7 +432,7 @@ fn ray_crossing(triangle: &Triangle, origin: &Vec3, direction: &Vec3) -> Option<
 
 static MESHES: [OnceLock<TriangleMesh>; 14] = [const { OnceLock::new() }; 14];
 
-pub(super) fn pinned_mesh(
+pub(crate) fn pinned_mesh(
     model_id: &str,
     link: usize,
     cancel: &AtomicBool,

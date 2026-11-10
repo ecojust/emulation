@@ -23,29 +23,32 @@ for (const id of ids) {
 }
 
 const temporary = await mkdtemp(join(tmpdir(), 'emulation-generic-chains-'));
-let chains;
+let chains, collision;
 try {
   const entry = `
     import { readFileSync } from 'node:fs';
     import { DOMParser } from '@xmldom/xmldom';
     import { parseUrdf } from './src/catalog/urdf';
     import { buildGenericChain } from './src/robot/generic-motion-chain';
+    import { buildGenericCollisionDescriptor } from './src/catalog/collision-descriptors';
     globalThis.DOMParser = DOMParser;
     const sources = ${JSON.stringify(sources)};
-    const models = sources.map(source => buildGenericChain({
+    const models = sources.map(source => ({
       id: source.id, name: source.id,
       description: parseUrdf(readFileSync(source.file, 'utf8')), geometries: new Map(),
     }));
-    process.stdout.write(JSON.stringify(models));
+    const manifest = ${JSON.stringify(manifest)};
+    process.stdout.write(JSON.stringify({chains: models.map(buildGenericChain), collision: models.map(model => buildGenericCollisionDescriptor(model, manifest.models.find(item => item.id === model.id).files))}));
   `;
   const bundle = join(temporary, 'generate.cjs');
   await build({ stdin: { contents: entry, resolveDir: root, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', outfile: bundle, logLevel: 'silent' });
-  chains = JSON.parse(execFileSync(process.execPath, [bundle], { cwd: root, encoding: 'utf8', timeout: 30_000, maxBuffer: 1_000_000 }));
+  ({chains, collision} = JSON.parse(execFileSync(process.execPath, [bundle], { cwd: root, encoding: 'utf8', timeout: 30_000, maxBuffer: 1_000_000 })));
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }
 
 const generated = {
+  'src/catalog/generic-collision.json': collision,
   'tests/fixtures/catalog/generic-chains.json': chains,
   'tests/fixtures/catalog/generic-chains.source.json': {
     schemaVersion: 1,

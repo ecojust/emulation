@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createJogController } from '../src/robot/jog-controller';
+import { createJogController, createPoseJogController, type PoseJogRequest, type PoseJogSuccess } from '../src/robot/jog-controller';
 import { forwardKinematics } from '../src/robot/kinematics';
 import { ROBOT_MODELS } from '../src/robot/model';
 import { planMoveL } from '../src/robot/planner';
@@ -146,4 +146,22 @@ describe('incremental TCP jog scheduling', () => {
     expect(accept).toHaveBeenCalledTimes(2);
     controller.dispose();
   });
+});
+
+// The scheduler tracks world TCP acceptance independently of manufacturer metadata.
+it('queues generic model motion from accepted full-precision joints and world TCP without ABB configuration', async () => {
+  const calls: { request: PoseJogRequest; signal: AbortSignal; resolve: (result: PoseJogSuccess) => void }[] = [];
+  const onAccept = vi.fn();
+  const pose: Pose = { position: [1020, -440, 810], orientation: [1, 0, 0, 0] };
+  const controller = createPoseJogController({ initial: { modelId: 'yaskawa-gp7', joints: [20,15,-25,25,35,10], pose, speedMmPerSecond: 100 }, minimumIntervalMs: 0,
+    solve: (request, signal) => new Promise<PoseJogSuccess>(resolve => calls.push({ request, signal, resolve })), onAccept, onStatus: vi.fn() });
+  controller.update({ ...pose, position: [1021, -440, 810] });
+  controller.update({ ...pose, position: [1023, -440, 810] });
+  expect(calls[0].request.modelId).toBe('yaskawa-gp7');
+  const accepted: PoseJogSuccess = { status: 'success', selected: { joints: [20.123456789,15,-25,25,35,10], pose: { ...pose, position: [1021,-440,810] } } };
+  calls[0].resolve(accepted); await flush();
+  expect(calls[1].request.startJoints).toEqual(accepted.selected.joints);
+  expect(calls[1].request.target.position).toEqual([1023,-440,810]);
+  controller.dispose(); calls[1].resolve(accepted); await flush();
+  expect(onAccept).toHaveBeenCalledTimes(1);
 });

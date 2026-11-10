@@ -1,3 +1,4 @@
+import { openDefaultProject } from './project-helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { bodyJoints, captureCurrent, openProgram, openScene, pathPoints, selectPath, selectRobotObject } from './workspace-helpers';
 import { codeWorkspace, generateSource, moduleList, newSource, readSource } from './programming-helpers';
@@ -23,7 +24,7 @@ test('resizing the fixed workspace preserves scene objects and locally scrolling
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/');
+  await openDefaultProject(page);
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await selectRobotObject(page);
   const objects = page.getByRole('complementary', { name: '场景对象', exact: true });

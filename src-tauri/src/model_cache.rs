@@ -396,7 +396,80 @@ fn checked_file(root: &Path, relative: &str) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
+/// Trusted catalog source handle. Constructed only from the application's cache;
+/// reads happen on the bounded engine worker, never on the WebView/UI thread.
+#[derive(Clone)]
+pub struct CollisionMeshSource {
+    root: PathBuf,
+    relative: PathBuf,
+    files: Vec<CatalogFile>,
+}
+impl CollisionMeshSource {
+    pub fn read(
+        &self,
+        source: &emulation_core::generic_collision::MeshSource,
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<Vec<u8>, String> {
+        use std::{io::Read, sync::atomic::Ordering};
+        let check = || {
+            if cancel.load(Ordering::Relaxed) {
+                Err("干涉检查已取消。".to_string())
+            } else {
+                Ok(())
+            }
+        };
+        check()?;
+        let pinned = self
+            .files
+            .iter()
+            .find(|file| file.path == source.path)
+            .ok_or("网格文件不在当前型号目录中。")?;
+        if pinned.bytes != source.bytes as u64 || pinned.sha256 != source.sha256 {
+            return Err("网格描述与锁定目录不一致。".into());
+        }
+        let directory = secure_directory(&self.root, &self.relative, false)
+            .map_err(|_| "网格缓存未准备好，请重新选择机器人完成下载。")?;
+        let path = checked_file(&directory, &source.path)?;
+        let mut file = std::fs::File::open(path).map_err(|_| "无法读取机器人网格缓存。")?;
+        if file.metadata().map_err(|_| "无法读取网格长度。")?.len() != pinned.bytes {
+            return Err("机器人网格缓存长度不符，请重新选择型号修复缓存。".into());
+        }
+        let mut bytes = Vec::with_capacity(source.bytes);
+        let mut buffer = [0u8; BUFFER_BYTES];
+        let mut hash = Sha256::new();
+        loop {
+            check()?;
+            let count = file
+                .read(&mut buffer)
+                .map_err(|_| "机器人网格缓存读取失败。")?;
+            if count == 0 {
+                break;
+            }
+            if bytes.len() + count > source.bytes {
+                return Err("机器人网格缓存超过锁定长度。".into());
+            }
+            hash.update(&buffer[..count]);
+            bytes.extend_from_slice(&buffer[..count]);
+        }
+        check()?;
+        if bytes.len() != source.bytes || format!("{:x}", hash.finalize()) != pinned.sha256 {
+            return Err("机器人网格缓存校验失败，请重新选择型号修复缓存。".into());
+        }
+        Ok(bytes)
+    }
+}
+
 impl ModelCache {
+    /// Resolves a pinned source without IO or download. All verification is lazy on the worker.
+    pub fn collision_source(&self, model_id: &str) -> Result<CollisionMeshSource, String> {
+        emulation_core::generic_collision::generic_collision_descriptor(model_id)?;
+        let model = self.model(model_id)?;
+        Ok(CollisionMeshSource {
+            root: self.root.clone(),
+            relative: Path::new(&self.catalog.source.revision).join(&model.id),
+            files: model.files.clone(),
+        })
+    }
     /// `app_data` comes from Tauri's path resolver, never an IPC argument.
     pub fn new(app_data: PathBuf) -> Result<Self, String> {
         let catalog: Catalog =

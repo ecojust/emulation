@@ -1,6 +1,6 @@
 import { composePose, identityPose, relativePose } from "../workspace/frame-graph";
 import Icon from '../ui/Icon';
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls, type TransformControlsGizmo } from "three/addons/controls/TransformControls.js";
@@ -12,6 +12,7 @@ import type { JointAngles, Mat4, MotionSample, Pose, RobotModel, Vec3 } from "..
 import type { CollisionZone } from "../robot/collision";
 import type { PreparedUrdfModel, UrdfVisual } from "../catalog/urdf-types";
 import { forwardUrdfKinematics, urdfLinkMatrices, urdfOriginMatrix } from "../catalog/kinematics";
+import type { ProjectCamera } from "../projects/schema";
 import "./scene.css";
 
 export interface ScenePath {
@@ -25,7 +26,10 @@ export interface SceneReferenceFrame { id: string; name: string; pose: Pose; sel
 /** Both poses are world poses, not flange or mounting offsets. */
 export interface SceneTool { id: string; name: string; pose: Pose; tcpPose: Pose; radiusMm: number; selected?: boolean }
 
+export interface RobotSceneHandle { camera(): ProjectCamera | null; capture(): Promise<{ thumbnail: string; camera: ProjectCamera }> }
 export interface RobotSceneProps {
+  robotPresent?: boolean;
+  initialCamera?: ProjectCamera | null;
   /** World <- robot base. */
   basePose?: Pose;
   /** Flange <- active TCP, including tool mounting offset. */
@@ -272,7 +276,7 @@ function updateHierarchy(state: SceneState, props: RobotSceneProps): void {
 function updateJointHighlight(state: SceneState, props: RobotSceneProps): void {
   const index = props.selectedJointIndex;
   state.selectedJointIndex = typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 6 ? index : null;
-  state.jointHighlight.visible = state.selectedJointIndex !== null;
+  state.jointHighlight.visible = props.robotPresent !== false && state.selectedJointIndex !== null;
   if (state.selectedJointIndex === null) return;
   let position: THREE.Vector3, axis: THREE.Vector3;
   if (props.urdfModel) {
@@ -438,6 +442,7 @@ function setView(state: SceneState, view: RobotSceneProps["view"]): void {
 }
 
 function updateRobot(state: SceneState, props: RobotSceneProps): void {
+  state.robot.visible = props.robotPresent !== false;
   setPose(state.robot, props.basePose ?? identityPose());
   setPose(state.ghost, props.basePose ?? identityPose());
   const world = worldRobotPoses(props);
@@ -455,17 +460,23 @@ function updateRobot(state: SceneState, props: RobotSceneProps): void {
         .scale(new THREE.Vector3(...visual.scale));
       mesh.matrixWorldNeedsUpdate = true;
     });
-    state.tcp.visible = world !== null;
+    state.tcp.visible = props.robotPresent !== false && world !== null;
     if (state.genericFocusLocal) state.genericFocus = state.genericFocusLocal.clone().applyQuaternion(state.robot.quaternion).add(state.robot.position);
     state.genericJoints = [...joints];
     state.robotJoints = [...joints];
-    state.frames.visible = false;
+    state.frames.visible = props.robotPresent !== false && Boolean(props.showFrames);
+    state.frames.children.forEach((frame, index) => {
+      const joint = description.actuatedJoints[index - 1];
+      const local = index === 0 ? new THREE.Matrix4() : transforms.get(joint.child)!.clone();
+      frame.matrix.compose(state.robot.position, state.robot.quaternion, new THREE.Vector3(1, 1, 1)).multiply(local);
+      frame.matrixWorldNeedsUpdate = true;
+    });
     state.ghost.visible = false;
     state.renderer.shadowMap.needsUpdate = true;
     state.dirty = true;
     return;
   }
-  state.tcp.visible = true;
+  state.tcp.visible = props.robotPresent !== false;
   const fk = forwardKinematics(props.model, props.joints);
   state.links.forEach((link, i) => {
     link.matrix.copy(matrix(fk.frames[i]).multiply(state.zeroInverse[i]));
@@ -474,13 +485,13 @@ function updateRobot(state: SceneState, props: RobotSceneProps): void {
   state.robotJoints = [...props.joints];
   const tcpCaption = state.tcp.getObjectByName("pose-caption");
   if (tcpCaption) tcpCaption.visible = !props.targetPose || Math.hypot(...world!.tcp.position.map((value, i) => value - props.targetPose!.position[i])) > 5;
-  state.frames.visible = Boolean(props.showFrames);
+  state.frames.visible = props.robotPresent !== false && Boolean(props.showFrames);
   state.frames.children.forEach((frame, i) => {
     frame.matrix.compose(state.robot.position, state.robot.quaternion, new THREE.Vector3(1, 1, 1)).multiply(matrix(fk.frames[i], true));
     frame.matrixWorldNeedsUpdate = true;
   });
   const differs = props.endJoints?.some((angle, i) => Math.abs(angle - props.joints[i]) > 0.1);
-  state.ghost.visible = Boolean(differs && state.ghostLinks.length);
+  state.ghost.visible = props.robotPresent !== false && Boolean(differs && state.ghostLinks.length);
   if (props.endJoints && differs) {
     const end = forwardKinematics(props.model, props.endJoints);
     state.ghostLinks.forEach((link, i) => {
@@ -505,6 +516,8 @@ function updateDiagnostics(state: SceneState): void {
   canvas.dataset.cameraFov = camera.fov.toString();
   canvas.dataset.cameraAspect = camera.aspect.toString();
   canvas.dataset.zoomTarget = state.zoomTarget.toString();
+  canvas.dataset.robotVisible = String(state.robot.visible);
+  canvas.dataset.jointFramesVisible = String(state.frames.visible);
   canvas.dataset.urdfModel = state.genericModelId ?? "";
   canvas.dataset.urdfVisualCount = state.genericLinks.length.toString();
   canvas.dataset.urdfJoints = JSON.stringify(state.genericJoints);
@@ -613,7 +626,7 @@ function updateDiagnostics(state: SceneState): void {
   }) : "null";
 }
 
-export default function RobotScene(props: RobotSceneProps) {
+const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotScene(props, ref) {
   const host = useRef<HTMLDivElement>(null);
   const state = useRef<SceneState | null>(null);
   const latest = useRef(props);
@@ -626,7 +639,7 @@ export default function RobotScene(props: RobotSceneProps) {
   const [mounted, setMounted] = useState(false);
   const selectedZone = props.dangerZones?.find(zone => zone.id === props.selectedDangerZoneId);
   const zoneTargetId = props.zoneManipulationEnabled && props.onDangerZoneMove && usableZone(selectedZone) ? selectedZone.id : null;
-  const tcpManipulationEnabled = !props.zoneManipulationEnabled && !props.urdfModel && Boolean(props.jogEnabled);
+  const tcpManipulationEnabled = props.robotPresent !== false && !props.zoneManipulationEnabled && Boolean(props.jogEnabled);
   const gizmoMode = zoneTargetId ? "translate" : props.jogMode ?? "translate";
   const gizmoSpace = zoneTargetId ? "world" : props.jogSpace ?? "world";
   const gizmoResetRevision = zoneTargetId ? 0 : props.jogResetRevision;
@@ -805,7 +818,7 @@ export default function RobotScene(props: RobotSceneProps) {
           && current.onDangerZoneMove
           && usableZone(current.dangerZones?.find(zone => zone.id === local.manipulatedZoneId)));
       }
-      return local.manipulationTarget === "tcp" && !current.zoneManipulationEnabled && !current.urdfModel && Boolean(current.jogEnabled);
+      return local.manipulationTarget === "tcp" && !current.zoneManipulationEnabled && Boolean(current.robotPresent !== false && current.jogEnabled);
     };
     const onPointerDown = (event: PointerEvent) => {
       if (!targetIsEnabled() || (local.manipulationTarget === "tcp" && latest.current.jogPending) || !transform.enabled || event.button !== 0 || local.draggingPointer !== null) return;
@@ -1054,7 +1067,8 @@ export default function RobotScene(props: RobotSceneProps) {
       }
       geometries.add(geometry);
       count++;
-      setLoaded(count);
+      // The final count means meshes are attached and the default camera is set.
+      if (count < PARTS.length) setLoaded(count);
       return geometry;
     });
     void Promise.all(tasks).then((loadedGeometries) => {
@@ -1079,6 +1093,7 @@ export default function RobotScene(props: RobotSceneProps) {
       });
       updateRobot(local, latest.current);
       setView(local, latest.current.view);
+      setLoaded(PARTS.length);
     }).catch(() => {
       if (cancelled) return;
       failed = true;
@@ -1101,7 +1116,7 @@ export default function RobotScene(props: RobotSceneProps) {
   useEffect(() => {
     const local = state.current;
     if (local) updateRobot(local, props);
-  }, [props.model, props.joints, props.urdfModel, props.urdfJoints, props.endJoints, props.showFrames, props.targetPose, props.basePose, props.toolPose, props.selectedJointIndex, loaded]);
+  }, [props.model, props.joints, props.urdfModel, props.urdfJoints, props.endJoints, props.showFrames, props.targetPose, props.basePose, props.toolPose, props.selectedJointIndex, props.robotPresent, loaded]);
 
   useEffect(() => {
     const local = state.current;
@@ -1167,14 +1182,57 @@ export default function RobotScene(props: RobotSceneProps) {
 
   useEffect(() => {
     const local = state.current;
-    if (!local || props.urdfModel || local.draggingPointer !== null || props.jogPending) return;
+    if (!local || local.draggingPointer !== null || props.jogPending) return;
     const world = worldRobotPoses(props); if (world) setPose(local.jogObject, world.tcp);
     local.dirty = true;
-  }, [props.jogPending, props.joints, props.urdfModel, props.basePose, props.toolPose]);
+  }, [props.jogPending, props.joints, props.urdfJoints, props.urdfModel, props.basePose, props.toolPose]);
 
   useEffect(() => {
     if (state.current) { state.current.finishDrag(); setView(state.current, props.view); }
   }, [props.view, props.viewRevision, mounted]);
+
+  const restoredCamera = useRef(false);
+  useEffect(() => {
+    const local = state.current;
+    const expected = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? PARTS.length;
+    if (!local || loaded !== expected || restoredCamera.current) return;
+    restoredCamera.current = true;
+    const saved = props.initialCamera;
+    if (!saved) return;
+    local.controls.target.fromArray(saved.target);
+    local.camera.position.fromArray(saved.position);
+    local.camera.lookAt(local.controls.target); local.controls.update();
+    local.zoomTarget = local.camera.position.distanceTo(local.controls.target);
+    local.dirty = true;
+  }, [loaded, props.initialCamera, props.urdfModel]);
+
+  useImperativeHandle(ref, () => ({ camera() { const local = state.current; return local ? { position: local.camera.position.toArray() as Vec3, target: local.controls.target.toArray() as Vec3 } : null; }, async capture() {
+    const local = state.current;
+    const expected = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? 7;
+    if (!local || graphicsError || loadError || loaded !== expected) throw new Error(loadError || graphicsError || '机器人三维模型尚未加载完成，请稍后重试。');
+    local.finishDrag();
+    updateRobot(local, latest.current); updateHierarchy(local, latest.current);
+    const canvas = local.renderer.domElement;
+    if (!canvas.width || !canvas.height || local.renderer.getContext().isContextLost()) throw new Error('三维画面不可用，无法保存场景封面。');
+    const helper = local.transform.getHelper(), visible = helper.visible;
+    helper.visible = false;
+    try {
+      local.scene.updateMatrixWorld(true);
+      local.renderer.render(local.scene, local.camera);
+      const cover = document.createElement('canvas');
+      cover.width = Math.min(720, canvas.width); cover.height = Math.max(1, Math.round(canvas.height * cover.width / canvas.width));
+      const context = cover.getContext('2d');
+      if (!context) throw new Error('无法读取三维画面，请重试。');
+      // WebGL uses transparency over the viewport's pale background; JPEG
+      // otherwise turns that transparent sky into a black strip.
+      context.fillStyle = '#f1f4f7';
+      context.fillRect(0, 0, cover.width, cover.height);
+      context.drawImage(canvas, 0, 0, cover.width, cover.height);
+      const thumbnail = cover.toDataURL('image/jpeg', .86);
+      if (!thumbnail.startsWith('data:image/jpeg;base64,') || thumbnail.length < 1000) throw new Error('场景封面生成失败，请重试。');
+      return { thumbnail, camera: { position: local.camera.position.toArray() as Vec3, target: local.controls.target.toArray() as Vec3 } };
+    } finally { helper.visible = visible; local.dirty = true; }
+  } }), [loaded, graphicsError, loadError, props.urdfModel]);
 
   const totalParts = props.urdfModel?.description.links.reduce((sum, link) => sum + link.visuals.length, 0) ?? 7;
   return <div className="robot-scene" aria-label="机器人三维视图">
@@ -1187,4 +1245,5 @@ export default function RobotScene(props: RobotSceneProps) {
     </div>}
     {graphicsError && <div className="scene-graphics-error" role="alert"><strong>3D 场景暂不可用</strong><p>{graphicsError}</p></div>}
   </div>;
-}
+});
+export default RobotScene;

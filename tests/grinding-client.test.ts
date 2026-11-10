@@ -16,7 +16,7 @@ const identity: Pose = { position: [0, 0, 0], orientation: [1, 0, 0, 0] };
 function input(): GrindingRequest {
   const model = getRobotModel('irb1100-4-0.58'), start = forwardKinematics(model, model.readyJoints).pose;
   return { robot: { kind: 'abb', modelId: model.id }, basePose: structuredClone(identity), toolPose: structuredClone(identity), toolRadiusMm: 3,
-    startJoints: [...model.readyJoints], targets: [{ position: [start.position[0], 5, start.position[2]], orientation: start.orientation }, { position: [start.position[0], 15, start.position[2]], orientation: [1, 0, 0, 0] }], orientation: start.orientation, clearanceMm: 2, speedMmPerSecond: 100, zones: [] };
+    startJoints: [...model.readyJoints], targets: [{ position: [start.position[0], 5, start.position[2]], orientation: start.orientation }, { position: [start.position[0], 15, start.position[2]], orientation: start.orientation }], orientation: start.orientation, clearanceMm: 2, speedMmPerSecond: 100, zones: [] };
 }
 function success(request = input()): GrindingSuccess { const result = planGrindingReference(request); if (result.status !== 'success') throw new Error(result.message); return result; }
 function compose(a: Pose, b: Pose): Pose {
