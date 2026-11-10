@@ -58,12 +58,23 @@ async function editAndInspect(page: Page, point: CapturedPoint, id: string, cent
   await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
 }
 async function readyRow(page: Page) {
-  await expect.poll(() => rows(page).count()).toBeGreaterThan(1);
-  const values = await rows(page).evaluateAll(elements => elements.map(element => JSON.parse(element.getAttribute('data-endpoint-joints')!) as number[]));
   const ready = [0, 20, -30, 0, 40, 0];
-  const index = values.findIndex(joints => joints.every((value, i) => Math.abs(value - ready[i]) < .001));
-  expect(index).toBeGreaterThanOrEqual(0);
-  return rows(page).nth(index);
+  let identity: string | null = null;
+  // Reselecting a point can show cached rows before the inspection effect
+  // clears them. Find the candidate in one snapshot, then follow its identity
+  // through recomputation instead of retaining an index from a separate read.
+  await expect.poll(async () => {
+    identity = await rows(page).evaluateAll((elements, expected) => {
+      if (elements.length <= 1) return null;
+      return elements.map(element => element.getAttribute('data-endpoint-joints')!)
+        .find(value => {
+          const joints = JSON.parse(value) as number[];
+          return joints.length === expected.length && joints.every((joint, i) => Math.abs(joint - expected[i]) < .001);
+        }) ?? null;
+    }, ready);
+    return identity;
+  }).not.toBeNull();
+  return page.locator(`[data-endpoint-joints=${JSON.stringify(identity)}]`);
 }
 
 test('previewing an independent wrist solution preserves the saved target and module and restores the exact stopped Path pose', async ({ page }) => {
