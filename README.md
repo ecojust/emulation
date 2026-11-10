@@ -17,9 +17,9 @@
 
 ## 客户端
 
-安装包由 [桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)生成：成功运行中的 Artifacts 提供 macOS Apple Silicon／Intel 的 DMG 和 Windows x64 的安装程序，附源提交、CPU 架构和 SHA-256 清单。这里是 CI 构建产物，不等同于已发布 GitHub Release。
+正式安装包见 [最新 Release](https://github.com/ecojust/emulation/releases/latest)。每个平台附带源提交、CPU 架构和 SHA-256 清单；发布流程先检查同一源码提交的完整测试与实际安装结果，再校验上传文件。
 
-已验证测试包（含离线源码编辑，构建源`68063db`）：[macOS M系列](https://github.com/ecojust/emulation/actions/runs/42677239853/artifacts/13701580882) · [Windows x64](https://github.com/ecojust/emulation/actions/runs/42677239853/artifacts/13700793739)。两者完成实际安装、本地语法Worker／编辑器、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel本轮构建、签名、原生核心和源码编辑器检查通过，但托管Apple Paravirtualized GPU没有可用WebGL2，三维图形验收未通过。
+**v0.2.1 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.2.1/Emulation_0.2.1_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.2.1/Emulation_0.2.1_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.2.1)。构建源为`b05a23e`，两者完成实际安装、本地语法Worker／编辑器、原生端点／网格检查、GP7下载／缓存及URDF直线规划调用。Intel版尚无完整图形验收通过的正式包，本次暂不提供；后续进度见[桌面构建工作流](https://github.com/ecojust/emulation/actions/workflows/desktop.yml)。
 
 - macOS 13+：分别选择 ARM64 或 x64 安装包。当前使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
@@ -65,7 +65,7 @@ npm run preview
 1. 点击顶部型号选择机器人；未缓存的型号首次下载并校验。两款 ABB IRB1100 使用各自的 DH，FANUC CRX-10iA/L、R-2000iB/165F 与安川 GP7、GP110 使用各自的 URDF 六轴链，详情见[型号目录](docs/robot-catalog.md)。
 2. 左侧选择机器人，右侧查看当前工具坐标、姿态、关节与型号参数。调整关节摆好姿态；ABB 还支持法兰 TCP Jog、robconf 和标称 DH 查看。
 3. 切到“程序”，右键“插入当前姿态”，记录直线运动指令。ABB 显示 `MoveL`／`robtarget`，FANUC 显示 `L`／`P[n]`，安川显示 `MOVL`／`Cxxxxx`；点保存当前姿态和速度，随后移动机器人不会改变这些快照。
-4. Ctrl／Cmd 或 Shift 多选指令，右键转为 Path。左侧可展开查看点，右侧显示其位置、姿态和品牌数据；ABB 点面板集成配置、多解与网格干涉检查。Path 点右键“移动至此”可查看该点的机器人姿态，这是一项单独的仿真定位操作。
+4. Ctrl／Cmd 或 Shift 多选指令，右键转为 Path。左侧可展开查看点，右侧显示其位置、姿态和品牌数据；ABB 点面板集成配置、多解与网格干涉检查。Path 点右键“移动至此”可查看该点的机器人姿态，这是一项单独的仿真定位操作。端点候选解的“预览”仅临时改变三维显示，不改写原始点或程序；退出预览恢复原姿态与播放位置，右侧面板保持滚动位置。
 5. 点击“运行”，自动切到场景。全部运动段通过规划后，机器人按程序顺序运动；开启“循环运行”还会检查末点回首点的路径。失败时标出指令并保留原姿态；停止会保留当前显示姿态。
 6. 点面板也可单独检查“从当前位置到此点”的直线运动；ABB 通过后可导出这一段，Rust 会重新验证并生成带起点关节检查的模块。整程序显示品牌模板，尚未提供整程序控制器文件导出。示教点和场景对象目前保留于本次会话；代码页另有按型号保存的本地源码草稿。
 
