@@ -1,19 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
-import { openProgram } from './workspace-helpers';
+import { openProgram, openScene } from './workspace-helpers';
 
 export const codeWorkspace = (page: Page) => page.getByRole('region', { name: '机器人源码工作区', exact: true });
 export const codeEditor = (page: Page) => codeWorkspace(page).locator('.cm-content');
-export const sourceTabs = (page: Page) => page.getByRole('tablist', { name: '源码文件', exact: true });
+export const moduleList = (page: Page) => page.getByRole('listbox', { name: '程序模块列表', exact: true });
 
 export async function openCode(page: Page) {
   await openProgram(page);
-  await page.getByRole('tablist', { name: '程序编辑模式', exact: true }).getByRole('tab', { name: '代码', exact: true }).click();
   await expect(codeWorkspace(page)).toBeVisible();
-}
-export async function openTeach(page: Page) {
-  await openProgram(page);
-  await page.getByRole('tablist', { name: '程序编辑模式', exact: true }).getByRole('tab', { name: '示教', exact: true }).click();
 }
 export async function newSource(page: Page, name: string, text = '') {
   await openCode(page);
@@ -21,7 +16,7 @@ export async function newSource(page: Page, name: string, text = '') {
   const dialog = page.getByRole('dialog', { name: '新建源码文件', exact: true });
   await dialog.getByRole('textbox', { name: '源码文件名称', exact: true }).fill(name);
   await dialog.getByRole('button', { name: '确定', exact: true }).click();
-  await expect(sourceTabs(page).getByRole('tab', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(moduleList(page).getByRole('option', { name, exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(codeEditor(page)).toHaveAttribute('contenteditable', 'true');
   if (text) await replaceSource(page, text);
 }
@@ -49,15 +44,16 @@ export async function downloadSource(page: Page) {
   expect(path).not.toBeNull();
   return { name: download.suggestedFilename(), bytes: await readFile(path!) };
 }
-export async function generateSource(page: Page): Promise<string> {
-  await openCode(page);
-  if (!(await sourceTabs(page).getByRole('tab').count())) {
-    const language = await codeWorkspace(page).getAttribute('data-language-id');
-    await newSource(page, 'main.' + (language === 'fanuc-ls' ? 'ls' : language === 'inform' ? 'jbi' : 'mod'));
-  }
-  await page.getByRole('button', { name: '从示教生成', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '从示教生成源码', exact: true });
-  await dialog.getByRole('button', { name: '替换此文件', exact: true }).click();
+/** A Path becomes a new module; converting never replaces an edited file. */
+export async function generateSource(page: Page, pathId?: string): Promise<string> {
+  await openScene(page);
+  const path = pathId ? page.locator(`[data-object-kind="path"][data-object-id="${pathId}"]`)
+    : page.locator('[data-object-kind="path"]').first();
+  await expect(path).toBeVisible();
+  await path.click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Path 右键菜单', exact: true }).getByRole('menuitem', { name: '转换为程序', exact: true }).click();
+  await expect(codeWorkspace(page)).toBeVisible();
+  await expect(moduleList(page).getByRole('option', { selected: true })).toHaveCount(1);
   await expect.poll(() => codeEditor(page).textContent()).toMatch(/MODULE|\/PROG|\/JOB/);
   return readSource(page);
 }

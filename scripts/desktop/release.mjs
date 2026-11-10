@@ -136,9 +136,11 @@ function publishRelease(context) {
   writeFileSync(sums, staged.map(path => `${sha256(readFileSync(path))}  ${basename(path)}`).sort().join('\n') + '\n'); staged.push(sums);
   const intelVerified = selected.some(platform => platform.artifact === 'macOS-x64');
   const notes = [
-    '修复右侧候选位姿预览：点击“预览”仅临时显示对应机器人姿态，保留原始目标点、关节配置及程序数据；切换预览时保持右侧面板滚动位置。',
+    '新增 Path 工作流：在场景左侧创建 Path，调整机器人后右键“添加当前点到 Path”；整个 Path 可转换为对应品牌的新程序模块，重复转换不会覆盖已有文件。',
     '',
-    '包含 ABB／FANUC／Yaskawa 的示教程序与仿真，以及本地源码编辑、高亮、补全和静态检查。任意厂商源码执行及少数选件的完整文件格式仍未支持，具体范围见项目离线编程说明。',
+    '程序工作区只保留模块文件，左侧显示当前型号的全部模块，移除旧程序转 Path 操作。Path 属性支持独立运行与循环；点右键可定位，删除 Path 不影响已生成模块。端点候选姿态仍采用不修改原始数据的预览。',
+    '',
+    '包含 ABB／FANUC／Yaskawa 仿真及本地源码编辑、高亮、补全和静态检查。Path／点目前保留于本次会话，模块草稿按型号本地保存；任意厂商源码执行和完整程序控制器验收尚未实现。',
     '',
     '安装包及校验：',
     '- macOS Apple Silicon 与 Windows x64 均已完成实际安装、原生引擎和 WebView／3D 检查。',

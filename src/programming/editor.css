@@ -1,16 +1,18 @@
 .robot-code-workspace { display:flex; flex-direction:column; flex:1 1 0; min-width:0; min-height:0; overflow:hidden; background:#fff; color:#35465e }
 .robot-code-filebar { display:flex; flex:0 0 auto; min-width:0; align-items:center; border-block:1px solid #e3e9f1; background:#f5f8fc }
-.robot-code-files { display:flex; flex:1 1 auto; min-width:0; overflow:auto; overscroll-behavior:contain }
-.robot-code-files button { display:flex; align-items:center; flex:0 0 auto; gap:7px; max-width:240px; border:0; border-right:1px solid #e2e8f1; border-bottom:2px solid transparent; padding:10px 12px; background:transparent; color:#78889d; font:11px ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer }
-.robot-code-files button[aria-selected='true'] { color:#315d92; background:#fff; border-bottom-color:#5489c5 }
-.robot-code-files button>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-.robot-code-files button>i { color:#a78c53; font-size:7px; font-style:normal }
+.robot-code-current-file { display:flex; align-items:center; gap:8px; min-width:0; max-width:100%; padding:10px 12px; color:#315d92; font:11px ui-monospace,SFMono-Regular,Consolas,monospace }
+.robot-code-current-file>span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.robot-code-current-file>i { flex:0 0 auto; color:#a78c53; font-size:7px; font-style:normal }
 .robot-code-tools { display:flex; flex-wrap:wrap; align-items:center; gap:6px; flex:0 0 auto; padding:8px 12px; border-bottom:1px solid #e7ecf3 }
 .robot-code-tools button,.robot-code-panel-tabs button,.robot-code-reference-actions button { min-height:27px; border:1px solid #dbe4ef; border-radius:5px; padding:4px 8px; background:#fff; color:#5c7697; font-size:10px; cursor:pointer }
 .robot-code-tools button:hover:not(:disabled),.robot-code-reference-actions button:hover:not(:disabled) { background:#f0f6fe; border-color:#b4cce7 }
 .robot-code-tools button:disabled,.robot-code-reference-actions button:disabled { opacity:.45; cursor:not-allowed }
 .robot-code-tools>small { margin-left:auto; color:#909db0; font-size:10px }
-.robot-code-surface { flex:1 1 0; min-width:0; min-height:120px; overflow:hidden }
+.robot-code-editor-area { display:flex; flex:1 1 0; position:relative; min-width:0; min-height:0; overflow:hidden }
+.robot-code-surface { flex:1 1 0; min-width:0; min-height:0; overflow:hidden }
+.robot-code-no-file { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; overflow:auto; background:#fff; color:#8a99ae; font-size:12px; line-height:1.7; text-align:center }
+.robot-code-no-file strong { color:#607a9a; font-size:14px; font-weight:500 }
+.robot-code-no-file p { max-width:390px; margin:0 }
 .robot-code-surface .cm-editor { height:100%; font-size:12px; background:#fff }
 .robot-code-surface .cm-scroller { overflow:auto; overscroll-behavior:contain; font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace; line-height:1.7 }
 .robot-code-surface .cm-content { padding:10px 0 }
@@ -90,5 +92,5 @@
 @media(max-width:1100px) {
   .robot-code-tools { gap:4px; padding-inline:8px }
   .robot-code-reference-layout { grid-template-columns:minmax(90px,30%) minmax(0,1fr); gap:7px }
-  .robot-code-files button { max-width:180px; padding-inline:9px }
+  .robot-code-current-file { padding-inline:9px }
 }

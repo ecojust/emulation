@@ -2,9 +2,11 @@ import { expect, type Page } from '@playwright/test';
 import type { Pose } from '../../src/robot/types';
 
 export const scene = (page: Page) => page.getByLabel('ABB IRB 1100 三维仿真场景');
-export const programRows = (page: Page) => page.getByRole('listbox', { name: /程序指令$/ }).getByRole('option');
+export const pathObjects = (page: Page) => page.locator('[data-object-kind="path"]');
+export const pathPoints = (page: Page, pathId?: string) => page.locator(pathId
+  ? `[data-object-kind="target"][data-path-id="${pathId}"]` : '[data-object-kind="target"]');
 export const bodyCanvas = (page: Page) => page.locator('canvas[data-robot-joints]');
-export type CapturedPoint = { id: string; name: string };
+export type CapturedPoint = { id: string; name: string; pathId: string };
 export function observeBrowser(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -25,6 +27,7 @@ export async function openScene(page: Page) {
   await expect(page.getByRole('region', { name: '机器人视口', exact: true })).toBeVisible();
 }
 export async function selectRobotObject(page: Page) {
+  await openScene(page);
   await page.getByRole('button', { name: '选择机器人', exact: true }).click();
   await expect(page.getByRole('heading', { name: '机器人属性', exact: true })).toBeVisible();
 }
@@ -44,44 +47,55 @@ export async function expectBodyJoints(page: Page, joints: readonly number[], ep
     return actual?.length === joints.length ? Math.max(...actual.map((value, i) => Math.abs(value - joints[i]))) : Infinity;
   }).toBeLessThan(epsilon);
 }
-export async function captureCurrent(page: Page): Promise<CapturedPoint> {
-  await openProgram(page);
-  await page.getByRole('tablist', { name: '程序编辑模式', exact: true }).getByRole('tab', { name: '示教', exact: true }).click();
-  const rows = programRows(page), before = await rows.count();
-  if (before) await rows.last().click({ button: 'right' });
-  else await page.getByRole('listbox', { name: /程序指令$/ }).click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^插入当前姿态（/ }).click();
-  await expect(rows).toHaveCount(before + 1);
-  const row = rows.last();
-  const point = { id: (await row.getAttribute('data-program-point-id'))!, name: (await row.getAttribute('data-program-point-name')) ?? (await row.getAttribute('aria-label'))!.replace('MoveL ', '') };
-  // Capturing and selecting happen in one React event; the new object must not
-  // be discarded by selection validation against the previous points list.
+export async function createPath(page: Page): Promise<string> {
+  await openScene(page);
+  const before = await pathObjects(page).count();
+  await page.getByRole('button', { name: '添加 Path', exact: true }).click();
+  await expect(pathObjects(page)).toHaveCount(before + 1);
+  const path = pathObjects(page).last();
+  await expect(path).toHaveClass(/selected/);
+  return (await path.getAttribute('data-object-id'))!;
+}
+export async function selectPath(page: Page, pathId: string) {
+  await openScene(page);
+  const path = page.locator(`[data-object-kind="path"][data-object-id="${pathId}"]`);
+  await path.click();
+  await expect(path).toHaveClass(/selected/);
+}
+export async function captureCurrent(page: Page, pathId?: string): Promise<CapturedPoint> {
+  await openScene(page);
+  const targetPath = pathId ?? (await pathObjects(page).count() ? (await pathObjects(page).first().getAttribute('data-object-id'))! : await createPath(page));
+  const path = page.locator(`[data-object-kind="path"][data-object-id="${targetPath}"]`);
+  const points = pathPoints(page, targetPath), before = await points.count();
+  await path.click({ button: 'right' });
+  await page.getByRole('menu', { name: 'Path 右键菜单', exact: true })
+    .getByRole('menuitem', { name: '添加当前点到 Path', exact: true }).click();
+  await expect(points).toHaveCount(before + 1);
+  const target = points.last();
+  const point = { id: (await target.getAttribute('data-object-id'))!, name: (await target.getAttribute('data-point-name'))!, pathId: targetPath };
+  // Capturing and selecting happen in one React event: selection must validate
+  // against the new Path point, not the points from the preceding render.
   await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
-  await expect(row).toHaveAttribute('aria-selected', 'true');
+  await expect(target).toHaveClass(/selected/);
   return point;
 }
 export async function selectPoint(page: Page, point: CapturedPoint) {
-  const tree = page.locator(`[data-object-kind="target"][data-object-id="${point.id}"]`);
-  if (await tree.count()) await tree.click();
-  else {
-    await openProgram(page);
-    await page.locator(`[data-program-point-id="${point.id}"]`).click();
-  }
-  await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
   await openScene(page);
+  const tree = page.locator(`[data-object-kind="target"][data-object-id="${point.id}"]`);
+  const details = page.locator('details.object-path').filter({ has: tree });
+  if (await details.count() && await details.getAttribute('open') === null) await details.locator('summary').click();
+  await tree.click();
+  await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
 }
-export async function makePath(page: Page, points: CapturedPoint[]) {
-  await openProgram(page);
-  await page.getByRole('tablist', { name: '程序编辑模式', exact: true }).getByRole('tab', { name: '示教', exact: true }).click();
-  // Deliberately reverse click order: execution order must remain program order.
-  for (let i = points.length - 1; i >= 0; i--) {
-    await page.locator(`[data-program-point-id="${points[i].id}"]`).click(i === points.length - 1 ? {} : { modifiers: ['ControlOrMeta'] });
-  }
-  await page.locator(`[data-program-point-id="${points[0].id}"]`).click({ button: 'right' });
-  await page.getByRole('menuitem', { name: `转为 Path（${points.length} 条）`, exact: true }).click();
-  const path = page.locator('[data-object-kind="path"]').last();
-  await expect(path).toHaveClass(/selected/);
-  return (await path.getAttribute('data-object-id'))!;
+/** Select the points' existing Path; no program-to-Path conversion exists. */
+export async function selectPathForPoints(page: Page, points: CapturedPoint[]) {
+  expect(points.length).toBeGreaterThan(0);
+  const pathId = points[0].pathId;
+  expect(points.every(point => point.pathId === pathId)).toBe(true);
+  await selectPath(page, pathId);
+  const ids = await pathPoints(page, pathId).evaluateAll(elements => elements.map(element => element.getAttribute('data-object-id')));
+  expect(ids.filter(id => points.some(point => point.id === id))).toEqual(points.map(point => point.id));
+  return pathId;
 }
 export async function expectCopyState(page: Page, enabled: boolean) {
   const button = page.getByRole('button', { name: '复制此 MoveL', exact: true });

@@ -1,0 +1,12 @@
+.module-browser { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden }
+.module-list { flex:1 1 0; min-width:0; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-gutter:stable; padding:6px }
+.module-list>button { display:flex; align-items:center; gap:8px; width:100%; min-width:0; min-height:34px; border:1px solid transparent; border-radius:5px; padding:8px; text-align:left; background:transparent; color:#657b96; font:11px ui-monospace,SFMono-Regular,Consolas,monospace; cursor:pointer }
+.module-list>button:hover:not(:disabled) { background:#f0f5fb }
+.module-list>button[aria-selected='true'] { border-color:#ccdcf0; background:#eaf2fc; color:#315f95 }
+.module-list>button:focus-visible { outline:2px solid #739bc7; outline-offset:-2px }
+.module-list>button:disabled { opacity:.5; cursor:not-allowed }
+.module-file-icon { flex:0 0 auto; color:#90a3bc; font-size:14px }
+.module-file-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.module-file-dirty { flex:0 0 auto; color:#ab8e50; font-size:7px }
+.module-list-empty { margin:0; padding:10px 14px 16px; color:#8b9bb0; font-size:11px; line-height:1.7 }
+.module-browser:has(.module-list-empty) .module-list { flex:0 0 auto; min-height:0; padding:0 }

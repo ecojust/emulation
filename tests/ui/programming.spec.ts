@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { parseRobtarget } from '../../src/robot/rapid';
-import { captureCurrent, observeBrowser, openScene, programRows, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
-import { chooseCompletion, codeEditor, codeWorkspace, downloadSource, generateSource, newSource, openCode, openTeach, readSource, replaceSource, sourceTabs } from './programming-helpers';
+import { captureCurrent, observeBrowser, openScene, pathPoints, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
+import { chooseCompletion, codeEditor, codeWorkspace, downloadSource, generateSource, newSource, openCode, readSource, replaceSource, moduleList } from './programming-helpers';
 
 test.setTimeout(120_000);
 test.use({ actionTimeout: 15_000 });
@@ -17,12 +17,19 @@ async function openWorkspace(page: Page) {
   await expect(page.getByLabel('当前关节姿态', { exact: true }).locator('strong')).toHaveCount(6);
 }
 async function bodyJoints(page: Page): Promise<number[]> {
+  const wasProgram = await page.getByRole('button', { name: '程序', exact: true }).getAttribute('aria-pressed') === 'true';
+  await openScene(page);
   await selectRobotObject(page);
-  return (await page.getByLabel('当前关节姿态', { exact: true }).locator('strong').allTextContents()).map(text => Number(text.replace('°', '')));
+  const joints = (await page.getByLabel('当前关节姿态', { exact: true }).locator('strong').allTextContents()).map(text => Number(text.replace('°', '')));
+  if (wasProgram) await openCode(page);
+  return joints;
 }
 async function bodyPose(page: Page) {
+  const wasProgram = await page.getByRole('button', { name: '程序', exact: true }).getAttribute('aria-pressed') === 'true';
+  await openScene(page);
   await selectRobotObject(page);
   const position = (await page.getByLabel('当前 TCP', { exact: true }).locator('strong').allTextContents()).map(Number);
+  if (wasProgram) await openCode(page);
   return { position };
 }
 async function saveDraft(page: Page) {
@@ -41,6 +48,10 @@ test('real code input highlights tokens, accepts keyboard and mouse completion, 
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const before = await bodyJoints(page);
+  await openCode(page);
+  await expect(moduleList(page).getByRole('option')).toHaveCount(0);
+  await expect(page.getByRole('tablist', { name: '源码文件', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '选择机器人', exact: true })).toHaveCount(0);
   await newSource(page, 'keyboard.modx', 'Mov');
   await codeEditor(page).press('ControlOrMeta+End');
   await chooseCompletion(page, 'MoveL');
@@ -87,17 +98,13 @@ test('diagnostics navigate to the actual file and selection and follow dialect a
   await openWorkspace(page);
   // This case isolates grammar-version changes across the whole project.
   // A modern extension would correctly add its own RW6 compatibility warning.
-  await openCode(page);
-  await page.getByRole('button', { name: '重命名', exact: true }).click();
-  const rename = page.getByRole('dialog', { name: '重命名源码文件', exact: true });
-  await rename.getByRole('textbox', { name: '源码文件名称', exact: true }).fill('EMULATE.mod');
-  await rename.getByRole('button', { name: '确定', exact: true }).click();
+  await newSource(page, 'EMULATE.mod', clean('EMULATE'));
   await newSource(page, 'bad.mod', 'MODULE Broken\nPROC main()\nVAR num n:=;\nENDPROC\nENDMODULE');
   const diagnostic = page.locator('.robot-code-diagnostics button').filter({ hasText: 'bad.mod:3:' });
   await expect(diagnostic.first()).toBeVisible();
   await newSource(page, 'good.mod', clean('Good'));
   await diagnostic.first().click();
-  await expect(sourceTabs(page).getByRole('tab', { name: 'bad.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(moduleList(page).getByRole('option', { name: 'bad.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(codeEditor(page)).toBeFocused();
   await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe(';');
   await replaceSource(page, 'MODULE Broken\nVAR num Break:=1;\nENDMODULE');
@@ -114,7 +121,7 @@ test('diagnostics navigate to the actual file and selection and follow dialect a
   await expect(page.locator('.robot-code-diagnostics .severity-error')).toHaveCount(0);
   await expect(page.locator('.robot-code-empty')).toContainText('当前检查未报告问题');
   expect(await readSource(page)).toBe(clean('Repaired', 9));
-  await sourceTabs(page).getByRole('tab', { name: 'good.mod', exact: true }).click();
+  await moduleList(page).getByRole('option', { name: 'good.mod', exact: true }).click();
   expect(await readSource(page)).toBe(clean('Good'));
   expect(errors).toEqual([]);
 });
@@ -130,14 +137,26 @@ test('real IndexedDB drafts isolate two robot projects and restore files and dia
   await rename.getByRole('textbox', { name: '源码文件名称', exact: true }).fill('renamed.mod');
   await rename.getByRole('button', { name: '确定', exact: true }).click();
   await saveDraft(page);
-  await expect(sourceTabs(page).getByRole('tab', { name: 'renamed.mod', exact: true })).toHaveAttribute('data-source-dirty', 'true');
+  await expect(moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true })).toHaveAttribute('data-source-dirty', 'true');
+  await expect(moduleList(page).getByRole('option')).toHaveCount(2);
+  await moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true }).press('Home');
+  await expect(moduleList(page).getByRole('option', { name: 'shared.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  expect(await readSource(page)).toBe(clean('LongArm', 58));
+  await moduleList(page).getByRole('option', { name: 'shared.mod', exact: true }).press('ArrowDown');
+  await expect(moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  expect(await readSource(page)).toBe(clean('Second', 2));
+  await moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true }).press('ArrowUp');
+  await expect(moduleList(page).getByRole('option', { name: 'shared.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await moduleList(page).getByRole('option', { name: 'shared.mod', exact: true }).press('End');
+  await expect(moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await saveDraft(page);
   await selectRobot(page, 'irb1100-4-0.475');
   await newSource(page, 'shared.mod', clean('ShortArm', 475));
   await newSource(page, 'delete.mod', clean('Temporary'));
   await page.getByRole('button', { name: '删除文件', exact: true }).click();
   await page.getByRole('dialog', { name: '删除源码文件', exact: true }).getByRole('button', { name: '删除', exact: true }).click();
-  await expect(sourceTabs(page).getByRole('tab', { name: 'delete.mod', exact: true })).toHaveCount(0);
-  await sourceTabs(page).getByRole('tab', { name: 'shared.mod', exact: true }).click();
+  await expect(moduleList(page).getByRole('option', { name: 'delete.mod', exact: true })).toHaveCount(0);
+  await moduleList(page).getByRole('option', { name: 'shared.mod', exact: true }).click();
   await saveDraft(page);
   const external: string[] = [];
   const origin = new URL(page.url()).origin;
@@ -148,18 +167,18 @@ test('real IndexedDB drafts isolate two robot projects and restore files and dia
   await page.reload();
   await selectRobot(page, 'irb1100-4-0.475');
   await openCode(page);
-  await expect(sourceTabs(page).getByRole('tab', { name: 'shared.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(sourceTabs(page).getByRole('tab', { name: 'renamed.mod', exact: true })).toHaveCount(0);
-  await expect(sourceTabs(page).getByRole('tab', { name: 'delete.mod', exact: true })).toHaveCount(0);
+  await expect(moduleList(page).getByRole('option', { name: 'shared.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true })).toHaveCount(0);
+  await expect(moduleList(page).getByRole('option', { name: 'delete.mod', exact: true })).toHaveCount(0);
   expect(await readSource(page)).toBe(clean('ShortArm', 475));
   await selectRobot(page, 'irb1100-4-0.58');
   await openCode(page);
-  await expect(sourceTabs(page).getByRole('tab', { name: 'shared.mod', exact: true })).toHaveCount(1);
-  await expect(sourceTabs(page).getByRole('tab', { name: 'renamed.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(sourceTabs(page).getByRole('tab', { name: 'renamed.mod', exact: true })).toHaveAttribute('data-source-dirty', 'true');
+  await expect(moduleList(page).getByRole('option', { name: 'shared.mod', exact: true })).toHaveCount(1);
+  await expect(moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(moduleList(page).getByRole('option', { name: 'renamed.mod', exact: true })).toHaveAttribute('data-source-dirty', 'true');
   await expect(page.getByRole('combobox', { name: '控制器语言版本', exact: true })).toHaveValue('rapid-rw6');
   expect(await readSource(page)).toBe(clean('Second', 2));
-  await sourceTabs(page).getByRole('tab', { name: 'shared.mod', exact: true }).click();
+  await moduleList(page).getByRole('option', { name: 'shared.mod', exact: true }).click();
   expect(await readSource(page)).toBe(clean('LongArm', 58));
   await page.getByRole('tab', { name: '指令参考', exact: true }).click();
   await page.getByRole('textbox', { name: '查找指令参考', exact: true }).fill('MoveL');
@@ -168,16 +187,16 @@ test('real IndexedDB drafts isolate two robot projects and restore files and dia
   expect(errors).toEqual([]);
 });
 
-test('file chooser import and actual downloads preserve BOM and CRLF through editing and generated-template undo', async ({ page }) => {
+test('file import and downloads preserve raw bytes while Path conversion creates an independent module', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
-  await captureCurrent(page);
+  const point = await captureCurrent(page);
   await openCode(page);
   const original = '\ufeffMODULE Imported\r\nPROC main()\r\n! 保留原始编码与换行\r\nENDPROC\r\nENDMODULE\r\n';
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: '导入源码', exact: true }).click();
   await (await chooser).setFiles({ name: 'imported.mod', mimeType: 'text/plain', buffer: Buffer.from(original) });
-  const tab = sourceTabs(page).getByRole('tab', { name: 'imported.mod', exact: true });
+  const tab = moduleList(page).getByRole('option', { name: 'imported.mod', exact: true });
   await expect(tab).toHaveAttribute('aria-selected', 'true');
   await expect(tab).toHaveAttribute('data-source-dirty', 'false');
   expect((await downloadSource(page)).bytes.equals(Buffer.from(original))).toBe(true);
@@ -190,22 +209,39 @@ test('file chooser import and actual downloads preserve BOM and CRLF through edi
   expect(downloaded.bytes.equals(Buffer.from(edited))).toBe(true);
   await expect(tab).toHaveAttribute('data-source-dirty', 'true');
   await expect(sourceStatus(page)).toContainText('浏览器未确认');
-  await generateSource(page);
-  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  const generated = await generateSource(page, point.pathId);
+  expect(generated).toContain('MoveL P001');
+  const generatedName = await moduleList(page).getByRole('option', { selected: true }).getAttribute('aria-label');
+  expect(generatedName).toMatch(/\.modx$/);
+  const editedGenerated = generated + '\n! Keep this module edit';
+  await replaceSource(page, editedGenerated);
+  const regenerated = await generateSource(page, point.pathId);
+  expect(regenerated).toContain('MoveL P001');
+  expect(regenerated).not.toContain('Keep this module edit');
+  const regeneratedName = await moduleList(page).getByRole('option', { selected: true }).getAttribute('aria-label');
+  expect(regeneratedName).not.toBe(generatedName);
+  await expect(moduleList(page).getByRole('option')).toHaveCount(3);
+  await moduleList(page).getByRole('option', { name: generatedName!, exact: true }).click();
+  expect(await readSource(page)).toBe(editedGenerated);
+  await tab.click();
   expect((await downloadSource(page)).bytes.equals(Buffer.from(edited))).toBe(true);
-  const beforeNames = await sourceTabs(page).getByRole('tab').allTextContents();
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  expect((await downloadSource(page)).bytes.equals(Buffer.from(original))).toBe(true);
+  await page.getByRole('button', { name: '重做', exact: true }).click();
+  expect((await downloadSource(page)).bytes.equals(Buffer.from(edited))).toBe(true);
+  const beforeNames = await moduleList(page).getByRole('option').allTextContents();
   const invalidChooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: '导入源码', exact: true }).click();
   await (await invalidChooser).setFiles({ name: 'invalid.mod', mimeType: 'text/plain', buffer: Buffer.from([0xff, 0xfe, 0x80]) });
   await expect(sourceStatus(page)).toContainText('UTF-8');
-  expect(await sourceTabs(page).getByRole('tab').allTextContents()).toEqual(beforeNames);
+  expect(await moduleList(page).getByRole('option').allTextContents()).toEqual(beforeNames);
   expect((await downloadSource(page)).bytes.equals(Buffer.from(edited))).toBe(true);
   // Modern RW7 files use UTF-8 without BOM. Diagnose an imported BOM without
   // silently rewriting the user's bytes, just as with the legacy extension.
   const modernChooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: '导入源码', exact: true }).click();
   await (await modernChooser).setFiles({ name: 'modern.modx', mimeType: 'text/plain', buffer: Buffer.from(original) });
-  await expect(sourceTabs(page).getByRole('tab', { name: 'modern.modx', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(moduleList(page).getByRole('option', { name: 'modern.modx', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.robot-code-diagnostics button').filter({ hasText: /modern\.modx.*UTF-8 BOM/ })).toBeVisible();
   const modernDownload = await downloadSource(page);
   expect(modernDownload.name).toBe('modern.modx');
@@ -213,7 +249,7 @@ test('file chooser import and actual downloads preserve BOM and CRLF through edi
   expect(errors).toEqual([]);
 });
 
-test('code mode cannot run stale teaching points and context insertion captures the actual body in one undo step', async ({ page }) => {
+test('module editing stays independent from Path simulation and context insertion captures the actual body in one undo step', async ({ page }) => {
   const errors = observeBrowser(page);
   await openWorkspace(page);
   const initialImage = await page.getByLabel('ABB IRB 1100 三维仿真场景').screenshot();
@@ -226,8 +262,8 @@ test('code mode cannot run stale teaching points and context insertion captures 
   expect((await page.getByLabel('ABB IRB 1100 三维仿真场景').screenshot()).equals(initialImage)).toBe(false);
   const initial = 'MODULE PoseDemo\nCONST num P001:=7;\nPROC main()\n\nENDPROC\nENDMODULE';
   await newSource(page, 'pose.mod', initial);
-  await expect(page.getByRole('button', { name: '运行源码', exact: true })).toBeDisabled();
-  await expect(page.getByRole('status', { name: '源码运行状态', exact: true })).toContainText(/尚未|尚无|未实现|未覆盖|不支持/);
+  await expect(page.getByRole('button', { name: '运行源码', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tablist', { name: '程序编辑模式', exact: true })).toHaveCount(0);
   await codeEditor(page).press('ControlOrMeta+Home');
   for (let index = 0; index < 3; index++) await codeEditor(page).press('ArrowDown');
   await codeEditor(page).press('Home');
@@ -254,11 +290,12 @@ test('code mode cannot run stale teaching points and context insertion captures 
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   expect(await readSource(page)).toBe(initial);
   await replaceSource(page, 'MODULE Invalid\nMoveL missing;');
-  await expect(page.getByRole('button', { name: '运行源码', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '运行源码', exact: true })).toHaveCount(0);
   expect(await bodyJoints(page)).toEqual(joints);
-  await openTeach(page);
-  await expect(programRows(page)).toHaveCount(1);
-  await expect(page.getByRole('button', { name: '运行程序', exact: true })).toBeEnabled();
+  await openScene(page);
+  await expect(pathPoints(page)).toHaveCount(1);
+  await page.locator('[data-object-kind="path"]').first().click();
+  await expect(page.getByRole('button', { name: '运行 Path', exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
