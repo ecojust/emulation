@@ -231,11 +231,14 @@ test('a Path point context menu positions the recorded joints with stoppable vie
   expect((await bodyJoints(page))[0]).toBeGreaterThan(-159.5);
   expect((await bodyJoints(page))[0]).toBeLessThan(159.5);
   await assertStopped(page, from, point.joints, true, true);
-  await page.clock.resume();
   await target.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '移动至此', exact: true }).click();
+  await expect(runState(page)).toHaveAttribute('data-run-phase', 'positioning');
+  // Keep the same controlled clock through completion: resumed virtual RAF
+  // delivery can lag a wall-clock assertion on software-rendered CI workers.
+  await page.clock.runFor(1500);
   await expectBodyJoints(page, point.joints, .001);
-  await expect(runState(page)).not.toHaveAttribute('data-run-phase', 'positioning');
+  await expect(runState(page)).toHaveAttribute('data-run-phase', 'complete');
   await expectNoPointMotionActions(page);
   await page.screenshot({ path: '/tmp/emulation-point-positioning.png' });
   expect(errors).toEqual([]);
