@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RobotScene, { type RobotSceneHandle } from './scene/RobotScene';
 import Icon from './ui/Icon';
-import RobotCatalogDialog from './catalog/RobotCatalogDialog';
+import './catalog/catalog.css';
 import RobotInspector from './workspace/RobotInspector';
 import TargetInspector from './workspace/TargetInspector';
 import ProgramPanel, { type ProgramCodeWorkspace } from './workspace/ProgramPanel';
@@ -24,7 +24,15 @@ import ObjectRemovalDialog from './workspace/ObjectRemovalDialog';
 import { createPathModule } from './workspace/path-module';
 import { useProgram } from './workspace/useProgram';
 import { useWorkspace, type DangerZoneDraft, type WorkspaceSelection, type WorkspaceView } from './workspace/useWorkspace';
-import type { ProgramPoint, ProgramSnapshot } from './workspace/program';
+import { surfacePathDisabledReason, type ProgramPoint, type ProgramSnapshot } from './workspace/program';
+import type { SceneSurface, SurfacePick } from './surface/types';
+import { validateSceneSurfaces, validateSceneSurface, evaluateSurfaceAnchor, validateSurfacePickReference } from './surface/validation';
+import { surfacePickPose } from './surface/pose';
+import { planSurfacePath, surfacePathGeometryReason, type SurfacePathPlan } from './surface/path-planning';
+import SurfaceImportDialog from './surface/SurfaceImportDialog';
+import SurfaceInspector from './surface/SurfaceInspector';
+import SurfaceRegionInspector from './surface/SurfaceRegionInspector';
+import SurfaceUvDialog, { type SurfaceUvInput } from './surface/SurfaceUvDialog';
 import { getProgramProfile } from './workspace/program-templates';
 import { useDocuments } from './programming/useDocuments';
 import { useSourceAnalysis } from './programming/useSourceAnalysis';
@@ -50,7 +58,7 @@ import { checkCollisions, type CollisionResult } from './robot/collision';
 import { createPoseJogController, type PoseJogController, type PoseJogSuccess, type JogStatus } from './robot/jog-controller';
 import { getRobotModel } from './robot/model';
 import { normalizeOrientation } from './robot/rapid';
-import type { IKSolution, JointAngles, MotionSample, PlanRequest, Pose, Quaternion, RobotId, Vec3 } from './robot/types';
+import type { IKSolution, JointAngles, MotionSample, PlanRequest, Pose, Quaternion, Vec3 } from './robot/types';
 import './styles.css';
 import './App.css';
 
@@ -83,6 +91,15 @@ export default function App(props: Partial<ProjectWorkspaceProps> = {}) {
 function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initialModel }: Partial<ProjectWorkspaceProps> & { initialModel: LoadedCatalogModel }) {
   const initialScene = project?.scene;
   const initialId = initialModel.entry.id;
+  const [surfaces, setSurfaces] = useState<SceneSurface[]>(() => initialScene?.surfaces ?? []);
+  const surfacesRef = useRef(surfaces); surfacesRef.current = surfaces;
+  const [surfaceImportOpen, setSurfaceImportOpen] = useState(false);
+  const [surfacePickingPathId, setSurfacePickingPathId] = useState<string | null>(null);
+  const [surfaceUvPathId, setSurfaceUvPathId] = useState<string | null>(null);
+  const [surfacePreview, setSurfacePreview] = useState<SurfacePathPlan | null>(null);
+  const [surfaceBusy, setSurfaceBusy] = useState(false);
+  const surfaceOperation = useRef<AbortController | null>(null);
+  const surfacePlanContexts = useRef(new WeakMap<SurfacePathPlan, string>());
   const savedBody = initialScene?.models[initialId];
   const sceneHandle = useRef<RobotSceneHandle | null>(null);
   const bodyStates = useRef<Record<string, Pick<ProjectModelScene, 'robotPresent' | 'joints'>>>(Object.fromEntries(Object.entries(initialScene?.models ?? {}).map(([id, saved]) => [id, { robotPresent: saved.robotPresent, joints: saved.joints }])));
@@ -90,10 +107,9 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   const [homeBusy, setHomeBusy] = useState(false), [homeError, setHomeError] = useState('');
   const homeOperation = useRef(false);
   const saveSceneBeforeClose = useRef<(() => Promise<void>) | null>(null);
-  const [modelId, setModelId] = useState<RobotId>(initialModel.kind === 'bundled' ? initialModel.motionModelId : 'irb1100-4-0.58');
+  const modelId = initialModel.kind === 'bundled' ? initialModel.motionModelId : 'irb1100-4-0.58';
   const model = getRobotModel(modelId);
-  const [catalogOpen, setCatalogOpen] = useState(false);
-  const [catalogModel, setCatalogModel] = useState<Extract<LoadedCatalogModel, { kind: 'urdf' }> | null>(initialModel.kind === 'urdf' ? initialModel : null);
+  const catalogModel = initialModel.kind === 'urdf' ? initialModel : null;
   const genericModel = catalogModel?.model ?? null;
   const activeName = catalogModel?.entry.name ?? model.name;
   const activeBrand = catalogModel?.entry.brand ?? 'ABB';
@@ -126,10 +142,13 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     try { return genericModel ? { chain: buildGenericChain(genericModel), error: '' } : null; }
     catch (error) { return { chain: null, error: error instanceof Error ? error.message : '当前 URDF 不能用于直线运动' }; }
   }, [genericModel]);
-  const workspace = useWorkspace({ modelKey: activeModelId, pathIds: program.paths.map(path => path.id), targetIds: program.points.map(point => point.id), frameIds: graph.frames.map(frame => frame.id), toolIds: graph.tools.map(tool => tool.id), initial: initialScene });
+  const workspace = useWorkspace({ modelKey: activeModelId, pathIds: program.paths.map(path => path.id), targetIds: program.points.map(point => point.id), frameIds: graph.frames.map(frame => frame.id), toolIds: graph.tools.map(tool => tool.id), surfaceIds: surfaces.map(surface => surface.id), surfacePointIds: program.paths.flatMap(path => path.surface?.points.map(point => point.id) ?? []), initial: initialScene });
   const { activeView, leftCollapsed, selection, zones, selectedZone, selectedZoneId, zoneConfiguration } = workspace;
   const sourceAnalysis = useSourceAnalysis(documents.project, activeView === 'program' && documents.ready && !analysisPaused);
-  const selectedPoint = selection.kind === 'target' ? program.points.find(point => point.id === selection.id) ?? null : null;
+  const selectedSurface = selection.kind === 'surface' ? surfaces.find(surface => surface.id === selection.id) ?? null : null;
+  const selectedSurfacePath = selection.kind === 'surface-point' ? program.paths.find(path => path.surface?.points.some(point => point.id === selection.id)) ?? null : selection.kind === 'path' ? program.paths.find(path => path.id === selection.id && path.surface) ?? null : null;
+  const selectedSurfacePoint = selection.kind === 'surface-point' ? selectedSurfacePath?.surface?.points.find(point => point.id === selection.id) ?? null : null;
+  const selectedPoint = selection.kind === 'target' ? program.points.find(point => point.id === selection.id) ?? null : selectedSurfacePoint && selectedSurfacePath?.surface?.kind === 'uv' ? program.points.find(point => point.id === selectedSurfacePath.pointIds[selectedSurfacePath.surface!.points.indexOf(selectedSurfacePoint)]) ?? null : null;
   const selectedPath = selection.kind === 'path' ? program.paths.find(path => path.id === selection.id) ?? null : null;
   const selectedFrame = selection.kind === 'frame' ? graph.frames.find(frame => frame.id === selection.id) ?? null : null;
   const selectedTool = selection.kind === 'tool' ? graph.tools.find(tool => tool.id === selection.id) ?? null : null;
@@ -156,7 +175,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   const [loop, setLoop] = useState(initialScene?.loop ?? false);
   const [execution, setExecution] = useState<ExecutionStatus>({ phase: 'idle', message: '', pointId: null, line: 0, cycle: 0 });
   const executionRun = useRef<{ controller: AbortController; frame: number } | null>(null);
-  const executing = execution.phase === 'planning' || execution.phase === 'running' || execution.phase === 'positioning';
+  const executing = surfaceBusy || execution.phase === 'planning' || execution.phase === 'running' || execution.phase === 'positioning';
   const [objectMenu, setObjectMenu] = useState<SceneTreeMenu | null>(null);
   const [removeObject, setRemoveObject] = useState<{ kind: SceneRemovalKind; id: string; modelId: string } | null>(null);
   const displayJoints = (genericModel ? catalogJoints : nativeJoints) as JointAngles;
@@ -192,23 +211,28 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   const pointUpdateDisabledReason = previewSolution ? poseOperationDisabledReason || (!genericModel && !previewSolution.configuration ? '预览姿态没有有效 robconf，请重新检查端点。' : null) : poseCaptureDisabledReason;
   const moduleGenerationDisabled = !documents.ready || sourceBusy || executing || closeState !== null;
   const sceneZones = useMemo(() => zoneConfiguration.validZones.map(zone => ({ ...zone, name: zones.find(draft => draft.id === zone.id)?.name.trim() || '未命名危险区' })), [zoneConfiguration.validZones, zones]);
-  const scenePaths = useMemo(() => program.paths.map(path => ({ id: path.id, name: path.name, selected: selection.kind === 'path' && selection.id === path.id, points: path.pointIds.flatMap(id => {
-    const point = program.points.find(item => item.id === id);
-    return point ? [{ id: point.id, name: point.pointName, pose: pathPointToWorld(graph, path.id, point.pose) }] : [];
-  }) })), [program.paths, program.points, selection, graph]);
+  const scenePaths = useMemo(() => program.paths.map(path => ({ id: path.id, name: path.name, selected: selection.kind === 'path' && selection.id === path.id || selectedSurfacePath?.id === path.id,
+    points: path.surface ? path.surface.points.map(point => ({ id: point.id, name: point.name, pose: pathPointToWorld(graph, path.id, point.pose) })) : path.pointIds.flatMap(id => {
+      const point = program.points.find(item => item.id === id);
+      return point ? [{ id: point.id, name: point.pointName, pose: pathPointToWorld(graph, path.id, point.pose) }] : [];
+    }) })), [program.paths, program.points, selection, selectedSurfacePath, graph]);
+  const displayedScenePaths = surfacePreview ? [...scenePaths, { id: 'surface-preview', name: 'UV 预览', selected: true, points: surfacePreview.geometry.points.map((point, index) => ({ id: 'preview-' + index, name: String(index + 1), pose: point.pose })) }] : scenePaths;
+  const pickingPath = program.paths.find(path => path.id === surfacePickingPathId) ?? null;
+  const shownRegion = pickingPath?.surface ?? selectedSurfacePath?.surface;
+  const sceneSurfaceRegion = shownRegion?.kind === 'region' ? { points: shownRegion.points.map(point => point.pick), controlIndices: shownRegion.points.flatMap((point, index) => shownRegion.controlPointIds.includes(point.id) ? [index] : []), closed: !surfacePickingPathId } : undefined;
   const zoneNames = useMemo(() => new Map(zones.map(zone => [zone.id, zone.name.trim() || '未命名危险区'])), [zones]);
   const pointKey = selectedPoint ? activeModelId + ':' + selectedPoint.id + ':' + selectedPoint.revision + ':' + graph.revision : '';
   const solutions = inspection.key === pointKey && !inspection.pending ? inspection.solutions : [];
   const collisionRequest = useMemo(() => robotPresent && !zoneConfiguration.errors.length && solutions.length ? { modelId: activeModelId, basePose, zones: zoneConfiguration.validZones, solutions: solutions.map(solution => ({ id: solution.id, joints: solution.joints })) } : null, [robotPresent, activeModelId, basePose, zoneConfiguration, solutions]);
   const collisionKey = collisionRequest ? JSON.stringify(collisionRequest) : '';
   const collisionById = useMemo(() => new Map(collisionView.items.map(item => [item.id, item])), [collisionView.items]);
-  const planningContextKey = JSON.stringify([activeModelId, robotPresent, graph.revision, program.revision, zones, displayJoints]);
+  const planningContextKey = JSON.stringify([activeModelId, robotPresent, graph.revision, program.revision, zones, displayJoints, speed, surfaces.map(surface => [surface.id, surface.revision, surface.visible])]);
   const sceneContextRef = useRef(planningContextKey); sceneContextRef.current = planningContextKey;
   const sourceReadOnly = sourceBusy || executing || closeState !== null || !documents.ready || sourceLanguagePending;
   const draftStatusText = documents.draftStatus === 'saved' ? '草稿已保存' : documents.draftStatus === 'saving' ? '正在保存草稿…' : documents.draftStatus === 'pending' ? '草稿等待保存…' : documents.draftStatus === 'loading' ? '正在恢复草稿…' : '草稿保存失败';
   const sourceStatus = [...new Set([languageState.key === languageKey && languageState.error ? '语言版本加载失败：' + languageState.error : sourceLanguagePending ? '正在加载本地语言版本…' : '', sourceMessage, documents.error, draftStatusText, documents.dirty ? '源码已修改' : ''].filter(Boolean))].join(' · ');
 
-  function sourceWritable() { return documents.ready && !sourceLanguagePending && !sourceOperation.current && !executionRun.current && !closeAttempt.current.busy && !homeOperation.current; }
+  function sourceWritable() { return !surfaceOperation.current && documents.ready && !sourceLanguagePending && !sourceOperation.current && !executionRun.current && !closeAttempt.current.busy && !homeOperation.current; }
   function beginSourceOperation(message: string) {
     if (!sourceWritable()) return null;
     const operation = { modelId: activeModelId }; sourceOperation.current = operation;
@@ -256,6 +280,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     if (moduleGenerationDisabled || sourceOperation.current) return;
     const path = program.paths.find(item => item.id === pathId);
     if (!path) return;
+    const reason = surfaceMotionReason(pathId); if (reason) { setMessage(reason); return; }
     const operation = { modelId: activeModelId, controller: new AbortController() }, owner = documents;
     sourceOperation.current = operation; setSourceBusy(true); setObjectMenu(null); clearPreview(); cancelInspections();
     const capturedContext = sceneContextRef.current;
@@ -298,6 +323,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   function retrySourceAnalysis() { setAnalysisPaused(true); }
   async function finishNativeClose(discard = false) {
     if (!nativeDesktop || closeAttempt.current.busy) return;
+    surfaceOperation.current?.abort(); setSurfaceImportOpen(false); setSurfacePickingPathId(null); setSurfaceUvPathId(null); setSurfacePreview(null);
     closeAttempt.current.busy = true; stopExecution(false); stopJog(); clearPreview(); cancelInspections(); sourceOperation.current?.controller?.abort(); sourceOperation.current = null; setSourceBusy(false); setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setRemoveObject(null); setCloseState('saving'); setCloseError('');
     try {
       if (!discard && (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts())) {
@@ -369,7 +395,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     }
     if (!currentFlangePose) throw new Error('当前型号缺少有效法兰位姿，项目尚未保存。');
     validateProjectModelWorld(models[activeModelId], currentFlangePose);
-    return { activeModelId, models, zones: structuredClone(zones), activeView: workspaceView, leftCollapsed, view, showFrames, loop, speed, camera };
+    return { activeModelId, models, surfaces, zones: structuredClone(zones), activeView: workspaceView, leftCollapsed, view, showFrames, loop, speed, camera };
   }
   saveSceneBeforeClose.current = onSaveScene ? async () => { await onSaveScene(collectScene()); } : null;
   async function returnHome() {
@@ -377,7 +403,8 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     homeOperation.current = true; setHomeBusy(true); setHomeError('');
     const savedView = activeView;
     stopExecution(false); stopJog(); clearPreview(); cancelInspections();
-    setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setCatalogOpen(false); setZoneDragging(false);
+    surfaceOperation.current?.abort(); setSurfaceImportOpen(false); setSurfacePickingPathId(null); setSurfaceUvPathId(null); setSurfacePreview(null);
+    setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setZoneDragging(false);
     workspace.setActiveView('scene');
     try {
       if (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts()) throw new Error('模块草稿尚未保存，请重试；当前项目仍保持打开。');
@@ -392,6 +419,113 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
       workspace.setActiveView(savedView);
     } finally { homeOperation.current = false; if (alive.current) setHomeBusy(false); }
   }
+  function surfaceEdit(action: () => void) {
+    if (executing || sourceOperation.current || closeAttempt.current.busy || homeOperation.current) return;
+    try { clearPreview(); stopJog(); cancelInspections(); setSurfacePreview(null); action(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : '表面对象更新失败。'); }
+  }
+  function importSceneSurface(value: SceneSurface) {
+    if (executing || sourceOperation.current || homeOperation.current || closeAttempt.current.busy) throw new Error('请等待当前操作完成后导入模型。');
+    const next = validateSceneSurfaces([...surfacesRef.current, value]);
+    // Reserve space for source drafts and scene metadata rather than failing only on exit.
+    if (new TextEncoder().encode(JSON.stringify(next)).length > 48 * 1024 * 1024) throw new Error('当前项目的模型数据超过48 MiB，请精简网格后再导入。');
+    setSurfaces(next); surfacesRef.current = next;
+    chooseObject({ kind: 'surface', id: value.id }); setSurfaceImportOpen(false);
+    setMessage('已导入 ' + value.name + '。右键 Path 可开始点选表面区域。');
+  }
+  function editSurface(id: string, patch: Partial<Pick<SceneSurface, 'name' | 'visible' | 'pose'>>) {
+    surfaceEdit(() => {
+      const current = surfacesRef.current.find(surface => surface.id === id); if (!current) throw new Error('模型已不存在。');
+      const updated = validateSceneSurface({ ...current, ...patch, revision: current.revision + (patch.pose ? 1 : 0) });
+      const next = surfacesRef.current.map(surface => surface.id === id ? updated : surface); setSurfaces(next); surfacesRef.current = next;
+      if (patch.pose) { program.invalidateSurfacePaths(id); setSurfacePickingPathId(null); }
+    });
+  }
+  function surfaceMotionReason(pathId: string): string | null {
+    const path = program.paths.find(item => item.id === pathId); if (!path) return 'Path 已不存在。';
+    return surfacePathDisabledReason(path, { paths: program.paths, surfaceRevision: surfaces.find(surface => surface.id === path.surface?.surfaceId)?.revision ?? null }) || surfacePathGeometryReason(path, graph, surfaces);
+  }
+  function resolvedSurfacePoint(pointId: string) {
+    const owner = program.paths.find(path => path.surface?.points.some(point => point.id === pointId));
+    const index = owner?.surface?.points.findIndex(point => point.id === pointId) ?? -1;
+    return owner && !surfaceMotionReason(owner.id) && index >= 0 ? program.points.find(point => point.id === owner.pointIds[index]) : undefined;
+  }
+  function capturePathReason(pathId: string): string | null {
+    return program.paths.find(path => path.id === pathId)?.surface ? '此 Path 保存表面区域；请在普通 Path 中示教机器人点。' : captureDisabledReason;
+  }
+  function beginSurfacePicking(pathId: string) {
+    if (executing || sourceBusy || closeState !== null) return;
+    const path = program.paths.find(item => item.id === pathId); if (!path) return;
+    if (path.surface?.kind === 'uv') { setMessage('UV 路径保留其表面目标，请在原区域 Path 中点选。'); return; }
+    if (!surfaces.some(surface => surface.visible)) { setMessage('请先导入并显示工件模型。'); setSurfaceImportOpen(true); return; }
+    const reason = surfacePathGeometryReason(path, graph, surfaces);
+    if (reason) { setMessage(reason); return; }
+    chooseObject({ kind: 'path', id: path.id }); workspace.setActiveView('scene');
+    setObjectMenu(null); setSurfacePickingPathId(path.id); setMessage('沿模型表面按顺序点选区域边界；拖动视角不会添加点，Esc 结束。');
+  }
+  function addSurfacePick(pick: SurfacePick) {
+    if (!surfacePickingPathId || executing || sourceBusy || homeOperation.current || closeAttempt.current.busy) return;
+    try {
+      const path = program.paths.find(item => item.id === surfacePickingPathId), surface = surfacesRef.current.find(item => item.id === pick.surfaceId);
+      if (!path || !surface || !surface.visible || pick.surfaceRevision !== surface.revision) throw new Error('模型或区域已改变，请重新点选。');
+      validateSurfacePickReference(pick, surface);
+      const previous = path.surface?.points.at(-1);
+      if (previous && Math.hypot(...previous.pick.position.map((value, i) => value - pick.position[i])) < .001) return;
+      const pose = surfacePickPose(pick, previous ? pathPointToWorld(graph, path.id, previous.pose).orientation : currentPose?.orientation);
+      program.appendSurfacePoints(path.id, [{ pose: worldPointToPath(graph, path.id, pose), pick }]);
+      setMessage('已添加表面点。沿区域边界继续点选，完成后标记4个角控制点。');
+    } catch (error) { setMessage(error instanceof Error ? error.message : '表面点添加失败。'); }
+  }
+  function setSurfaceControl(pathId: string, pointId: string, enabled: boolean) {
+    surfaceEdit(() => { program.setSurfaceControl(pathId, pointId, enabled); });
+  }
+  function resetSurfaceRegion(pathId: string) {
+    surfaceEdit(() => {
+      program.clearSurfacePath(pathId);
+      chooseObject({ kind: 'path', id: pathId }); workspace.setActiveView('scene');
+      setSurfacePickingPathId(pathId);
+      setMessage('原区域已清空，关联 UV 路径需重新生成。请在模型上重新点选边界。');
+    });
+  }
+  function openSurfaceUv(pathId: string) {
+    if (!robotPresent || executing || sourceBusy || closeState !== null) return;
+    const path = program.paths.find(item => item.id === pathId);
+    if (!path?.surface || path.surface.kind !== 'region' || path.surface.controlPointIds.length !== 4) { setMessage('请先点选区域，并按边界顺序设置4个角控制点。'); return; }
+    const reason = surfacePathGeometryReason(path, graph, surfaces); if (reason) { setMessage(reason); return; }
+    chooseObject({ kind: 'path', id: path.id }); setSurfacePickingPathId(null); setObjectMenu(null);
+    setSurfacePreview(null); setSurfaceUvPathId(path.id);
+  }
+  async function generateSurfaceUv(settings: SurfaceUvInput, signal: AbortSignal): Promise<SurfacePathPlan> {
+    const path = program.paths.find(item => item.id === surfaceUvPathId), surface = surfacesRef.current.find(item => item.id === path?.surface?.surfaceId);
+    if (!path || !surface || !robotPresent || surfaceOperation.current || executionRun.current || sourceOperation.current || homeOperation.current || closeAttempt.current.busy) throw new Error('当前场景尚不能生成表面路径。');
+    const controller = new AbortController(), abort = () => controller.abort();
+    signal.addEventListener('abort', abort, { once: true }); if (signal.aborted) controller.abort();
+    const context = sceneContextRef.current; surfaceOperation.current = controller; setSurfaceBusy(true); clearPreview(); stopJog(); cancelInspections();
+    try {
+      const result = await planSurfacePath({ surface, path, graph, settings,
+        request: makeGrindingRequest({ targets: [], startJoints: [...displayJoints], clearanceMm: 0, speedMmPerSecond: speed }) }, controller.signal);
+      if (controller.signal.aborted || !alive.current || context !== sceneContextRef.current) throw new Error('场景或区域已改变，生成结果已作废。');
+      surfacePlanContexts.current.set(result, context); return result;
+    } finally { signal.removeEventListener('abort', abort); if (surfaceOperation.current === controller) { surfaceOperation.current = null; if (alive.current) setSurfaceBusy(false); } }
+  }
+  function applySurfaceUv(result: SurfacePathPlan, settings: SurfaceUvInput) {
+    if (surfacePlanContexts.current.get(result) !== sceneContextRef.current || executing || sourceOperation.current || homeOperation.current || closeAttempt.current.busy) throw new Error('场景、区域或机器人姿态已变化，请重新生成。');
+    const source = program.paths.find(path => path.id === surfaceUvPathId), surface = surfacesRef.current.find(item => item.id === source?.surface?.surfaceId);
+    if (!source?.surface || !surface) throw new Error('原区域或模型已不存在。');
+    const reason = surfacePathGeometryReason(source, graph, surfaces); if (reason) throw new Error(reason);
+    const samples = result.geometry.points.map(point => ({ pose: point.pose, pick: { surfaceId: surface.id, surfaceRevision: surface.revision, ...point.anchor, ...evaluateSurfaceAnchor(surface, point.anchor) } }));
+    const snapshots = result.motion.waypoints.map(point => ({ pose: point.pose, joints: point.joints, configuration: point.configuration, speedMmPerSecond: speed, motionRole: 'process' as const }));
+    // A new Path starts in world coordinates, so its saved poses equal the verified mesh targets exactly.
+    const path = program.createUvPath(source.id, source.surface.revision, samples, settings, { resolvedSnapshots: snapshots });
+    setSurfacePreview(null); setSurfaceUvPathId(null); workspace.selectObject({ kind: 'path', id: path.id });
+    setMessage('已创建 ' + path.name + '：全部目标来自模型表面，机器人姿态连续性检查通过。');
+  }
+  useEffect(() => {
+    if (!surfacePickingPathId) return;
+    const finish = (event: KeyboardEvent) => { if (event.key === 'Escape') { setSurfacePickingPathId(null); setMessage('已结束区域点选，请在右侧标记4个角控制点。'); } };
+    window.addEventListener('keydown', finish); return () => window.removeEventListener('keydown', finish);
+  }, [surfacePickingPathId]);
+  useEffect(() => () => { surfaceOperation.current?.abort(); }, []);
   function writeBodyPose(joints: JointAngles) {
     if (genericModel) { setCatalogJoints([...joints]); setCatalogDraft(strings(joints)); }
     else { setNativeJoints([...joints]); setJointDraft(strings(joints)); }
@@ -408,12 +542,13 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   function chooseObject(next: WorkspaceSelection) {
     if (JSON.stringify(selection) === JSON.stringify(next)) return;
     clearPreview(); stopJog(); cancelInspections(); setMessage('');
+    if (surfacePickingPathId && !(next.kind === 'path' && next.id === surfacePickingPathId) && !(next.kind === 'surface-point' && program.paths.find(path => path.id === surfacePickingPathId)?.surface?.points.some(point => point.id === next.id))) setSurfacePickingPathId(null);
     workspace.selectObject(next);
   }
   function changeWorkspaceView(next: WorkspaceView) {
     if (executionRun.current && next === 'program') return;
     if (next === activeView) return;
-    setEndpointPreview(null); stopJog(); setZoneDragging(false);
+    setEndpointPreview(null); stopJog(); setZoneDragging(false); setSurfacePickingPathId(null);
     workspace.setActiveView(next);
   }
   function changeView(next: View) { stopJog(); setZoneDragging(false); setView(next); setViewRevision(value => value + 1); }
@@ -429,46 +564,19 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
       if (genericModel) setCatalogJoints(values); else setNativeJoints(values as JointAngles);
     } catch { /* Numeric drafts retain the previous rendered pose. */ }
   }
+  function restoreProjectRobot() {
+    if (robotPresent || executing || surfaceOperation.current || sourceBusy || sourceOperation.current || executionRun.current || homeBusy || homeOperation.current || homeError || closeState !== null || closeAttempt.current.busy || removeObject !== null) return;
+    // Restore this project's existing body without changing its base or joints.
+    chooseObject({ kind: 'robot' });
+    setRobotPresent(true);
+    bodyStates.current[activeModelId] = { robotPresent: true, joints: [...displayJoints] };
+    setMessage('已恢复本项目的机器人本体。');
+  }
   function setRobotPose(kind: 'ready' | 'zero') {
     if (!robotPresent || homeOperation.current || executionRun.current || sourceOperation.current) return;
     stopJog(); clearPreview();
     if (genericModel) { const joints = kind === 'ready' ? GENERIC_READY : genericModel.description.homeJoints; setCatalogJoints([...joints]); setCatalogDraft(strings(joints)); }
     else { const joints = kind === 'ready' ? model.readyJoints : model.homeJoints; setNativeJoints([...joints]); setJointDraft(strings(joints)); }
-  }
-  function selectCatalogModel(loaded: LoadedCatalogModel) {
-    if (sourceOperation.current || closeState !== null || homeOperation.current) { if (loaded.kind === 'urdf') loaded.dispose(); return; }
-    const saved = loaded.entry.id === activeModelId ? { robotPresent, joints: [...displayJoints] as JointAngles } : bodyStates.current[loaded.entry.id];
-    try {
-      if (!currentFlangePose || !program.program) throw new Error('当前型号缺少有效场景，未切换机器人。');
-      // Validate the outgoing scene before preserving it as an inactive model.
-      validateProjectModelWorld({ robotPresent, joints: displayJoints, graph, program: program.program }, currentFlangePose);
-      const restoredLimits = loaded.kind === 'bundled' ? getRobotModel(loaded.motionModelId).limits : loaded.model.description.actuatedJoints;
-      if (saved?.joints.some((angle, index) => angle < restoredLimits[index].minDeg || angle > restoredLimits[index].maxDeg)) throw new Error('已保存关节超出当前型号范围，未更改场景。');
-      if (saved) {
-        const restoredGraph = loaded.entry.id === activeModelId ? graph : frameState.getStore()[loaded.entry.id] ?? initialScene?.models[loaded.entry.id]?.graph;
-        const restoredProgram = program.getStore()[loaded.entry.id] ?? initialScene?.models[loaded.entry.id]?.program;
-        if (!restoredGraph || !restoredProgram) throw new Error('待恢复型号的场景不完整，未更改当前场景。');
-        const flange = loaded.kind === 'bundled' ? forwardKinematics(getRobotModel(loaded.motionModelId), saved.joints).pose : forwardUrdfKinematics(loaded.model.description, saved.joints).toolPose;
-        if (!flange) throw new Error('待恢复型号缺少有效法兰位姿，未更改当前场景。');
-        validateProjectModelWorld({ ...saved, robotPresent: true, graph: restoredGraph, program: restoredProgram }, flange);
-      }
-    } catch (error) {
-      if (loaded.kind === 'urdf') loaded.dispose(); setMessage(error instanceof Error ? error.message : '型号场景无效，未切换机器人。'); return;
-    }
-    bodyStates.current[activeModelId] = { robotPresent, joints: [...displayJoints] };
-    frameState.replaceGraph(graph);
-    setRobotPresent(true);
-    activeModelRef.current = loaded.entry.id; setSourceMessage('');
-    stopExecution(false); setObjectMenu(null); setRemoveObject(null); setPlanningPathId(null); setPlanningPreview(null);
-    stopJog(); clearPreview(); cancelInspections(); setJogEnabled(false); setMessage('');
-    if (loaded.kind === 'bundled') {
-      const next = getRobotModel(loaded.motionModelId);
-      setPlanningPathId(null); setPlanningPreview(null);
-      setCatalogModel(null); setModelId(loaded.motionModelId); setNativeJoints([...(saved?.joints ?? next.readyJoints)]); setJointDraft(strings(saved?.joints ?? next.readyJoints));
-    } else {
-      setCatalogModel(loaded); setCatalogJoints([...(saved?.joints ?? loaded.model.description.homeJoints)]); setCatalogDraft(strings(saved?.joints ?? loaded.model.description.homeJoints));
-    }
-    workspace.selectObject({ kind: 'robot' }); workspace.setActiveView('scene'); setViewRevision(value => value + 1);
   }
   function snapshot(speedValue = speed, pathId?: string): ProgramSnapshot {
     if (captureDisabledReason || !currentPose) throw new Error(captureDisabledReason || '当前姿态没有有效工具坐标。');
@@ -486,7 +594,8 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     if (closeState !== null || closeAttempt.current.busy) return;
     try {
       const point = program.captureToPath(pathId, snapshot(speed, pathId));
-      chooseObject({ kind: 'target', id: point.id });
+      // Keep the active robot/Jog selection so repeated teaching stays fluid.
+      if (!(selection.kind === 'robot' && jogEnabled)) chooseObject({ kind: 'target', id: point.id });
       setMessage('已将当前姿态记录为 ' + point.pointName + '。');
     } catch (error) { setMessage(error instanceof Error ? error.message : '姿态记录失败'); }
   }
@@ -507,17 +616,22 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   function confirmRemoveObject() {
     const requested = removeObject;
     setRemoveObject(null);
-    if (!requested || requested.modelId !== activeModelId || executionRun.current || closeState !== null || closeAttempt.current.busy) return;
-    clearPreview(); stopJog(); cancelInspections(); setPlanningPathId(null); setPlanningPreview(null);
+    if (!requested || requested.modelId !== activeModelId || executionRun.current || executing || sourceOperation.current || homeOperation.current || closeState !== null || closeAttempt.current.busy) return;
+    clearPreview(); stopJog(); cancelInspections(); setPlanningPathId(null); setPlanningPreview(null); setSurfacePickingPathId(null); setSurfacePreview(null);
     try {
       if (requested.kind === 'robot') {
         stopExecution(false); setJogEnabled(false);
         frameState.replaceGraph(detachRobotTools(graph, currentFlangePose ?? undefined));
-        setRobotPresent(false);
+        program.invalidateSurfaceSolutions(); setRobotPresent(false);
         bodyStates.current[activeModelId] = { robotPresent: false, joints: [...displayJoints] };
         workspace.selectObject({ kind: 'robot' });
-      } else if (requested.kind === 'frame') { frameState.removeFrame(requested.id); workspace.selectObject({ kind: 'robot' }); }
-      else if (requested.kind === 'tool') { frameState.removeTool(requested.id); workspace.selectObject({ kind: 'robot' }); }
+      } else if (requested.kind === 'surface') {
+        const next = surfacesRef.current.filter(surface => surface.id !== requested.id); setSurfaces(next); surfacesRef.current = next; program.invalidateSurfacePaths(requested.id); workspace.selectObject({ kind: 'robot' });
+      } else if (requested.kind === 'surface-point') {
+        const owner = program.paths.find(path => path.surface?.points.some(point => point.id === requested.id));
+        if (owner) { program.removeSurfacePoint(owner.id, requested.id); workspace.selectObject({ kind: 'path', id: owner.id }); }
+      } else if (requested.kind === 'frame') { frameState.removeFrame(requested.id); program.invalidateSurfaceSolutions(); workspace.selectObject({ kind: 'robot' }); }
+      else if (requested.kind === 'tool') { frameState.removeTool(requested.id); program.invalidateSurfaceSolutions(); workspace.selectObject({ kind: 'robot' }); }
       else if (requested.kind === 'zone') { workspace.setZones(current => current.filter(zone => zone.id !== requested.id)); workspace.selectObject({ kind: 'robot' }); }
       else if (requested.kind === 'path') {
         program.removePath(requested.id); frameState.removePath(requested.id);
@@ -538,7 +652,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   function graphEdit(action: () => void) {
     if (executionRun.current || executing || sourceOperation.current || sourceBusy || closeState !== null) throw new Error('请先停止当前操作，再修改坐标对象。');
     clearPreview(); stopJog(); cancelInspections(); setPlanningPreview(null);
-    action(); setMessage('');
+    action(); program.invalidateSurfaceSolutions(); setSurfacePreview(null); setMessage('');
   }
   function editSceneGraph(action: () => void) {
     try { graphEdit(action); } catch (error) { setMessage(error instanceof Error ? error.message : '坐标对象更新失败'); }
@@ -561,7 +675,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   }
   function isIdentity(pose: Pose) { return Math.hypot(...pose.position) < 1e-7 && quaternionDistanceDeg(pose.orientation, [1, 0, 0, 0]) < 1e-7; }
   function needsFramedPlanning(pathId?: string) {
-    if (!isIdentity(basePose) || !isIdentity(toolPose) || Boolean(pathId && (!isIdentity(pathWorldPose(graph, pathId)) || program.paths.find(path => path.id === pathId)?.planning))) return true;
+    if (!isIdentity(basePose) || !isIdentity(toolPose) || Boolean(pathId && (!isIdentity(pathWorldPose(graph, pathId)) || program.paths.find(path => path.id === pathId)?.planning || program.paths.find(path => path.id === pathId)?.surface))) return true;
     // Returning a frame/tool to identity does not make snapshots recorded under
     // its previous transform valid again. Check actual FK against each target.
     return Boolean(pathId && program.pointsForPath(pathId).some(point => {
@@ -586,7 +700,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     return { ...input, robot, basePose, toolPose, toolRadiusMm, zones: zoneConfiguration.validZones };
   }
   function openPathPlanning(pathId: string) {
-    if (!robotPresent || executing || sourceBusy || closeState !== null || !program.paths.some(path => path.id === pathId)) return;
+    if (!robotPresent || executing || sourceBusy || closeState !== null || !program.paths.some(path => path.id === pathId && !path.surface)) return;
     clearPreview(); stopJog(); cancelInspections(); setObjectMenu(null); workspace.selectObject({ kind: 'path', id: pathId });
     setPlanningPreview(null); setPlanningPathId(pathId);
   }
@@ -628,7 +742,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     else if (!report) setExecution({ phase: 'idle', message: '', pointId: null, line: 0, cycle: 0 });
   }
   function pathRunDisabledReason(pathId: string): string | null {
-    return captureDisabledReason || (sourceBusy || closeState !== null ? '请等待当前操作完成。' : null)
+    return surfaceMotionReason(pathId) || captureDisabledReason || (sourceBusy || closeState !== null ? '请等待当前操作完成。' : null)
       || (!program.paths.find(path => path.id === pathId)?.pointIds.length ? '请先向此 Path 添加目标点。' : null);
   }
   async function runPath(pathId: string) {
@@ -773,7 +887,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
       const point = program.captureToPath(path.id, { pose: result.selected.pose, joints: result.selected.joints, configuration: result.selected.configuration, speedMmPerSecond: 100 });
       workspace.selectObject({ kind: 'target', id: point.id });
       writeBodyPose(request.startJoints);
-    }, selectCatalogModel);
+    });
   }, []);
 
   function collisionInfo(id: string): { state: CollisionStatus; label: string; title: string } {
@@ -801,19 +915,19 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   return <div className="app-shell">
     <header className="topbar" inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null}>
       <a className="brand" href="./" aria-label="Emulation 首页" onClick={event => { if (onReturnHome) { event.preventDefault(); void returnHome(); } }}><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
-      <div className="header-divider"/><nav className="project-label project-breadcrumbs" aria-label="项目导航">{onReturnHome && <><button type="button" className="breadcrumb-home return-home-button" aria-label="返回主页" title="返回项目主页" disabled={homeBusy || sourceBusy || closeState !== null} onClick={() => void returnHome()}><Icon name="home" size={14}/><span>主页</span></button><Icon name="chevron-right" size={13} className="breadcrumb-separator"/></>}<span className="project-context" title={project?.name} aria-current="page">{project?.name ?? '运动工作台'}</span><Icon name="chevron-right" size={13} className="project-separator breadcrumb-project-separator"/><button type="button" className="robot-model-button" aria-label="选择机器人型号" title={activeName} disabled={executing || sourceBusy} onClick={() => setCatalogOpen(true)}><span className="robot-model-name">{activeName}</span><Icon name="chevron-down" size={13}/></button></nav>
+      <div className="header-divider"/><nav className="project-label project-breadcrumbs" aria-label="项目导航">{onReturnHome && <><button type="button" className="breadcrumb-home return-home-button" aria-label="返回主页" title="返回项目主页" disabled={homeBusy || sourceBusy || closeState !== null} onClick={() => void returnHome()}><Icon name="home" size={14}/><span>主页</span></button><Icon name="chevron-right" size={13} className="breadcrumb-separator"/></>}<span className="project-context" title={project?.name} aria-current="page">{project?.name ?? '运动工作台'}</span></nav>
       <div className="workspace-view-switch" aria-label="工作区视图">{(['scene', 'program'] as const).map(item => <button key={item} type="button" aria-pressed={activeView === item} disabled={executing && item === 'program'} className={activeView === item ? 'selected' : ''} onClick={() => changeWorkspaceView(item)}>{item === 'scene' ? '场景' : '程序'}</button>)}</div>
-      <div className="header-right"><span className="version">v0.4.1</span></div>
+      <div className="header-right"><span className="project-robot-model" aria-label="项目机器人型号" data-model-id={activeModelId} title={activeName}><Icon name="robot" size={15}/><span>{activeName}</span></span><span className="version">v0.5.0</span></div>
     </header>
     <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null}>
       <aside className="object-panel" aria-label={activeView === 'program' ? '程序模块' : '场景对象'}>
         <div className="object-panel-header"><h2>{activeView === 'program' ? '模块文件' : '场景对象'}</h2><button type="button" className="icon-button" aria-label={leftCollapsed ? '展开左侧面板' : '折叠左侧面板'} onClick={() => workspace.setLeftCollapsed(value => !value)}><Icon name={leftCollapsed ? 'chevron-right' : 'chevron-left'} size={16}/></button></div>
         <div className="object-panel-content" aria-hidden={leftCollapsed} inert={leftCollapsed}>
           {activeView === 'program' ? <ModuleList files={documents.files} activeFileId={documents.project.activeFileId} disabled={!documents.ready || sourceBusy || executing} onSelectFile={id => documents.selectFile(id)}/> : <SceneObjectTree robotPresent={robotPresent} robotName={activeName} joints={displayJoints} robotParent={graph.robotBase.parent} frames={graph.frames} tools={graph.tools}
-            paths={program.paths.map(path => ({ ...path, parent: pathAttachment(graph, path.id).parent }))} points={program.points} zones={zones}
+            paths={program.paths.map(path => ({ ...path, parent: pathAttachment(graph, path.id).parent }))} points={program.points} zones={zones} surfaces={surfaces} onImportSurface={() => { setSurfacePickingPathId(null); setSurfaceImportOpen(true); }}
             invalidZoneIds={zoneConfiguration.errors.map(error => error.id)} selection={selection} executingPointId={execution.phase === 'running' ? execution.pointId : null}
             disabled={executing || sourceBusy} canAddZone={workspace.canAddZone} onSelect={chooseObject} onContextMenu={setObjectMenu} onReparent={reparentObject}
-            onAddFrame={addReferenceFrame} onAddTool={addTool} onAddPath={createPath}
+            onRestoreRobot={restoreProjectRobot} onAddFrame={addReferenceFrame} onAddTool={addTool} onAddPath={createPath}
             onAddZone={() => { clearPreview(); stopJog(); cancelInspections(); workspace.addZone(); }}/>}
         </div>
       </aside>
@@ -822,15 +936,16 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
         <div className="scene-heading"><div><span className="eyebrow">ROBOT WORKSPACE</span><h1>机器人工作区</h1><p>{genericModel ? 'URDF 模型 · 关节姿态 · 工具坐标' : '对象调姿 · 姿态记录 · 端点检查'}</p></div><span className="robot-tag"><span className={activeBrand === 'ABB' ? 'abb-mark' : 'robot-brand-mark'}>{activeBrand}</span>{activeName}<span className="tag-divider"/>{limits.length} 轴</span></div>
         <div className="viewport">
           <RobotScene ref={sceneHandle} initialCamera={initialScene?.camera} robotPresent={robotPresent} model={model} joints={visibleJoints} urdfModel={genericModel ?? undefined} urdfJoints={visibleJoints}
-            targetPose={selectedPointWorld} path={planningPreview?.path ?? EMPTY_PATH}
+            targetPose={selectedSurfacePoint && selectedSurfacePath ? pathPointToWorld(graph, selectedSurfacePath.id, selectedSurfacePoint.pose) : selectedPointWorld} path={surfacePreview?.motion.path ?? planningPreview?.path ?? EMPTY_PATH}
             showFrames={showFrames} view={view} viewRevision={viewRevision}
+            sceneSurfaces={surfaces} selectedSurfaceId={selectedSurface?.id} surfacePickingEnabled={Boolean(surfacePickingPathId) && !executing && !homeBusy && activeView === 'scene'} surfacePickSurfaceId={pickingPath?.surface?.surfaceId} surfaceRegion={sceneSurfaceRegion} onSurfacePick={addSurfacePick} onSelectSurface={id => chooseObject({ kind: 'surface', id })}
             jogEnabled={robotPresent && !homeBusy && selection.kind === 'robot' && activeView === 'scene' && jogEnabled && !executing && !sourceBusy && !poseError}
             jogMode={jogMode} jogSpace={jogSpace} jogPending={jogStatus.pending} jogResetRevision={jogResetRevision}
             onJogStart={beginJog} onJogMove={pose => jogController.current?.update(pose)} onJogEnd={() => setJogDragging(false)}
             dangerZones={sceneZones} selectedDangerZoneId={selectedZoneId ?? undefined}
             zoneManipulationEnabled={!homeBusy && selection.kind === 'zone' && activeView === 'scene' && !executing && !sourceBusy}
             onDangerZoneMove={(id, centerMm) => { collisionRun.current?.abort(); workspace.editZone(id, { center: centerMm.map(String) }); }}
-            onDangerZoneDrag={setZoneDragging} scenePaths={scenePaths} selectedPointId={selectedPoint?.id ?? null}
+            onDangerZoneDrag={setZoneDragging} scenePaths={displayedScenePaths} selectedPointId={selectedSurfacePoint?.id ?? selectedPoint?.id ?? null}
             basePose={basePose} toolPose={toolPose} sceneFrames={sceneFrames} sceneTools={sceneTools} selectedJointIndex={selection.kind === 'joint' ? selection.index : null}/>
           <div className="viewport-toolbar"><div className="view-options" aria-label="观察视角">{([['iso', '透视'], ['front', '正视'], ['top', '俯视']] as const).map(([id, label]) => <button key={id} className={view === id ? 'selected' : ''} onClick={() => changeView(id)}>{label}</button>)}</div><button className="icon-button" title="重置视角" aria-label="重置视角" onClick={() => changeView('iso')}><Icon name="reset" size={15}/></button></div>
           {robotPresent && selection.kind === 'robot' && <div className="object-jog-toolbar"><div className="view-options"><button type="button" aria-pressed={jogEnabled} className={jogEnabled ? 'selected' : ''} disabled={executing || sourceBusy || Boolean(poseError)} onClick={() => { stopJog(); clearPreview(); setJogEnabled(value => !value); }}>拖动法兰</button>{jogEnabled && <>{([['translate', '平移'], ['rotate', '旋转']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogMode === id} className={jogMode === id ? 'selected' : ''} onClick={() => { stopJog(); setJogMode(id); }}>{label}</button>)}{([['world', '世界坐标'], ['local', '工具坐标']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogSpace === id} className={jogSpace === id ? 'selected' : ''} onClick={() => { stopJog(); setJogSpace(id); }}>{label}</button>)}</>}</div></div>}
@@ -839,13 +954,15 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
           <div className="viewport-caption"><Icon name="circle" size={9} className="origin-icon"/>基座世界坐标 <code>[{basePose.position.map(value => numberText(value, 2)).join(', ')}]</code></div>
           <div className="scene-legend"><span><Icon name="dot" size={11} className="legend-current"/>当前 TCP</span>{selectedPoint && <span><Icon name="dot" size={11} className="legend-target"/>已记录目标</span>}</div>
         </div>
+        {surfacePickingPathId && <div className="endpoint-preview-notice surface-picking-notice" role="status" aria-label="区域点选状态"><div><strong>点选区域 · {pickingPath?.name}</strong><span>沿同一模型表面依次点击边界，拖动鼠标可旋转视角；按 Esc 结束。</span></div><button type="button" className="copy-button" onClick={() => setSurfacePickingPathId(null)}>结束点选</button></div>}
         {previewSolution && <div className="endpoint-preview-notice" role="status" aria-label="端点预览"><div><strong>正在预览端点姿态</strong><span>预览暂不改写数据；点击“用当前姿态更新点”可保存此候选解。退出预览恢复原机器人姿态。</span><code>{previewSolution.configuration ? 'robconf [' + previewSolution.configuration.join(', ') + ']' : '关节 [' + previewSolution.joints.map(value => numberText(value, 1)).join(', ') + ']°'}</code></div><button type="button" className="copy-button" onClick={() => setEndpointPreview(null)}>退出预览</button></div>}
         <div className="scene-display-options"><label className="frame-toggle"><input type="checkbox" checked={showFrames} onChange={event => setShowFrames(event.target.checked)}/>显示关节坐标系</label></div>
         {execution.message && <div className={'execution-status execution-' + execution.phase} role="status" aria-label="程序运行状态" data-run-path-id={execution.pathId ?? ''} data-run-phase={execution.phase} data-run-point-id={execution.pointId ?? ''} data-run-line={execution.line} data-run-cycle={execution.cycle}><span>{execution.message}</span>{executing && <button type="button" className="copy-button" onClick={() => stopExecution()}><Icon name="stop" size={13}/>停止运行</button>}</div>}
       </section>
 
       <aside className="control-panel" aria-label="对象属性" aria-hidden={activeView !== 'scene'} inert={activeView !== 'scene'}><fieldset disabled={executing || sourceBusy} className="inspector-fieldset">
-        {selection.kind === 'robot' && !robotPresent && <div className="robot-absent"><h2>机器人本体已删除</h2><p>参考坐标系、工具、路径与模块文件仍保留。</p><button type="button" className="copy-button" onClick={() => setCatalogOpen(true)}>添加机器人</button></div>}
+        {selectedSurface && <SurfaceInspector surface={selectedSurface} disabled={executing || sourceBusy} onNameChange={name => editSurface(selectedSurface.id, { name })} onVisibleChange={visible => editSurface(selectedSurface.id, { visible })} onPoseChange={pose => editSurface(selectedSurface.id, { pose })} onFocus={() => sceneHandle.current?.focusSurface(selectedSurface.id)} onRemove={() => setRemoveObject({ kind: 'surface', id: selectedSurface.id, modelId: activeModelId })}/>}
+        {selection.kind === 'robot' && !robotPresent && <div className="robot-absent"><h2>机器人本体已删除</h2><p>参考坐标系、工具、路径与模块文件仍保留。</p><button type="button" className="copy-button" onClick={restoreProjectRobot}>恢复本项目机器人</button></div>}
         {selection.kind === 'robot' && robotPresent && <><RobotInspector name={activeName} model={genericModel ? null : model} urdf={genericModel?.description} pose={currentPose} joints={displayJoints}
           drafts={genericModel ? catalogDraft : jointDraft} limits={limits} euler={currentPose ? quaternionToEulerZYX(currentPose.orientation) : null}
           configuration={configuration?.configuration ?? null} poseError={poseError} captureDisabledReason={captureDisabledReason} speed={speed}
@@ -882,19 +999,21 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
           <p className="field-hint">路径规划会检查机器人和工具包络与禁入区的整段间距。目标点另提供机器人本体端点网格检测。</p>
         </div>}
         {selectedPath && <div className="path-inspector" data-local-pose={JSON.stringify(pathAttachment(graph, selectedPath.id).localPose)} data-world-pose={JSON.stringify(pathWorldPose(graph, selectedPath.id))}><div className="panel-title"><div className="section-number"><Icon name="path" size={14}/></div><h2>{selectedPath.name}</h2></div>
-          <p className="field-hint">调整机器人姿态后向 Path 添加点。转换为程序会新建独立模块；之后修改 Path 不会覆盖模块。</p>
+          <p className="field-hint">{selectedPath.surface ? '表面区域与加工目标保存在此 Path。完成机器人求解后可转换为独立模块。' : '调整机器人姿态后向 Path 添加点。转换为程序会新建独立模块；之后修改 Path 不会覆盖模块。'}</p>
           <AttachmentSelector object={{ kind: 'path', id: selectedPath.id }} parent={pathAttachment(graph, selectedPath.id).parent} frames={graph.frames} onReparent={reparentObject}/>
-          <button type="button" className="copy-button" disabled={!robotPresent} onClick={() => openPathPlanning(selectedPath.id)}><Icon name="route" size={14}/>路径规划</button>
+          {!selectedPath.surface && <button type="button" className="copy-button" disabled={!robotPresent} onClick={() => openPathPlanning(selectedPath.id)}><Icon name="route" size={14}/>路径规划</button>}
           <details className="path-frame-details"><summary>路径坐标与姿态<Icon name="chevron-right" size={13}/></summary><PoseEditor label="路径坐标" value={pathAttachment(graph, selectedPath.id).localPose} onChange={pose => graphEdit(() => frameState.editPath(selectedPath.id, pose))}/><PoseReadout label="路径世界位姿" pose={pathWorldPose(graph, selectedPath.id)}/></details>
-          <div className="path-actions"><button type="button" className="copy-button" disabled={Boolean(captureDisabledReason)} title={captureDisabledReason ?? undefined} onClick={() => captureToPath(selectedPath.id)}>添加当前点到 Path</button><button type="button" className="copy-button" disabled={moduleGenerationDisabled || !selectedPath.pointIds.length} onClick={() => generatePathModule(selectedPath.id)}>转换为程序</button></div>
-          <ol className="path-point-list">{selectedPath.pointIds.map(id => {
+          {selectedPath.surface?.kind !== 'region' && <div className="path-actions">{!selectedPath.surface && <button type="button" className="copy-button" disabled={Boolean(capturePathReason(selectedPath.id))} title={capturePathReason(selectedPath.id) ?? undefined} onClick={() => captureToPath(selectedPath.id)}>添加当前点到 Path</button>}<button type="button" className="copy-button" disabled={moduleGenerationDisabled || !selectedPath.pointIds.length || Boolean(surfaceMotionReason(selectedPath.id))} onClick={() => generatePathModule(selectedPath.id)}>转换为程序</button></div>}
+          {!selectedPath.surface && <ol className="path-point-list">{selectedPath.pointIds.map(id => {
             const point = program.points.find(item => item.id === id);
             return point && <li key={id}><button type="button" className="copy-button" onClick={() => chooseObject({ kind: 'target', id })}>{point.pointName}</button><span>{point.motionRole === 'transfer' ? '转移' : point.motionRole === 'process' ? '加工' : profile.linearInstruction} · {point.speedMmPerSecond} mm/s</span></li>;
-          })}</ol>
-          <div className="path-run-controls"><button type="button" className="copy-button" disabled={Boolean(pathRunDisabledReason(selectedPath.id))} title={pathRunDisabledReason(selectedPath.id) ?? undefined} onClick={() => void runPath(selectedPath.id)}><Icon name="play" size={13}/>运行 Path</button><label><input type="checkbox" checked={loop} onChange={event => setLoop(event.target.checked)}/>循环运行</label></div>
-          <p className="field-hint">{selectedPath.planning ? '规划路径保留各目标点的位置和姿态；运行前重新验证每段运动与禁入区，转移段不代表贴合工件加工。' : '只运行此路径，开始前逐段检查运动。虚线表示点顺序；使用路径规划可进行整段禁入区检查。'}</p>
+          })}</ol>}
+          {selectedPath.surface?.kind !== 'region' && <div className="path-run-controls"><button type="button" className="copy-button" disabled={Boolean(pathRunDisabledReason(selectedPath.id))} title={pathRunDisabledReason(selectedPath.id) ?? undefined} onClick={() => void runPath(selectedPath.id)}><Icon name="play" size={13}/>运行 Path</button><label><input type="checkbox" checked={loop} onChange={event => setLoop(event.target.checked)}/>循环运行</label></div>}
+          <p className="field-hint">{selectedPath.surface ? (selectedPath.surface.kind === 'uv' ? '运行前重新检查每段运动；曲面上的相邻目标由直线连接，连接段可能偏离表面。' : '完成区域点选并标记4个角控制点后，生成新的UV加工路径。') : selectedPath.planning ? '规划路径保留各目标点的位置和姿态；运行前重新验证每段运动与禁入区，转移段不代表贴合工件加工。' : '只运行此路径，开始前逐段检查运动。虚线表示点顺序；使用路径规划可进行整段禁入区检查。'}</p>
           <button type="button" className="text-button" onClick={() => setRemoveObject({ kind: 'path', id: selectedPath.id, modelId: activeModelId })}>删除 Path</button>
         </div>}
+        {(selectedSurfacePath || selectedPath && surfacePickingPathId === selectedPath.id) && <SurfaceRegionInspector path={(selectedSurfacePath ?? selectedPath)!} surfaceName={surfaces.find(surface => surface.id === selectedSurfacePath?.surface?.surfaceId)?.name} selectedPointId={selectedSurfacePoint?.id} picking={surfacePickingPathId === (selectedSurfacePath ?? selectedPath)!.id} disabled={executing || sourceBusy} staleReason={selectedSurfacePath ? surfacePathGeometryReason(selectedSurfacePath, graph, surfaces) : null}
+          onSelectPoint={id => chooseObject({ kind: 'surface-point', id })} onSetControl={(id, enabled) => setSurfaceControl((selectedSurfacePath ?? selectedPath)!.id, id, enabled)} onRemovePoint={id => setRemoveObject({ kind: 'surface-point', id, modelId: activeModelId })} onStartPicking={() => beginSurfacePicking((selectedSurfacePath ?? selectedPath)!.id)} onReset={() => resetSurfaceRegion((selectedSurfacePath ?? selectedPath)!.id)} onFinishPicking={() => setSurfacePickingPathId(null)} onGenerate={() => openSurfaceUv((selectedSurfacePath ?? selectedPath)!.id)}/>}
         {selectedPoint && <TargetInspector modelKey={activeModelId} point={selectedPoint} worldPose={selectedPointWorld!} referenceName={program.paths.find(path => path.id === selectedPoint.pathId)?.name ?? '路径'} updateDisabledReason={pointUpdateDisabledReason} previewing={Boolean(previewSolution)} onUpdate={updatePointFromCurrent}>
           {robotPresent && <section className="endpoint-details"><div className="field-heading"><h3>端点姿态与干涉检测</h3><button type="button" className="text-button" disabled={executing} onClick={() => { cancelInspections(); setInspectionRevision(value => value + 1); }}>重新检查端点解</button></div>
             <p className="field-hint" role="status" aria-label="端点检查状态">{inspection.key !== pointKey || inspection.pending ? '正在检查端点逆解…' : inspection.error || (solutions.length ? '预览仅显示候选姿态，不修改目标点或原机器人姿态。' : '没有找到有效的端点逆解。')}</p>
@@ -913,6 +1032,9 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
           onRetryCodeLoading={() => { if (!documents.ready) void documents.retry(); else setLanguageRetry(value => value + 1); }}/>
       </section>
     </main>
+    {surfaceImportOpen && <SurfaceImportDialog onImport={importSceneSurface} onClose={() => setSurfaceImportOpen(false)}/>}
+    {surfaceUvPathId && program.paths.some(path => path.id === surfaceUvPathId) && <SurfaceUvDialog<SurfacePathPlan> key={surfaceUvPathId} pathName={program.paths.find(path => path.id === surfaceUvPathId)!.name} contextKey={planningContextKey} controlCount={program.paths.find(path => path.id === surfaceUvPathId)?.surface?.controlPointIds.length ?? 0}
+      onGenerate={generateSurfaceUv} summarize={result => ({ pointCount: result.geometry.points.length, rowCount: result.geometry.rowOffsets.length, lengthMm: result.motion.lengthMm, maxRegularSpacingErrorMm: result.geometry.maxRegularSpacingErrorMm, maxOrientationStepDeg: result.geometry.maxOrientationStepDeg, warnings: ['已完成连续逆解和当前禁入区检查；工具方向随表面法向连续变化。', '边界末段可以短于设定间距。曲面点之间使用直线 MoveL 连接，连接段可能离面；尚未检查与工件的接触碰撞。'] })} onPreview={setSurfacePreview} onApply={applySurfaceUv} onClose={() => { setSurfaceUvPathId(null); setSurfacePreview(null); }}/>}
     {planningPathId && program.paths.some(path => path.id === planningPathId) && <PathPlanningDialog key={activeModelId + ':' + planningPathId}
       pathName={program.paths.find(path => path.id === planningPathId)!.name} modelName={activeName}
       initialTargets={program.pointsForPath(planningPathId).map(point => pathPointToWorld(graph, planningPathId, point.pose))}
@@ -920,17 +1042,22 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
       onPlan={(input, signal) => planGrindingPath(makeGrindingRequest({ ...input, startJoints: [...displayJoints] as JointAngles, allowDetours: true }), signal)}
       onPreview={setPlanningPreview} onApply={applyGrindingPath} onClose={() => { setPlanningPathId(null); setPlanningPreview(null); }}/>}
     {closeState === null && objectMenu && <SceneObjectMenu x={objectMenu.x} y={objectMenu.y} trigger={objectMenu.trigger} label={objectMenu.kind === 'path' ? 'Path 右键菜单' : objectMenu.kind === 'target' ? '目标点右键菜单' : sceneRemovalLabel(objectMenu.kind).replace(/^删除/, '') + '右键菜单'} onClose={() => setObjectMenu(null)} actions={objectMenu.kind === 'path' ? [
-      { label: '路径规划', icon: 'route', disabled: !robotPresent || executing || sourceBusy, onSelect: () => openPathPlanning(objectMenu.id) },
+      { label: '路径规划', icon: 'route', disabled: !robotPresent || executing || sourceBusy || Boolean(program.paths.find(path => path.id === objectMenu.id)?.surface), onSelect: () => openPathPlanning(objectMenu.id) },
+      { label: '点选区域', icon: 'target', disabled: executing || sourceBusy || program.paths.find(path => path.id === objectMenu.id)?.surface?.kind === 'uv', onSelect: () => beginSurfacePicking(objectMenu.id) },
+      { label: '生成 UV 加工路径', icon: 'path', disabled: !robotPresent || executing || sourceBusy || program.paths.find(path => path.id === objectMenu.id)?.surface?.kind !== 'region', onSelect: () => openSurfaceUv(objectMenu.id) },
       { label: '运行', icon: 'play', disabled: Boolean(pathRunDisabledReason(objectMenu.id)), title: pathRunDisabledReason(objectMenu.id) ?? undefined, onSelect: () => void runPath(objectMenu.id) },
-      { label: '添加当前点到 Path', icon: 'plus', disabled: Boolean(captureDisabledReason), title: captureDisabledReason ?? undefined, onSelect: () => captureToPath(objectMenu.id) },
-      { label: '转换为程序', icon: 'code', disabled: moduleGenerationDisabled || !program.paths.find(path => path.id === objectMenu.id)?.pointIds.length, onSelect: () => generatePathModule(objectMenu.id) },
+      { label: '添加当前点到 Path', icon: 'plus', disabled: Boolean(capturePathReason(objectMenu.id)), title: capturePathReason(objectMenu.id) ?? undefined, onSelect: () => captureToPath(objectMenu.id) },
+      { label: '转换为程序', icon: 'code', disabled: moduleGenerationDisabled || !program.paths.find(path => path.id === objectMenu.id)?.pointIds.length || Boolean(surfaceMotionReason(objectMenu.id)), onSelect: () => generatePathModule(objectMenu.id) },
       { label: '删除 Path', icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: 'path', id: objectMenu.id, modelId: activeModelId }) },
+    ] : objectMenu.kind === 'surface-point' ? [
+      { label: '移动至此', icon: 'target', disabled: !robotPresent || executing || sourceBusy || jogStatus.pending || jogDragging || !resolvedSurfacePoint(objectMenu.id), title: '定位到已求解的记录姿态；不验证移动路径', onSelect: () => { const point = resolvedSurfacePoint(objectMenu.id); if (point) moveToPoint(point.id); } },
+      { label: program.paths.find(path => path.surface?.points.some(point => point.id === objectMenu.id))?.surface?.controlPointIds.includes(objectMenu.id) ? '取消控制点' : '设为控制点', icon: 'frame', disabled: executing || sourceBusy || program.paths.find(path => path.surface?.points.some(point => point.id === objectMenu.id))?.surface?.kind !== 'region', onSelect: () => { const owner = program.paths.find(path => path.surface?.points.some(point => point.id === objectMenu.id)); if (owner) setSurfaceControl(owner.id, objectMenu.id, !owner.surface!.controlPointIds.includes(objectMenu.id)); } },
+      { label: '删除表面点', icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: 'surface-point', id: objectMenu.id, modelId: activeModelId }) },
     ] : objectMenu.kind === 'target' ? [
       { label: '移动至此', icon: 'target', disabled: !robotPresent || executing || sourceBusy || jogStatus.pending || jogDragging, title: '定位到记录姿态；不验证移动路径', onSelect: () => moveToPoint(objectMenu.id) },
       { label: '删除点', icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: 'target', id: objectMenu.id, modelId: activeModelId }) },
     ] : [{ label: sceneRemovalLabel(objectMenu.kind), icon: 'trash', disabled: executing || sourceBusy, onSelect: () => setRemoveObject({ kind: objectMenu.kind, id: objectMenu.id, modelId: activeModelId }) }]}/>}
-    {closeState === null && removeObject && <ObjectRemovalDialog kind={removeObject.kind} name={removeObject.kind === 'robot' ? activeName : removeObject.kind === 'frame' ? graph.frames.find(frame => frame.id === removeObject.id)?.name ?? '参考坐标系' : removeObject.kind === 'tool' ? graph.tools.find(tool => tool.id === removeObject.id)?.name ?? '工具' : removeObject.kind === 'zone' ? zones.find(zone => zone.id === removeObject.id)?.name ?? '危险区' : removeObject.kind === 'path' ? program.paths.find(path => path.id === removeObject.id)?.name ?? 'Path' : program.points.find(point => point.id === removeObject.id)?.pointName ?? '目标点'} count={program.paths.find(path => path.id === removeObject.id)?.pointIds.length ?? 0} onCancel={() => setRemoveObject(null)} onConfirm={confirmRemoveObject}/>}
-    {catalogOpen && <RobotCatalogDialog currentModelId={robotPresent ? activeModelId : ''} onSelect={selectCatalogModel} onClose={() => setCatalogOpen(false)}/>}
+    {closeState === null && removeObject && <ObjectRemovalDialog kind={removeObject.kind} name={removeObject.kind === 'surface' ? surfaces.find(surface => surface.id === removeObject.id)?.name ?? '工件模型' : removeObject.kind === 'surface-point' ? program.paths.flatMap(path => path.surface?.points ?? []).find(point => point.id === removeObject.id)?.name ?? '表面点' : removeObject.kind === 'robot' ? activeName : removeObject.kind === 'frame' ? graph.frames.find(frame => frame.id === removeObject.id)?.name ?? '参考坐标系' : removeObject.kind === 'tool' ? graph.tools.find(tool => tool.id === removeObject.id)?.name ?? '工具' : removeObject.kind === 'zone' ? zones.find(zone => zone.id === removeObject.id)?.name ?? '危险区' : removeObject.kind === 'path' ? program.paths.find(path => path.id === removeObject.id)?.name ?? 'Path' : program.points.find(point => point.id === removeObject.id)?.pointName ?? '目标点'} count={program.paths.find(path => path.id === removeObject.id)?.pointIds.length ?? 0} onCancel={() => setRemoveObject(null)} onConfirm={confirmRemoveObject}/>}
     {closeState && <div className="source-close-backdrop"><section className="source-close-dialog" role="dialog" aria-modal="true" aria-label="关闭前保存项目和模块草稿" onKeyDown={event => {
       if (event.key === 'Escape' && closeState === 'error') { event.preventDefault(); setCloseState(null); }
       if (event.key === 'Tab') { const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')], first = buttons[0], last = buttons.at(-1); if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); } }

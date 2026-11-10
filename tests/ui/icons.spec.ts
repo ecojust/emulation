@@ -1,4 +1,4 @@
-import { openDefaultProject } from './project-helpers';
+import { openDefaultProject, waitForProjectScene } from './project-helpers';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { chooseCompletion, codeEditor, moduleList, newSource, readSource, replaceSource } from './programming-helpers';
 import { captureCurrent, expectNoPointMotionActions, observeBrowser, openPathMenu } from './workspace-helpers';
@@ -7,6 +7,7 @@ test.setTimeout(90_000);
 
 async function openWorkspace(page: Page) {
   await openDefaultProject(page);
+  await waitForProjectScene(page, 'irb1100-4-0.58');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
 }
 
@@ -38,11 +39,11 @@ async function noDocumentScroll(page: Page) {
   ))).toBeLessThanOrEqual(1);
 }
 
-test('scene icons use SVG while disclosures, object menus and catalog controls remain operable', async ({ page }) => {
+test('scene icons use SVG while disclosures, object menus and fixed project navigation remain operable', async ({ page }) => {
   const errors = observeBrowser(page);
   await page.setViewportSize({ width: 1000, height: 720 });
   await openWorkspace(page);
-  for (const name of ['选择机器人型号', '折叠左侧面板', '选择机器人', '添加 Path', '添加危险区', '重置视角']) {
+  for (const name of ['返回主页', '折叠左侧面板', '选择机器人', '添加 Path', '添加危险区', '重置视角']) {
     await expectControlIcon(page.getByRole('button', { name, exact: true }));
   }
   await page.getByRole('button', { name: '折叠左侧面板', exact: true }).click();
@@ -101,9 +102,14 @@ test('scene icons use SVG while disclosures, object menus and catalog controls r
   await expect(zones).toHaveCount(zoneCount + 1);
   await expectControlIcon(zones.last());
   await expect(page.getByRole('heading', { name: '危险区属性', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '选择机器人型号', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '机器人模型目录', exact: true });
-  const close = dialog.getByRole('button', { name: '关闭模型目录', exact: true });
+  await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '返回主页', exact: true }).click();
+  const home = page.getByRole('main', { name: '项目管理', exact: true });
+  const create = home.getByRole('button', { name: '新建项目', exact: true }).first();
+  await expectControlIcon(create);
+  await create.click();
+  const dialog = page.getByRole('dialog', { name: '新建项目', exact: true });
+  const close = dialog.getByRole('button', { name: '关闭项目对话框', exact: true });
   await expectControlIcon(close);
   await noDocumentScroll(page);
   await close.click();

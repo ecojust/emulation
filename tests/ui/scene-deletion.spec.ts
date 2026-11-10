@@ -4,7 +4,7 @@ import type { Pose } from '../../src/robot/types';
 import { generateSource, readSource } from './programming-helpers';
 import {
   bodyCanvas, bodyJoints, captureCurrent, observeBrowser, openPathMenu, openProgram,
-  openScene, openWorkspace, selectRobot, setJoint,
+  openScene, openWorkspace, setJoint,
 } from './workspace-helpers';
 
 test.setTimeout(180_000);
@@ -197,6 +197,8 @@ test('only the whole robot can be removed, mounted tools retain their actual wor
   for (const kind of ['robot', 'base', 'joint', 'flange']) await expect(objects(page, kind)).toHaveCount(0);
   await expect(bodyCanvas(page)).toHaveAttribute('data-robot-visible', 'false');
   await expect(page.getByRole('heading', { name: '机器人本体已删除', exact: true })).toBeVisible();
+  const restore = page.getByRole('button', { name: '恢复机器人', exact: true });
+  await expect(restore).toBeVisible(); await expect(restore).toBeEnabled();
   await expect(tool.node).toHaveAttribute('data-parent-kind', 'world');
   await expect.poll(async () => poseError((await toolPose(page, tool.id)).pose, mounted.pose)).toBeLessThan(1e-5);
   await expect.poll(async () => poseError((await toolPose(page, tool.id)).tcpPose, mounted.tcpPose)).toBeLessThan(1e-5);
@@ -211,11 +213,17 @@ test('only the whole robot can be removed, mounted tools retain their actual wor
   await object(page, 'target', point.id).click({ button: 'right' });
   await expect(page.getByRole('menuitem', { name: '移动至此', exact: true })).toBeDisabled();
   await page.keyboard.press('Escape');
+  await expect(object(page, 'target', point.id)).toHaveClass(/selected/);
+  await expect(restore).toBeVisible(); await expect(restore).toBeEnabled();
   await openProgram(page);
   expect(await readSource(page)).toBe(source);
 
   await openScene(page);
-  await selectRobot(page, 'irb1100-4-0.58');
+  await restore.click();
+  await expect(restore).toHaveCount(0);
+  await expect(objects(page, 'robot')).toHaveClass(/selected/);
+  await expect(page.getByLabel('项目机器人型号', { exact: true })).toHaveAttribute('data-model-id', 'irb1100-4-0.58');
+  await expect(page.getByRole('dialog', { name: '机器人模型目录', exact: true })).toHaveCount(0);
   await expect(objects(page, 'joint')).toHaveCount(6);
   await expect(bodyCanvas(page)).toHaveAttribute('data-robot-visible', 'true');
   await expect(objects(page, 'robot')).toHaveAttribute('data-parent-id', frameId);

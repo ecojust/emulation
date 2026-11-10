@@ -20,6 +20,7 @@ use emulation_core::{
         plan_generic_pose_move_l, GenericPosePlanRequest, GenericPosePlanResult,
     },
     grinding::{plan_grinding, GrindingRequest, GrindingResult},
+    surface::{plan_surface, SurfaceRequest, SurfaceResult},
     planner::plan_move_l_with_cancel,
     program::{export_program_with_cancel, ProgramExportRequest, ProgramFile},
     types::{IkSolution, PlanRequest, PlanResult},
@@ -47,6 +48,7 @@ pub enum Work {
         source: CollisionMeshSource,
     },
     Grinding(GrindingRequest),
+    Surface(SurfaceRequest),
     Export(ProgramExportRequest),
     Collision(CollisionRequest),
     InspectEndpoint(EndpointInspectionRequest),
@@ -59,6 +61,7 @@ pub enum Reply {
     #[cfg(feature = "model-cache")]
     GenericCollision(Vec<CollisionResult>),
     Grinding(GrindingResult),
+    Surface(SurfaceResult),
     Export(ProgramFile),
     Collision(Vec<CollisionResult>),
     InspectEndpoint(Vec<IkSolution>),
@@ -202,6 +205,9 @@ impl Engine {
                         .map(Reply::GenericCollision),
                         Work::Grinding(request) => {
                             Ok(Reply::Grinding(plan_grinding(&request, &job.cancelled)))
+                        }
+                        Work::Surface(request) => {
+                            Ok(Reply::Surface(plan_surface(&request, &job.cancelled)))
                         }
                         Work::Export(request) => {
                             export_program_with_cancel(&request, &job.cancelled)
@@ -415,6 +421,68 @@ mod tests {
             speed_mm_per_second: 100.,
             allow_detours: false,
         }
+    }
+
+    fn surface_request() -> SurfaceRequest {
+        serde_json::from_value(serde_json::json!({
+            "mesh": {
+                "positions": [0.,0.,0.,20.,0.,0.,20.,20.,0., 0.,0.,0.,20.,20.,0.,0.,20.,0.],
+                "normals": [0.,0.,1.,0.,0.,1.,0.,0.,1., 0.,0.,1.,0.,0.,1.,0.,0.,1.]
+            },
+            "boundary": [
+                {"triangleIndex":0,"barycentric":[1.,0.,0.]},
+                {"triangleIndex":0,"barycentric":[0.,1.,0.]},
+                {"triangleIndex":0,"barycentric":[0.,0.,1.]},
+                {"triangleIndex":1,"barycentric":[0.,0.,1.]}
+            ],
+            "controlIndices":[0,1,2,3], "sampling":{"mode":"spacing","u":10.,"v":10.},
+            "normalSign":1, "maxNormalStepDeg":5., "maxPoints":64
+        })).unwrap()
+    }
+
+    #[test]
+    fn surface_worker_keeps_geometry_result_type_and_recovers_from_invalid_input() {
+        let engine = Engine::new();
+        let mut invalid = surface_request();
+        invalid.sampling.u = -1.;
+        let reply = engine.submit("invalid-surface".into(), Work::Surface(invalid))
+            .unwrap().blocking_recv().unwrap().unwrap();
+        assert!(matches!(reply, Reply::Surface(SurfaceResult::Failure(_))));
+        let reply = engine.submit("valid-surface".into(), Work::Surface(surface_request()))
+            .unwrap().blocking_recv().unwrap().unwrap();
+        let Reply::Surface(SurfaceResult::Success(result)) = reply else {
+            panic!("expected native surface geometry");
+        };
+        assert_eq!(result.points.len(), 9);
+        assert_eq!(result.row_offsets, vec![0, 3, 6]);
+        assert!(result.points.iter().all(|point| point.pose.position[2].abs() < 1e-8));
+    }
+
+    #[test]
+    fn surface_generation_is_bounded_foreground_work_and_precancel_is_respected() {
+        let active = Arc::new(AtomicBool::new(false));
+        let engine = Engine {
+            shared: Arc::new(Shared {
+                queue: Mutex::new(Queue {
+                    active: Some(("surface-active".into(), active.clone(), false)),
+                    ..Queue::default()
+                }),
+                changed: Condvar::new(),
+            }),
+        };
+        engine.cancel("surface-precancelled");
+        assert!(engine.submit("surface-precancelled".into(), Work::Surface(surface_request())).is_err());
+        let _background = engine.submit("surface-endpoint".into(), Work::InspectEndpoint(endpoint_request())).unwrap();
+        assert!(!active.load(Ordering::Acquire));
+        let older = engine.submit("surface-older".into(), Work::Surface(surface_request())).unwrap();
+        assert!(active.load(Ordering::Acquire));
+        let newer = engine.submit("surface-newer".into(), Work::Surface(surface_request())).unwrap();
+        assert!(older.blocking_recv().unwrap().is_err());
+        engine.cancel("surface-older");
+        assert_eq!(engine.shared.queue.lock().unwrap().pending.as_ref().unwrap().id,"surface-newer");
+        engine.cancel("surface-newer");
+        assert!(newer.blocking_recv().unwrap().is_err());
+        assert!(engine.shared.queue.lock().unwrap().pending.is_none());
     }
 
     #[test]

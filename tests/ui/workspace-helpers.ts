@@ -1,4 +1,4 @@
-import { openDefaultProject } from './project-helpers';
+import { enterProject, openDefaultProject, waitForProjectScene } from './project-helpers';
 import { expect, type Page } from '@playwright/test';
 import type { Pose } from '../../src/robot/types';
 
@@ -16,7 +16,7 @@ export function observeBrowser(page: Page) {
 }
 export async function openWorkspace(page: Page) {
   await openDefaultProject(page);
-  await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
+  await waitForProjectScene(page, 'irb1100-4-0.58');
   await expect(scene(page)).toHaveAttribute('data-camera-distance', /\d/);
 }
 export async function openProgram(page: Page) {
@@ -74,8 +74,9 @@ export async function captureCurrent(page: Page, pathId?: string): Promise<Captu
   await expect(points).toHaveCount(before + 1);
   const target = points.last();
   const point = { id: (await target.getAttribute('data-object-id'))!, name: (await target.getAttribute('data-point-name'))!, pathId: targetPath };
-  // Capturing and selecting happen in one React event: selection must validate
-  // against the new Path point, not the points from the preceding render.
+  // Teaching preserves an active robot Jog. Inspect the new point explicitly
+  // in this shared helper; direct gesture tests verify that teaching itself does not select it.
+  if (!await target.evaluate(element => element.classList.contains('selected'))) await target.click();
   await expect(page.locator('[data-target-point-id]')).toHaveAttribute('data-target-point-id', point.id);
   await expect(target).toHaveClass(/selected/);
   return point;
@@ -126,10 +127,25 @@ export async function runPathFromMenu(page: Page, pathId: string, options: { key
   await expect(menu).toHaveCount(0);
   await expect(page.locator('[data-run-phase]')).toHaveAttribute('data-run-path-id', pathId);
 }
+const robotProjects = new WeakMap<Page, Map<string, string>>();
+/** A project has one fixed robot. Change robots through the real project home,
+ * reopening each model's own project so scene and source isolation is exercised. */
 export async function selectRobot(page: Page, id: string) {
-  await page.getByRole('button', { name: '选择机器人型号', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '机器人模型目录', exact: true });
-  await expect(dialog).toBeVisible();
-  await dialog.locator(`[data-catalog-model-id="${id}"]`).getByRole('button', { name: /^加载 / }).click();
-  await expect(dialog).toBeHidden();
+  let projects = robotProjects.get(page);
+  if (!projects) { projects = new Map(); robotProjects.set(page, projects); }
+  const current = page.getByLabel('项目机器人型号', { exact: true });
+  const currentId = await current.getAttribute('data-model-id');
+  const projectId = (await page.locator('[data-project-id]').getAttribute('data-project-id'))!;
+  if (!currentId || !projectId) throw new Error('Workspace does not expose its fixed project/robot identity');
+  projects.set(currentId, projectId);
+  if (currentId !== id) {
+    await page.getByRole('button', { name: '返回主页', exact: true }).click();
+    const home = page.getByRole('main', { name: '项目管理', exact: true });
+    await expect(home).toBeVisible();
+    const savedId = projects.get(id);
+    const card = savedId ? page.locator(`[data-project-card="${savedId}"] .project-card-open`) : null;
+    if (card && await card.count()) await card.click();
+    else projects.set(id, await enterProject(page, 'Robot ' + id, id));
+  }
+  await waitForProjectScene(page, id);
 }

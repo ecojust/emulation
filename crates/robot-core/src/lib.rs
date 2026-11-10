@@ -14,5 +14,6 @@ pub mod model;
 pub mod planner;
 pub mod program;
 pub mod types;
+pub mod surface;
 
 pub use types::*;

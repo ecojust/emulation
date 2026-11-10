@@ -2,7 +2,10 @@ import catalog from '../catalog/catalog.json';
 import { validateSourceProject, type SourceProject } from '../programming/documents';
 import { composePose, normalizePose, pathPointToWorld, pathWorldPose, referenceWorldPose, robotBaseWorldPose, toolTcpWorldPose, toolWorldPose, type Attachment, type FrameGraph, type FrameParent } from '../workspace/frame-graph';
 import { getProgramProfile } from '../workspace/program-templates';
-import type { RobotProgram } from '../workspace/program';
+import { assertSurfacePathProgram, normalizeSurfacePathReferences, type RobotProgram } from '../workspace/program';
+import { validateSurfacePath } from '../workspace/surface-path';
+import type { SceneSurface } from '../surface/types';
+import { validateSceneSurfaces, validateSurfacePickReference } from '../surface/validation';
 import { createDefaultDangerZone, type DangerZoneDraft, type WorkspaceView } from '../workspace/useWorkspace';
 import type { JointAngles, Pose, Vec3 } from '../robot/types';
 
@@ -13,6 +16,8 @@ export interface ProjectScene {
   activeModelId: string;
   models: Record<string, ProjectModelScene>;
   zones: DangerZoneDraft[];
+  /** Project-owned geometry; omitted only by legacy scenes and normalized to an empty list. */
+  surfaces?: SceneSurface[];
   activeView: WorkspaceView;
   leftCollapsed: boolean;
   view: 'iso' | 'front' | 'top';
@@ -22,7 +27,7 @@ export interface ProjectScene {
   camera: ProjectCamera | null;
 }
 export interface SimulationProject {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   createdAt: string;
@@ -79,7 +84,17 @@ function validateProgram(raw: unknown, id: string): RobotProgram {
       tuple(point.configuration, 4); requireValue(point.configuration.every(Number.isSafeInteger) && point.configuration[3] >= 0 && point.configuration[3] <= 7, 'ABB配置');
     } else requireValue(point.configuration === null, '其他品牌不可使用ABB配置');
   }
-  return structuredClone(raw) as unknown as RobotProgram;
+  const result = structuredClone(raw) as unknown as RobotProgram;
+  let totalPoints = result.points.length;
+  for (const path of result.paths) {
+    if (path.surface !== undefined) {
+      const surface = validateSurfacePath(path.surface);
+      (path as { surface?: typeof surface }).surface = surface; totalPoints += surface.points.length;
+    }
+  }
+  requireValue(totalPoints <= PROJECT_LIMITS.points, '程序点和表面点总数超过4096');
+  for (const path of result.paths) assertSurfacePathProgram(path, result.points, result.paths);
+  return result;
 }
 function validateModel(raw: unknown, id: string): ProjectModelScene {
   requireValue(record(raw) && typeof raw.robotPresent === 'boolean', '机器人状态'); tuple(raw.joints, 6, 36000);
@@ -120,8 +135,17 @@ export function validateProjectModelWorld(model: ProjectModelScene, flangeInBase
 }
 export function validateProjectScene(raw: unknown): ProjectScene {
   requireValue(record(raw) && record(raw.models), '场景'); modelId(raw.activeModelId);
+  const surfaces = validateSceneSurfaces(raw.surfaces);
+  const surfacesById = new Map(surfaces.map(surface => [surface.id, surface]));
   const models: Record<string, ProjectModelScene> = {};
-  for (const [id, value] of Object.entries(raw.models)) { modelId(id); models[id] = validateModel(value, id); }
+  for (const [id, value] of Object.entries(raw.models)) {
+    modelId(id); const saved = validateModel(value, id);
+    for (const path of saved.program.paths) if (path.surface) {
+      const surface = surfacesById.get(path.surface.surfaceId);
+      if (surface) for (const point of path.surface.points) validateSurfacePickReference(point.pick, surface);
+    }
+    models[id] = { ...saved, program: normalizeSurfacePathReferences(saved.program, surfaces) };
+  }
   requireValue(Array.isArray(raw.zones) && raw.zones.length <= 64, '禁入区列表');
   const zoneIds = new Set<string>();
   const zones = Array.from(raw.zones).map((zone: any) => {
@@ -134,26 +158,28 @@ export function validateProjectScene(raw: unknown): ProjectScene {
   for (const value of [raw.leftCollapsed, raw.showFrames, raw.loop]) requireValue(typeof value === 'boolean', '显示设置');
   requireValue(Number.isFinite(raw.speed) && raw.speed >= 1 && raw.speed <= 2000, '记录速度');
   if (raw.camera !== null) { requireValue(record(raw.camera), '相机'); tuple(raw.camera.position, 3, PROJECT_LIMITS.cameraUnits); tuple(raw.camera.target, 3, PROJECT_LIMITS.cameraUnits); requireValue(Math.hypot(...raw.camera.position.map((n: number, i: number) => n - raw.camera.target[i])) > 1e-7, '相机距离'); }
-  return { activeModelId: raw.activeModelId, models, zones, activeView: raw.activeView, leftCollapsed: raw.leftCollapsed, view: raw.view, showFrames: raw.showFrames, loop: raw.loop, speed: raw.speed, camera: raw.camera ? structuredClone(raw.camera) as ProjectCamera : null };
+  return { activeModelId: raw.activeModelId, models, zones, surfaces, activeView: raw.activeView, leftCollapsed: raw.leftCollapsed, view: raw.view, showFrames: raw.showFrames, loop: raw.loop, speed: raw.speed, camera: raw.camera ? structuredClone(raw.camera) as ProjectCamera : null };
 }
 export function validateThumbnail(value: unknown): asserts value is string {
   requireValue(typeof value === 'string' && value.length <= PROJECT_LIMITS.thumbnailBytes && /^data:image\/(?:png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(value), '封面图格式或大小');
 }
 export function validateSimulationProject(raw: unknown): SimulationProject {
-  requireValue(record(raw) && raw.schemaVersion === 1, '项目版本'); identifier(raw.id); const name = projectName(raw.name); revision(raw.revision);
+  // v1 is read without touching the durable row; the next normal save writes v2.
+  // The old strict v1 reader must reject files containing surface geometry.
+  requireValue(record(raw) && (raw.schemaVersion === 1 || raw.schemaVersion === 2), '项目版本'); identifier(raw.id); const name = projectName(raw.name); revision(raw.revision);
   for (const time of [raw.createdAt, raw.updatedAt]) requireValue(typeof time === 'string' && Number.isFinite(Date.parse(time)), '保存时间');
   requireValue(record(raw.sources), '模块源码');
   const sources: Record<string, SourceProject> = {};
   for (const [id, source] of Object.entries(raw.sources)) { modelId(id); sources[id] = validateSourceProject(source, id); }
   if (raw.thumbnail !== null) validateThumbnail(raw.thumbnail);
-  const result: SimulationProject = { schemaVersion: 1, id: raw.id, name, createdAt: raw.createdAt, updatedAt: raw.updatedAt, revision: raw.revision, scene: validateProjectScene(raw.scene), sources, thumbnail: raw.thumbnail };
+  const result: SimulationProject = { schemaVersion: 2, id: raw.id, name, createdAt: raw.createdAt, updatedAt: raw.updatedAt, revision: raw.revision, scene: validateProjectScene(raw.scene), sources, thumbnail: raw.thumbnail };
   requireValue(new TextEncoder().encode(JSON.stringify(result)).byteLength <= PROJECT_LIMITS.bytes, '项目超过64 MiB');
   return result;
 }
 export function createSimulationProject(name: string, robotId: string, id: string = crypto.randomUUID(), now = new Date().toISOString()): SimulationProject {
   modelId(robotId);
-  return validateSimulationProject({ schemaVersion: 1, id, name: projectName(name), createdAt: now, updatedAt: now, revision: 0, thumbnail: null, sources: {},
-    scene: { activeModelId: robotId, models: {}, zones: [createDefaultDangerZone()], activeView: 'scene', leftCollapsed: false, view: 'iso', showFrames: false, loop: false, speed: 100, camera: null } });
+  return validateSimulationProject({ schemaVersion: 2, id, name: projectName(name), createdAt: now, updatedAt: now, revision: 0, thumbnail: null, sources: {},
+    scene: { activeModelId: robotId, models: {}, zones: [createDefaultDangerZone()], surfaces: [], activeView: 'scene', leftCollapsed: false, view: 'iso', showFrames: false, loop: false, speed: 100, camera: null } });
 }
 
 export interface ProjectSummary {

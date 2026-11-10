@@ -1,5 +1,6 @@
 import { useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import Icon from '../ui/Icon';
+import type { SceneSurface } from '../surface/types';
 import type { FrameObjectRef, FrameParent, ReferenceFrame, ToolFrame } from './frame-graph';
 import type { ProgramPath, ProgramPoint } from './program';
 import type { DangerZoneDraft } from './useWorkspace';
@@ -7,7 +8,7 @@ import type { SceneRemovalKind } from './scene-removal';
 import './scene-objects.css';
 
 export type SceneTreeSelection = { kind: 'robot' } | { kind: 'base' } | { kind: 'flange' } | { kind: 'joint'; index: number }
-  | { kind: 'frame' | 'tool' | 'path' | 'target' | 'zone'; id: string };
+  | { kind: 'frame' | 'tool' | 'path' | 'target' | 'zone' | 'surface' | 'surface-point'; id: string };
 export interface SceneTreeMenu { kind: SceneRemovalKind; id: string; x: number; y: number; trigger: HTMLElement }
 export interface SceneTreePath extends ProgramPath { parent?: FrameParent }
 export interface SceneObjectTreeProps {
@@ -20,6 +21,8 @@ export interface SceneObjectTreeProps {
   paths: readonly SceneTreePath[];
   points: readonly ProgramPoint[];
   zones: readonly DangerZoneDraft[];
+  surfaces?: readonly SceneSurface[];
+  onImportSurface?: () => void;
   invalidZoneIds?: readonly string[];
   selection: SceneTreeSelection;
   executingPointId?: string | null;
@@ -28,6 +31,7 @@ export interface SceneObjectTreeProps {
   onSelect: (selection: SceneTreeSelection) => void;
   onContextMenu: (menu: SceneTreeMenu) => void;
   onReparent: (object: FrameObjectRef, parent: FrameParent) => void;
+  onRestoreRobot: () => void;
   onAddFrame: () => void;
   onAddTool: () => void;
   onAddPath: () => void;
@@ -90,7 +94,9 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
     },
   });
   const context = (kind: SceneRemovalKind, id: string, event: MouseEvent<HTMLButtonElement> | KeyboardEvent<HTMLButtonElement>) => {
-    event.preventDefault(); event.stopPropagation(); props.onSelect(kind === 'robot' ? { kind } : { kind, id });
+    event.preventDefault(); event.stopPropagation();
+    // A Path context action must not cancel the active TCP teaching mode.
+    if (kind !== 'path') props.onSelect(kind === 'robot' ? { kind } : { kind, id });
     const rect = event.currentTarget.getBoundingClientRect();
     props.onContextMenu({ kind, id, x: 'clientX' in event ? event.clientX : rect.left, y: 'clientY' in event ? event.clientY : rect.bottom, trigger: event.currentTarget });
   };
@@ -114,12 +120,12 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
     </div></details>;
   const pathNode = (path: SceneTreePath) => <details key={path.id} className="object-path scene-tree-branch" open><summary><Icon name="chevron-right" size={13} className="summary-icon"/>
     <button type="button" aria-label={'选择路径 ' + path.name} data-object-kind="path" data-object-id={path.id} {...parentAttributes(path.parent ?? WORLD)} {...draggable({ kind: 'path', id: path.id })} className={selected('path', path.id) ? 'selected' : ''}
-      onContextMenu={event => context('path', path.id, event)} onKeyDown={event => menuKeys('path', path.id, event)} onClick={event => { event.preventDefault(); props.onSelect({ kind: 'path', id: path.id }); }}><Icon name="path" size={13}/><span>{path.name}</span><small>{path.pointIds.length}</small></button>
-    </summary><div className="object-path-points">{path.pointIds.map(id => {
+      onContextMenu={event => context('path', path.id, event)} onKeyDown={event => menuKeys('path', path.id, event)} onClick={event => { event.preventDefault(); props.onSelect({ kind: 'path', id: path.id }); }}><Icon name="path" size={13}/><span>{path.name}</span><small>{path.surface?.points.length ?? path.pointIds.length}</small></button>
+    </summary><div className="object-path-points">{(path.surface ? [] : path.pointIds).map(id => {
       const point = props.points.find(item => item.id === id);
       return point && <button type="button" key={id} aria-label={'选择目标点 ' + point.pointName} data-object-kind="target" data-object-id={id} data-point-name={point.pointName} data-path-id={path.id} data-executing={props.executingPointId === id} className={selected('target', id) ? 'selected' : ''}
         onContextMenu={event => context('target', id, event)} onKeyDown={event => menuKeys('target', id, event)} onClick={() => props.onSelect({ kind: 'target', id })}><Icon name="target" size={12}/><span>{point.pointName}</span></button>;
-    })}{!path.pointIds.length && <p className="field-hint object-empty">右键路径，添加当前点或规划路径。</p>}</div></details>;
+    })}{path.surface?.points.map((point, index) => <button type="button" key={point.id} data-object-kind="surface-point" data-object-id={point.id} data-path-id={path.id} data-control-point={path.surface!.controlPointIds.includes(point.id)} aria-label={'选择表面点 ' + point.name} className={selected('surface-point', point.id) ? 'selected' : ''} onClick={() => props.onSelect({ kind: 'surface-point', id: point.id })} onContextMenu={event => context('surface-point', point.id, event)} onKeyDown={event => menuKeys('surface-point', point.id, event)}><Icon name={path.surface!.controlPointIds.includes(point.id) ? 'frame' : 'target'} size={12}/><span>{point.name}</span><small>{path.surface!.controlPointIds.includes(point.id) ? '控制点' : index + 1}</small></button>)}{!path.pointIds.length && !path.surface?.points.length && <p className="field-hint object-empty">右键路径，添加当前点或规划路径。</p>}</div></details>;
   const children = (parent: FrameParent, visited = new Set<string>()): ReactNode => <>
     {props.robotPresent !== false && parentKey(props.robotParent) === parentKey(parent) && robotNode()}
     {props.frames.filter(frame => parentKey(frame.parent) === parentKey(parent) && !visited.has(frame.id)).map(frame => <details key={frame.id} className="scene-tree-branch scene-frame-branch" data-frame-id={frame.id} open><summary>
@@ -131,6 +137,8 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
   </>;
   return <div className="workspace-object-list scene-object-tree">
     <div className="scene-object-tools" aria-label="添加场景对象">
+      {props.robotPresent === false && <button type="button" aria-label="恢复机器人" title="恢复机器人" disabled={props.disabled} onClick={props.onRestoreRobot}><Icon name="robot" size={14}/><Icon name="plus" size={11}/></button>}
+      {props.onImportSurface && <button type="button" aria-label="导入模型" title="导入模型" disabled={props.disabled} onClick={props.onImportSurface}><Icon name="import" size={14}/><Icon name="plus" size={11}/></button>}
       <button type="button" aria-label="添加参考坐标系" title="添加参考坐标系" disabled={props.disabled} onClick={props.onAddFrame}><Icon name="frame" size={14}/><Icon name="plus" size={11}/></button>
       <button type="button" aria-label="添加工具" title="添加工具" disabled={props.disabled} onClick={props.onAddTool}><Icon name="tool" size={14}/><Icon name="plus" size={11}/></button>
       <button type="button" aria-label="添加 Path" title="添加路径" disabled={props.disabled} onClick={props.onAddPath}><Icon name="path" size={14}/><Icon name="plus" size={11}/></button>
@@ -140,6 +148,8 @@ export default function SceneObjectTree(props: SceneObjectTreeProps) {
     {children(WORLD)}
     {props.tools.filter(tool => tool.parent.kind === 'world').map(toolNode)}
     {!props.paths.length && <p className="field-hint object-empty">添加路径后，可记录当前点或进行路径规划。</p>}
+    {Boolean(props.surfaces?.length) && <div className="object-section-label"><span>工件模型</span></div>}
+    {props.surfaces?.map(surface => <button type="button" key={surface.id} data-object-kind="surface" data-object-id={surface.id} aria-label={'选择模型 ' + surface.name} className={selected('surface', surface.id) ? 'selected' : ''} onClick={() => props.onSelect({ kind: 'surface', id: surface.id })} onContextMenu={event => context('surface', surface.id, event)} onKeyDown={event => menuKeys('surface', surface.id, event)}><Icon name="cube" size={13}/><span>{surface.name}</span>{!surface.visible && <small>隐藏</small>}</button>)}
     <div className="object-section-label"><span>禁入区</span></div>
     {props.zones.map(zone => <button key={zone.id} type="button" data-object-kind="zone" data-object-id={zone.id} data-zone-id={zone.id} aria-label={'选择危险区 ' + (zone.name.trim() || '未命名禁入区')} className={selected('zone', zone.id) ? 'selected' : ''} onContextMenu={event => context('zone', zone.id, event)} onKeyDown={event => menuKeys('zone', zone.id, event)} onClick={() => props.onSelect({ kind: 'zone', id: zone.id })}><Icon name="zone" size={13} className={'zone-object-icon ' + (zone.enabled ? '' : 'disabled')}/><span>{zone.name.trim() || '未命名禁入区'}</span>{props.invalidZoneIds?.includes(zone.id) && <Icon name="warning" size={13} className="zone-invalid-icon"/>}</button>)}
     {dragged && <p className="field-hint tree-drag-hint" role="status">{dragged.kind === 'tool' ? '拖到末端法兰或世界坐标。' : '拖到参考坐标系或世界坐标。'}世界位置与姿态保持不变。</p>}

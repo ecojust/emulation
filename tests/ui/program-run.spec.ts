@@ -101,7 +101,8 @@ test('the context menu runs its own Path despite another selection and plans eve
   await runPathFromMenu(page, first.pathId);
   await expect(runState(page)).toHaveAttribute('data-run-path-id', first.pathId);
   await expect(runState(page)).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
-  await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '选择机器人型号', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('项目机器人型号', { exact: true })).toHaveAttribute('data-model-id', 'irb1100-4-0.58');
   await expect(page.getByRole('button', { name: '程序', exact: true })).toBeDisabled();
   await selectRobotObject(page); // Reading another inspector must not cancel playback.
   for (let joint = 1; joint <= 6; joint++) await expect(page.getByRole('spinbutton', { name: `机器人关节 J${joint}`, exact: true })).toBeDisabled();

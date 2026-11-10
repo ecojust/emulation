@@ -1,4 +1,4 @@
-import { openDefaultProject } from './project-helpers';
+import { openDefaultProject, waitForProjectScene } from './project-helpers';
 import { expect, test, type Page } from '@playwright/test';
 import type { JointAngles, Pose } from '../../src/robot/types';
 import { forwardKinematics } from '../../src/robot/kinematics';
@@ -181,6 +181,7 @@ test('an empty Path retains every pasted pose and ABB configuration, and failed 
   // This case also runs against the production bundle, where DEV canvas
   // diagnostics are absent. Verify the default body through visible controls.
   await openDefaultProject(page);
+  await waitForProjectScene(page, 'irb1100-4-0.58');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   const model = getRobotModel('irb1100-4-0.58');
   const before = forwardKinematics(model, model.readyJoints).pose;

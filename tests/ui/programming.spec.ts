@@ -1,4 +1,4 @@
-import { openDefaultProject, enterProject } from './project-helpers';
+import { openDefaultProject, enterProject, waitForProjectScene } from './project-helpers';
 import { expect, test, type Page } from '@playwright/test';
 import { parseRobtarget } from '../../src/robot/rapid';
 import { captureCurrent, observeBrowser, openScene, pathPoints, selectRobot, selectRobotObject, setJoint } from './workspace-helpers';
@@ -12,6 +12,7 @@ const sourceStatus = (page: Page) => page.getByRole('status', { name: '源码状
 // readouts here; the separate motion suite retains its DEV-only rig probes.
 async function openWorkspace(page: Page) {
   await openDefaultProject(page);
+  await waitForProjectScene(page, 'irb1100-4-0.58');
   await expect(page.getByText('机器人模型已加载 · 7/7', { exact: true })).toBeVisible();
   await expect(page.getByLabel('ABB IRB 1100 三维仿真场景')).toBeVisible();
   await selectRobotObject(page);

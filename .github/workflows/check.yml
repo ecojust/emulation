@@ -18,7 +18,7 @@ jobs:
     name: Native core and browser reference
     runs-on: ubuntu-latest
     # Expanded real-browser editor and simulation checks run serially on software graphics.
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,6 +61,11 @@ jobs:
         env:
           EMULATION_CHROMIUM: /usr/bin/google-chrome
           EMULATION_UI_PREVIEW: "1"
+      - name: Verify the bundled surface geometry worker
+        run: npm run test:ui -- tests/ui/surface-production.spec.ts --output=test-results-surface
+        env:
+          EMULATION_CHROMIUM: /usr/bin/google-chrome
+          EMULATION_UI_PREVIEW: "1"
       - name: Upload static application
         uses: actions/upload-artifact@v4
         with:
@@ -76,6 +81,7 @@ jobs:
             test-results/
             test-results-source/
             test-results-grinding/
+            test-results-surface/
             playwright-report/
             /tmp/emulation-*.png
           if-no-files-found: ignore

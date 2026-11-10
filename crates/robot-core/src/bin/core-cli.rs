@@ -8,6 +8,7 @@ use emulation_core::{
     generic_pose_planner::{plan_generic_pose_move_l, GenericPosePlanRequest},
     grinding::{plan_grinding, GrindingRequest},
     kinematics, model, planner,
+    surface::{plan_surface, SurfaceRequest},
     types::{JointAngles, PlanRequest, Pose},
 };
 use serde::Deserialize;
@@ -44,6 +45,9 @@ enum Command {
     },
     Grinding {
         request: GrindingRequest,
+    },
+    Surface {
+        request: SurfaceRequest,
     },
     GenericInspect {
         request: GenericEndpointRequest,
@@ -84,6 +88,10 @@ fn execute(command: Command) -> Result<Value, String> {
         }
         Command::GenericFk { chain, joints } => {
             serde_json::to_value(forward_generic_kinematics(&chain, &joints)?)
+                .map_err(|e| e.to_string())
+        }
+        Command::Surface { request } => {
+            serde_json::to_value(plan_surface(&request, &AtomicBool::new(false)))
                 .map_err(|e| e.to_string())
         }
         Command::Grinding { request } => {

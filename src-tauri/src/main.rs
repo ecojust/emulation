@@ -8,6 +8,7 @@ use emulation_core::{
     generic_planner::{GenericPlanRequest, GenericPlanResult},
     generic_pose_planner::{GenericPosePlanRequest, GenericPosePlanResult},
     grinding::{GrindingRequest, GrindingResult},
+    surface::{SurfaceRequest, SurfaceResult},
     program::ProgramExportRequest,
     types::{IkSolution, PlanRequest, PlanResult},
 };
@@ -161,6 +162,22 @@ async fn plan_grinding_path(
     {
         Reply::Grinding(result) => Ok(result),
         _ => Err("原生路径规划返回类型错误".into()),
+    }
+}
+
+#[tauri::command]
+async fn generate_surface_path(
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: SurfaceRequest,
+) -> Result<SurfaceResult, String> {
+    match engine
+        .submit(request_id, Work::Surface(request))?
+        .await
+        .map_err(|_| "表面路径生成未完成")??
+    {
+        Reply::Surface(result) => Ok(result),
+        _ => Err("原生表面路径返回类型错误".into()),
     }
 }
 
@@ -405,6 +422,7 @@ fn main() {
             inspect_generic_endpoint,
             check_generic_collisions,
             plan_grinding_path,
+            generate_surface_path,
             check_collisions,
             inspect_endpoint,
             cancel_motion,

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, expectBodyJoints, expectNoPointMotionActions, runPathFromMenu, selectPathForPoints, observeBrowser, openProgram, openScene, openWorkspace, pathPoints, scene, selectPoint, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
 import { generateSource, readSource } from './programming-helpers';
+import { waitForProjectScene } from './project-helpers';
 
 test.setTimeout(90_000);
 const rows = (page: Page) => page.locator('[data-endpoint-joints]');
@@ -226,6 +227,7 @@ test('explicitly updating a point saves its previewed wrist configuration withou
   await page.getByRole('button', { name: '返回主页', exact: true }).click();
   await expect(page.getByRole('main', { name: '项目管理', exact: true })).toBeVisible();
   await page.locator(`[data-project-card="${projectId}"] .project-card-open`).click();
+  await waitForProjectScene(page, 'irb1100-4-0.58');
   await expect(page.locator('.scene-model-status')).toHaveAttribute('data-loaded-parts', '7');
   await openProgram(page);
   expect(await readSource(page)).toBe(originalSource);
