@@ -19,9 +19,9 @@
 
 正式安装包见 [最新 Release](https://github.com/ecojust/emulation/releases/latest)。每个平台附带源提交、CPU 架构和 SHA-256 清单；发布流程先检查同一源码提交的完整测试与实际安装结果，再校验上传文件。
 
-**v0.5.0 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.5.0/Emulation_0.5.0_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.5.0/Emulation_0.5.0_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.5.0)。本版新增STL／OBJ／GLB工件导入、表面区域点选和按毫米间距生成UV路径，并修复Jog后右键示教的姿态保持，调整固定项目型号与顶部布局。
+**v0.6.0 下载：** [macOS M系列](https://github.com/ecojust/emulation/releases/download/v0.6.0/Emulation_0.6.0_aarch64.dmg) · [Windows x64](https://github.com/ecojust/emulation/releases/download/v0.6.0/Emulation_0.6.0_x64-setup.exe) · [更新说明与校验文件](https://github.com/ecojust/emulation/releases/tag/v0.6.0)。本版新增独立手机示教器：同一局域网扫码后通过线／轴虚拟摇杆控制仿真机器人；同时提供高对比度明／暗主题，切换时保留机器人姿态和相机。
 
-构建源为`e5bcd2c`，已通过[完整检查](https://github.com/ecojust/emulation/actions/runs/42927486388)及[ARM／Windows实际安装验证](https://github.com/ecojust/emulation/actions/runs/42927486372)，包括原生规划／端点／网格／表面生成、GP7下载和缓存、真实封面及跨型号项目恢复。发布后已下载全部公共资产并核对SHA-256与来源清单；Intel本次没有完整验收通过的产物，暂未提供该安装包。
+构建源为[`6f47862`](https://github.com/ecojust/emulation/commit/6f47862ec34749fb1119691a67d5ad6a481b4f93)，已通过[完整检查](https://github.com/ecojust/emulation/actions/runs/43015389305)及[ARM／Windows实际安装验证](https://github.com/ecojust/emulation/actions/runs/43015389393)，包括示教器真实WebSocket／Rust Jog联动及停止、原生规划／端点／网格／表面生成、GP7下载和缓存、真实封面及跨型号项目恢复。发布后已下载全部公共资产并核对SHA-256与来源清单；Intel在本次发布时尚未完成全部验收，暂未提供该安装包。
 
 - macOS 13+：当前提供 Apple Silicon（ARM64）安装包。使用 ad-hoc 完整性签名，未做 Apple Developer ID 公证，首次打开可能需要系统的安全确认。
 - Windows x64：安装程序会检查系统 WebView2 运行时；缺少时由内置引导程序安装，可能需要联网。
