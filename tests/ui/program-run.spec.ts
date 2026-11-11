@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { prepareCatalogFixtures, readCatalog } from './catalog-fixtures';
 import { generateSource, openCode } from './programming-helpers';
 import type { Pose } from '../../src/robot/types';
-import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, createPath, expectBodyJoints, expectNoPointMotionActions, runPathFromMenu, selectPathForPoints, observeBrowser, openScene, openWorkspace, pathObjects, pathPoints, selectPath, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
+import { bodyCanvas, bodyJoints, bodyPose, captureCurrent, createPath, expectBodyJoints, expectNoPointMotionActions, openPathMenu, runPathFromMenu, selectPathForPoints, observeBrowser, openScene, openWorkspace, pathObjects, pathPoints, selectPath, selectRobot, selectRobotObject, setJoint, type CapturedPoint } from './workspace-helpers';
 
 test.setTimeout(120_000);
 const ready = [0, 20, -30, 0, 40, 0];
@@ -134,8 +134,22 @@ test('Loop closes from the last point to the first without replaying approach an
   const first = await recordJoint1(page, 2), second = await recordJoint1(page, 4);
   await setJoint(page, 1, 0);
   await expectBodyJoints(page, ready);
-  await run(page, true);
-  await expect(runState(page)).toHaveAttribute('data-run-phase', 'running', { timeout: 20_000 });
+  await selectPath(page, first.pathId);
+  await page.getByRole('checkbox', { name: '循环运行', exact: true }).check();
+  const runMenu = await openPathMenu(page, first.pathId, true);
+  await expect(runMenu.getByRole('menuitem', { name: '运行', exact: true })).toBeEnabled();
+  // Pause while idle: the clock's initial jump must not skip any playback.
+  // Once Run is pressed, drive actual RAF/React frames explicitly instead of
+  // requiring the emulated clock to keep up with wall time on a slow CI GPU.
+  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 10_000));
+  await startSampling(page);
+  await runMenu.getByRole('menuitem', { name: '运行', exact: true }).press('Enter');
+  await expect(runMenu).toHaveCount(0);
+  await expect(runState(page)).toHaveAttribute('data-run-path-id', first.pathId);
+  await expect.poll(async () => {
+    await page.clock.runFor(16);
+    return runState(page).getAttribute('data-run-phase');
+  }, { timeout: 20_000 }).toBe('running');
   // Keep a real UI selection while the clock drives continuous scene frames.
   // Pointer actionability can stall waiting for stable animation frames here.
   const activePath = page.locator(`[data-object-kind="path"][data-object-id="${first.pathId}"]`);
@@ -157,12 +171,15 @@ test('Loop closes from the last point to the first without replaying approach an
   await pathPoints(page, first.pathId).first().focus();
   await page.keyboard.press('Delete');
   await expect(pathPoints(page, first.pathId)).toHaveCount(2);
-  await expect.poll(async () => Number(await runState(page).getAttribute('data-run-cycle')), { timeout: 25_000 }).toBeGreaterThanOrEqual(2);
-  // The first two cycles above use wall time. Freeze only the Stop observation
-  // window: a real mouse click's actionability wait can consume this short leg.
+  // This 2-degree, 10 mm/s fixture reaches cycle 2 in about six simulated
+  // seconds. Bound virtual progress while delivering every animation frame.
+  for (let index = 0; index < 100 && Number(await runState(page).getAttribute('data-run-cycle')) < 2; index++) {
+    await page.clock.runFor(100);
+  }
+  expect(Number(await runState(page).getAttribute('data-run-cycle'))).toBeGreaterThanOrEqual(2);
+  // Keep the same paused clock through Stop; keyboard input cannot consume the
+  // short intermediate-pose window through pointer actionability waits.
   await stopButton(page).focus();
-  await page.clock.pauseAt(new Date(await page.evaluate(() => Date.now()) + 10_000));
-  await page.clock.runFor(32); // Let React and the scene both observe the clock transition.
   for (let index = 0; index < 40; index++) {
     const q = (await bodyJoints(page))[0];
     if (q > 2.5 && q < 3.5) break;
@@ -174,6 +191,9 @@ test('Loop closes from the last point to the first without replaying approach an
   await page.clock.resume();
   const repeated = (await stopSampling(page)).filter(sample => sample.phase === 'running' && sample.cycle >= 1);
   expect(repeated.length).toBeGreaterThan(0);
+  const firstCycleOrder = repeated.filter(sample => sample.cycle === 1).map(sample => sample.pointId)
+    .filter((id, index, ids) => index === 0 || id !== ids[index - 1]);
+  expect(firstCycleOrder).toEqual([first.id, second.id]);
   expect(new Set(repeated.map(sample => sample.pointId))).toEqual(new Set([first.id, second.id]));
   for (const sample of repeated) {
     expect(sample.joints[0]).toBeGreaterThanOrEqual(2 - .001);

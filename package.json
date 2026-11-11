@@ -1,6 +1,6 @@
 {
   "name": "emulation",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,6 +27,7 @@
     "@codemirror/view": "6.43.15",
     "@lezer/highlight": "1.2.5",
     "@tauri-apps/api": "2.12.4",
+    "qrcode": "1.5.4",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "three": "0.187.0",
@@ -36,6 +37,7 @@
     "@playwright/test": "1.65.0",
     "@tauri-apps/cli": "2.12.4",
     "@types/node": "24.10.1",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
     "@types/three": "0.187.0",

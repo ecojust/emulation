@@ -1,0 +1,106 @@
+/* App-wide semantic colors. Surfaces stay quiet; text, controls and state carry contrast. */
+:root,[data-theme='light'] {
+  color-scheme:light;
+  --page:#e8ecf1;
+  --surface:#ffffff;
+  --surface-subtle:#f4f6f8;
+  --surface-raised:#ffffff;
+  --surface-hover:#eaf0f6;
+  --surface-overlay:#fffffff2;
+  --text:#182431;
+  --text-secondary:#354659;
+  --muted:#526376;
+  --border:#aab6c4;
+  --border-subtle:#cbd3dd;
+  --border-strong:#72859b;
+  --accent:#1459a2;
+  --accent-fill:#165faf;
+  --accent-hover:#104b8d;
+  --accent-soft:#e1edfc;
+  --accent-border:#6999d0;
+  --on-accent:#ffffff;
+  --danger:#a92d3b;
+  --danger-fill:#b92e41;
+  --danger-hover:#992336;
+  --danger-soft:#fff0f1;
+  --danger-border:#cf8990;
+  --success:#236748;
+  --success-fill:#24734f;
+  --success-soft:#eaf6ee;
+  --success-border:#8cb59b;
+  --warning:#855200;
+  --warning-fill:#966114;
+  --warning-soft:#fff5df;
+  --warning-border:#c4a263;
+  --focus:#1e70ca;
+  --selection:#c5dcf9;
+  --shadow-color:#15233524;
+  --backdrop:#101b2c80;
+  --scrollbar:#8f9eaf;
+  --scene-sky:#e4e9ef;
+  --scene-ground:#c9d2dd;
+  --scene-grid:#9caebf;
+  --scene-grid-major:#8095ab;
+  --syntax-keyword:#71328f;
+  --syntax-type:#176c62;
+  --syntax-string:#875212;
+  --syntax-number:#a24827;
+  --syntax-comment:#586a7d;
+}
+[data-theme='dark'] {
+  color-scheme:dark;
+  --page:#0e141c;
+  --surface:#1b2531;
+  --surface-subtle:#141d28;
+  --surface-raised:#253140;
+  --surface-hover:#2b3b4d;
+  --surface-overlay:#1b2531f2;
+  --text:#f0f4f9;
+  --text-secondary:#d1dce9;
+  --muted:#acbfd4;
+  --border:#5a7089;
+  --border-subtle:#35485e;
+  --border-strong:#8096b0;
+  --accent:#8dc2ff;
+  --accent-fill:#165faf;
+  --accent-hover:#104b8d;
+  --accent-soft:#213f61;
+  --accent-border:#638ebd;
+  --on-accent:#ffffff;
+  --danger:#ffa0ad;
+  --danger-fill:#b92e41;
+  --danger-hover:#992336;
+  --danger-soft:#482934;
+  --danger-border:#a96779;
+  --success:#95ddb4;
+  --success-fill:#24734f;
+  --success-soft:#203c31;
+  --success-border:#5d9d7a;
+  --warning:#f2cb85;
+  --warning-fill:#966114;
+  --warning-soft:#433722;
+  --warning-border:#ac8b51;
+  --focus:#9acaff;
+  --selection:#345c88;
+  --shadow-color:#00000066;
+  --backdrop:#050a14b3;
+  --scrollbar:#617a97;
+  --scene-sky:#161f2b;
+  --scene-ground:#28394c;
+  --scene-grid:#3e556d;
+  --scene-grid-major:#5b7590;
+  --syntax-keyword:#d5acff;
+  --syntax-type:#8dd9ca;
+  --syntax-string:#edce96;
+  --syntax-number:#ffb59e;
+  --syntax-comment:#a5b8ce;
+}
+html { background:var(--page); color:var(--text); scrollbar-color:var(--scrollbar) var(--surface-subtle) }
+body { background:var(--page) }
+input,select,textarea { caret-color:var(--text) }
+input::placeholder,textarea::placeholder { color:var(--muted); opacity:1 }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible { outline-color:var(--focus) }
+.theme-toggle { display:inline-flex; flex:none; align-items:center; justify-content:center; gap:6px; min-height:30px; padding:5px 8px; border:1px solid var(--border); border-radius:6px; color:var(--text-secondary); background:var(--surface); font-size:11px; white-space:nowrap }
+.theme-toggle:hover { background:var(--surface-hover); color:var(--text) }
+.theme-toggle:focus-visible { outline:2px solid var(--focus); outline-offset:2px }
+.theme-toggle .ui-icon { flex:none }

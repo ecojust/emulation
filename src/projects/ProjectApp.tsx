@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Icon from '../ui/Icon';
+import ThemeToggle from '../theme/ThemeToggle';
 import type { SourceProjectRepository } from '../programming/storage';
 import { ProjectRepository } from './repository';
 import { PROJECT_MODELS, projectName, projectSummary, validateThumbnail, type ProjectScene, type SimulationProject, type ProjectSummary } from './schema';
@@ -71,7 +72,7 @@ export default function ProjectApp({ renderWorkspace, repository: supplied }: Pr
   }
   return <main className="project-home" aria-label="项目管理">
     <header className="project-home-header" inert={Boolean(dialog)}><div className="project-home-brand"><Icon name="cube" size={28}/><div><strong>emulation</strong><span>机器人仿真项目</span></div></div>
-      <button type="button" className="project-primary" onClick={openCreate} disabled={loading || busy}><Icon name="plus" size={16}/>新建项目</button></header>
+      <div className="project-home-header-actions"><ThemeToggle/><button type="button" className="project-primary" onClick={openCreate} disabled={loading || busy}><Icon name="plus" size={16}/>新建项目</button></div></header>
     <section className="project-home-content" aria-label="项目列表" inert={Boolean(dialog)}>
       <div className="project-list-heading"><div><h1>我的项目</h1><p>从实际场景继续编程与仿真</p></div><span>{projects.length} 个项目</span></div>
       {error && !dialog && <div className="project-error" role="alert">{error}{!dialog && <button type="button" disabled={busy || loading} onClick={() => void initialize()}>重新加载</button>}</div>}

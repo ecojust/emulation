@@ -73,7 +73,7 @@ jobs:
       - name: Validate numerical core on the target CPU
         run: cargo test -p emulation-core --target "${{ matrix.target }}" --release --locked
       - name: Validate native job and export policies
-        run: cargo test -p emulation-desktop --target "${{ matrix.target }}" --no-default-features --features model-cache --release --locked
+        run: cargo test -p emulation-desktop --target "${{ matrix.target }}" --no-default-features --features model-cache,pendant --release --locked
       - name: Build the native parity-test command
         run: cargo build -p emulation-core --bin core-cli --locked
       - name: Check frontend

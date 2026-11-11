@@ -22,8 +22,8 @@ function notices() {
         }
       };
       includeLanguageNotices("vendor/robot-languages", "third-party/robot-languages");
-      const packages = ["react", "react-dom", "scheduler", "three", "three-mesh-bvh", "@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/streamparser", "@codemirror/autocomplete", "@codemirror/commands", "@codemirror/search", "@codemirror/lint", "@lezer/highlight", "@lezer/common", "@lezer/lr", "@marijn/find-cluster-break", "crelt", "style-mod", "w3c-keyname"];
-      const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/LICENSE`)}`).join("\n\n")
+      const packages = ["qrcode", "dijkstrajs", "react", "react-dom", "scheduler", "three", "three-mesh-bvh", "@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/streamparser", "@codemirror/autocomplete", "@codemirror/commands", "@codemirror/search", "@codemirror/lint", "@lezer/highlight", "@lezer/common", "@lezer/lr", "@marijn/find-cluster-break", "crelt", "style-mod", "w3c-keyname"];
+      const source = packages.map((name) => `${name}\n${"=".repeat(60)}\n${read(`node_modules/${name}/${name === "qrcode" ? "license" : name === "dijkstrajs" ? "LICENSE.md" : "LICENSE"}`)}`).join("\n\n")
         + `\n\n@tauri-apps/api (MIT option)\n${"=".repeat(60)}\n${read("node_modules/@tauri-apps/api/LICENSE-MIT")}`;
       this.emitFile({ type: "asset", fileName: "THIRD_PARTY_NOTICES.txt", source });
     },

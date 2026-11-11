@@ -370,6 +370,44 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     }
     const currentJoints = () => [...document.querySelectorAll<HTMLInputElement>('.robot-inspector input[aria-label^="机器人关节 J"]')].map(input => Number(input.value));
     const currentPosition = () => [...document.querySelectorAll('[aria-label="当前 TCP"] [data-axis] strong')].map(node => Number(node.textContent));
+    async function verifyMobilePendant(model: string) {
+      await selectRobot();
+      const ready = [...document.querySelectorAll<HTMLButtonElement>('.robot-inspector button')].find(button => button.textContent?.trim() === '示例起始姿态');
+      if (!ready) throw new Error('Installed pendant fixture has no ready pose action');
+      ready.click();
+      const expectedReady = model === 'abb' ? getRobotModel(request.modelId).readyJoints : [20, 15, -25, 25, 35, 10];
+      await waitForUi(() => nearTuple(currentJoints(), expectedReady, 1e-5), 'Installed pendant fixture pose was not applied');
+      const launch = document.querySelector<HTMLButtonElement>('[aria-label="示教器"]');
+      if (!launch) throw new Error('Installed desktop has no pendant toolbar action');
+      launch.click();
+      await waitForUi(() => Boolean(document.querySelector('[aria-label="手机示教器配对二维码"]')), 'Installed pendant did not generate a pairing QR code');
+      document.querySelector<HTMLButtonElement>('[aria-label="关闭示教器弹窗"]')!.click();
+      await waitForUi(() => !document.querySelector('.pendant-dialog'), 'Installed pendant dialog failed to close');
+      const beforeJoint = currentJoints();
+      await invoke('smoke_pendant_drive', { mode: 'joint' });
+      await waitForUi(() => launch.dataset.connected === 'false', 'Installed pendant joint connection did not release');
+      await waitForUi(() => currentJoints()[0] > beforeJoint[0] + .05, 'Phone joint input did not reach the displayed robot');
+      const afterJoint = currentJoints();
+      if (afterJoint.slice(1).some((value, index) => Math.abs(value - beforeJoint[index + 1]) > 1e-5)) throw new Error('Phone joint input changed an unrelated joint');
+      await new Promise(resolve => setTimeout(resolve, 450));
+      if (!nearTuple(currentJoints(), afterJoint, 1e-6)) throw new Error('Installed robot continued moving after pendant release');
+      const beforeLinear = currentPosition();
+      await invoke('smoke_pendant_drive', { mode: 'linear' });
+      await waitForUi(() => launch.dataset.connected === 'false', 'Installed pendant linear connection did not release');
+      await waitForUi(() => currentPosition()[0] > beforeLinear[0] + .1, 'Phone linear input did not reach the displayed TCP');
+      const afterLinear = currentPosition(), finalJoints = currentJoints();
+      if (afterLinear.slice(1).some((value, index) => Math.abs(value - beforeLinear[index + 1]) > .03)) throw new Error('Phone linear input changed an unrelated world coordinate');
+      await new Promise(resolve => setTimeout(resolve, 450));
+      if (!nearTuple(currentJoints(), finalJoints, 1e-6)) throw new Error('Installed robot continued moving after pendant disconnect');
+      launch.click();
+      await waitForUi(() => Boolean(document.querySelector('.pendant-dialog')), 'Installed pendant dialog could not reopen');
+      const disconnect = [...document.querySelectorAll<HTMLButtonElement>('.pendant-dialog button')].find(button => button.textContent?.trim() === '断开示教器');
+      if (!disconnect) throw new Error('Installed pendant cannot disconnect');
+      disconnect.click();
+      await waitForUi(() => !document.querySelector('[aria-label="手机示教器配对二维码"]'), 'Installed pendant retained a revoked QR code');
+      document.querySelector<HTMLButtonElement>('[aria-label="关闭示教器弹窗"]')!.click();
+      nativeEvidence['pendant:' + model] = { realSocketInputs: true, jointTravelDeg: afterJoint[0] - beforeJoint[0], linearTravelMm: afterLinear[0] - beforeLinear[0], releaseAndDisconnectStopped: true };
+    }
     stage = 'path-context-run';
     // The callback records the native target but leaves the body at startJoints.
     // Running must perform this nonzero motion through the actual context menu.
@@ -424,6 +462,8 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
     assertSourceDoesNotRun();
     nativeEvidence.pathModule = { name: moduleName, selected: true, sourceContainsMoveL: true, previousModulesPreserved: true, diagnostics: moduleDiagnostics.length };
     await changeView('场景');
+    stage = 'abb-mobile-pendant';
+    await verifyMobilePendant('abb');
     stage = 'catalog-download';
     const abbProjectId = document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId;
     if (!abbProjectId) throw new Error('Installed ABB workspace has no persisted project identity');
@@ -503,6 +543,8 @@ export async function runNativeUiSmoke(request: PlanRequest, show: (result: Plan
       if (!activeGl || activeGl.isContextLost()) throw new Error('WebGL2 was lost after opening the GP7 project');
       if (errors.length || earlyErrors?.consoleErrors.length || earlyErrors?.events.length) throw new Error('Runtime error occurred while loading the downloaded model');
     } finally { clearTimeout(deadline); if (solverModel?.kind === 'urdf') solverModel.dispose(); }
+    stage = 'generic-mobile-pendant';
+    await verifyMobilePendant('yaskawa-gp7');
     stage = 'project-cover-and-persistence';
     const projectId = document.querySelector<HTMLElement>('[data-project-id]')?.dataset.projectId;
     if (!projectId) throw new Error('Installed workspace has no persisted project identity');

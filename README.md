@@ -93,6 +93,12 @@ ABB四元数使用`[w,x,y,z]`顺序，欧拉角遵循`OrientZYX(Rz,Ry,Rx)`。端
 
 “机械零位”按钮仍可还原官方全零关节角。长臂型号在默认基座且未安装额外工具时，法兰位置为 `[364,0,617] mm`，轴5为0°，腕部处于奇异位置；当前规划器拒绝从该姿态直接开始MoveL或TCP Jog，这不代表目标位置本身不可达。点击“示例起始姿态”可回到非奇异的演示起点，它不是ABB官方推荐的实机安全位置。Jog用于调整仿真起点，拖动过程不会自动保存成可导出的整段轨迹。
 
+## 手机示教器与主题
+
+项目顶部“示教器”生成配对二维码，手机在同一局域网扫码后使用虚拟摇杆控制仿真机器人：线模式移动TCP，轴模式调整J1–J6，支持世界／工具坐标和速度倍率。松手、失联或切换模式会停止，返回主页结束连接；该功能作为独立模块实现。连接方式、运动边界和模块分工见[手机示教器](docs/mobile-pendant.md)。
+
+主页与项目顶部提供明／暗主题切换并保存选择。界面采用弱化背景与高对比度文本／选中状态，三维场景和代码编辑器同步适配；切换不改变机器人姿态或相机。
+
 ## 工件表面与 UV 加工路径
 
 1. 在场景左侧选择“导入模型”。支持 STL、OBJ 和 GLB；STL／OBJ 需选择原文件单位 mm 或 m，GLB 按标准使用米，导入后统一为毫米。网格随项目保存，重新打开项目不依赖原文件。右侧可修改工件的位置、姿态和可见性。
@@ -134,7 +140,7 @@ ABB四元数使用`[w,x,y,z]`顺序，欧拉角遵循`OrientZYX(Rz,Ry,Rx)`。端
 ## 开发与检查
 
 ```sh
-cargo test --workspace --no-default-features --features emulation-desktop/model-cache --locked
+cargo test --workspace --no-default-features --features emulation-desktop/model-cache,emulation-desktop/pendant --locked
 cargo build -p emulation-core --bin core-cli --locked
 npm run check
 npm test

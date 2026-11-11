@@ -576,6 +576,19 @@ impl<'a> Context<'a> {
         expected: Option<(&Quaternion, &Quaternion)>,
         cancel: &mut F,
     ) -> Checked<()> {
+        self.certify_with_configuration(a, b, depth, expected, true, cancel)
+    }
+    // Direct joint jogging can cross a Cartesian singularity/configuration
+    // boundary. Its swept bodies still require the same collision certificate.
+    fn certify_with_configuration<F: FnMut() -> bool>(
+        &mut self,
+        a: &JointAngles,
+        b: &JointAngles,
+        depth: usize,
+        expected: Option<(&Quaternion, &Quaternion)>,
+        check_configuration: bool,
+        cancel: &mut F,
+    ) -> Checked<()> {
         if cancel() {
             return Err(cancelled());
         }
@@ -595,7 +608,7 @@ impl<'a> Context<'a> {
                 .sum::<f64>()
             / 2.;
         let expected_mid = expected.map(|(a, b)| slerp_quaternion(a, b, 0.5));
-        if matches!(self.request.robot, GrindingRobot::Abb { .. }) {
+        if check_configuration && matches!(self.request.robot, GrindingRobot::Abb { .. }) {
             if self.config(&mid)?.map(|q| q[3]) != self.config(a)?.map(|q| q[3]) {
                 return Err(fail(
                     "configuration_change",
@@ -633,18 +646,20 @@ impl<'a> Context<'a> {
                 "连续运动包络或姿态插值无法在检查精度内完成验证，未生成路径。",
             ));
         }
-        self.certify(
+        self.certify_with_configuration(
             a,
             &mid,
             depth + 1,
             expected.map(|(qa, _)| (qa, expected_mid.as_ref().unwrap())),
+            check_configuration,
             cancel,
         )?;
-        self.certify(
+        self.certify_with_configuration(
             &mid,
             b,
             depth + 1,
             expected.map(|(_, qb)| (expected_mid.as_ref().unwrap(), qb)),
+            check_configuration,
             cancel,
         )
     }
@@ -1118,4 +1133,73 @@ fn run<F: FnMut() -> bool>(request: &GrindingRequest, cancel: &mut F) -> Checked
         checked_intervals: context.checked_intervals,
         warnings,
     })
+}
+
+/// Shared bounded geometry checks for the separate pendant numerical API.
+/// Reuses the exact robot/tool swept envelopes used by path planning. Joint
+/// mode deliberately has no Cartesian branch/singularity restriction.
+pub(crate) fn pendant_step<F: FnMut() -> bool>(
+    request: &crate::pendant_jog::JogRequest,
+    cancel: &mut F,
+) -> Checked<crate::pendant_jog::JogSuccess> {
+    use crate::pendant_jog::{JogMode, JogSpace, JogSuccess};
+    if !request.step_seconds.is_finite() || request.step_seconds <= 0. || request.step_seconds > 0.05
+        || !request.speed_scale.is_finite() || !(0. ..=1.).contains(&request.speed_scale)
+        || request.axes.iter().any(|axis| !axis.is_finite() || axis.abs() > 1.)
+        || request.start_joints.iter().any(|joint| !joint.is_finite())
+        || request.mode == JogMode::Linear && request.axes[3..].iter().any(|axis| *axis != 0.)
+    { return Err(fail("invalid_input", "示教方向、速度或步长无效。")); }
+    let context_request = GrindingRequest {
+        robot: request.robot.clone(), base_pose: request.base_pose, tool_pose: request.tool_pose,
+        tool_radius_mm: request.tool_radius_mm, start_joints: request.start_joints,
+        targets: vec![Pose { position: [0.; 3], orientation: [1., 0., 0., 0.] }],
+        orientation: None, zones: request.zones.clone(), clearance_mm: 0.,
+        speed_mm_per_second: (100. * request.speed_scale).max(1.), allow_detours: false,
+    };
+    let mut context = Context::new(&context_request)?;
+    let origin = context.tcp(&request.start_joints, cancel)?;
+    let magnitude = request.axes.iter().map(|axis| axis * axis).sum::<f64>().sqrt();
+    if magnitude < 1e-12 || request.speed_scale == 0. {
+        return Ok(JogSuccess { joints: request.start_joints, pose: origin });
+    }
+    let unit = request.axes.map(|axis| axis / magnitude.max(1.));
+    let start_boxes = context.boxes(&request.start_joints, cancel)?;
+    if !context.clear(&start_boxes, 0.)? { return Err(fail("collision", "机器人或工具的保守包络与禁入区相交，请先调整场景。")); }
+    let (joints, pose) = match request.mode {
+        JogMode::Joint => {
+            let candidate = std::array::from_fn(|index| request.start_joints[index]
+                + unit[index] * request.speed_scale * request.step_seconds * 30_f64.min(context.speed_limits[index]));
+            let valid = match &request.robot {
+                GrindingRobot::Abb { model_id } => joints_within_limits(&get_robot_model(model_id).unwrap(), &candidate),
+                GrindingRobot::Generic { chain, .. } => generic_joints_within_limits(chain, &candidate),
+            };
+            if !valid { return Err(fail("joint_limit", "该轴已到达关节限位，已停止示教移动。")); }
+            context.certify_with_configuration(&request.start_joints, &candidate, 0, None, false, cancel)?;
+            (candidate, context.tcp(&candidate, cancel)?)
+        }
+        JogMode::Linear => {
+            context.config(&request.start_joints).map_err(|mut error| { error.message = "当前姿态接近奇异位置，请先使用轴模式调整关节。".into(); error })?;
+            let mut direction: Vec3 = [unit[0], unit[1], unit[2]];
+            if request.space == JogSpace::Tool {
+                let matrix = quaternion_to_matrix(&origin.orientation).map_err(|m| fail("invalid_input", &m))?;
+                direction = std::array::from_fn(|row| (0..3).map(|column| matrix[row * 4 + column] * direction[column]).sum());
+            }
+            let target = Pose { position: std::array::from_fn(|index| origin.position[index]
+                + direction[index] * 100. * request.speed_scale * request.step_seconds), orientation: origin.orientation };
+            let legs = context.legs(request.start_joints, target, false, cancel)?;
+            let selected = legs.first().and_then(|leg| leg.samples.last()).ok_or_else(|| fail("unreachable", "未找到连续示教位姿。"))?;
+            let candidate = selected.joints;
+            for index in 0..6 {
+                if (candidate[index] - request.start_joints[index]).abs() > context.speed_limits[index] * request.step_seconds + 1e-8 {
+                    return Err(fail("joint_speed", "当前直线方向超过关节速度，请降低示教速度或使用轴模式。"));
+                }
+            }
+            // The UI applies one endpoint per tick, so also certify the direct
+            // joint segment instead of relying only on internal IK samples.
+            context.certify(&request.start_joints, &candidate, 0, Some((&origin.orientation, &target.orientation)), cancel)?;
+            (candidate, context.tcp(&candidate, cancel)?)
+        }
+    };
+    if cancel() { return Err(cancelled()); }
+    Ok(JogSuccess { joints, pose })
 }

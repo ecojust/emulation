@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Emulation · 示教器</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="pendant">
+    <header class="page-header">
+      <div class="title"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M9 6h6M9 18h6M10 10v4m-2-2h4m3 0h1"/></svg><div><span class="eyebrow">EMULATION</span><h1>示教器</h1></div></div>
+      <span class="simulation-badge">仿真控制</span>
+    </header>
+    <section class="connection-card" aria-label="连接信息">
+      <div class="connection-line"><span id="connection-dot" class="connection-dot"></span><strong id="connection-status" role="status" aria-live="polite">正在连接电脑…</strong><button id="reconnect" type="button" hidden>重新连接</button></div>
+      <div class="robot-line"><span id="robot-name">等待机器人</span><span id="motion-status">未运动</span></div>
+      <p id="feedback" class="feedback" role="status" aria-live="polite">请将手机和电脑连接到同一网络。</p>
+    </section>
+    <section class="control-card" aria-label="Jog 控制">
+      <div class="mode-tabs" role="group" aria-label="Jog 模式"><button type="button" data-mode="linear" aria-pressed="true">线模式</button><button type="button" data-mode="joint" aria-pressed="false">轴模式</button></div>
+      <div class="controls-heading"><div><h2 id="control-title">TCP 直线移动</h2><p id="control-subtitle">拖动摇杆，松手停止</p></div><label class="space-label" id="space-label">坐标系<select id="space" aria-label="坐标系"><option value="world">世界坐标</option><option value="tool">工具坐标</option></select></label></div>
+      <div id="axis-pairs" class="axis-pairs" role="group" aria-label="摇杆控制轴"></div>
+      <div class="joystick-wrap">
+        <span id="axis-top" class="axis-label axis-top">+Y</span><span id="axis-left" class="axis-label axis-left">−X</span><span id="axis-right" class="axis-label axis-right">+X</span><span id="axis-bottom" class="axis-label axis-bottom">−Y</span>
+        <div id="joystick" class="joystick" role="application" aria-label="虚拟摇杆" aria-describedby="joystick-help" aria-disabled="true" tabindex="0">
+          <svg viewBox="0 0 200 200" aria-hidden="true"><circle class="stick-outer" cx="100" cy="100" r="95"/><circle class="stick-inner" cx="100" cy="100" r="68"/><path class="stick-guide" d="M100 8v184M8 100h184"/><circle class="stick-center" cx="100" cy="100" r="8"/><g id="stick-knob"><circle class="stick-knob-halo" cx="100" cy="100" r="31"/><circle class="stick-knob" cx="100" cy="100" r="25"/><path class="stick-knob-mark" d="M94 100h12m-6-6v12"/></g></svg>
+        </div>
+      </div>
+      <p id="joystick-help" class="joystick-help">按住并拖动控制方向，偏移越大速度越快。</p>
+      <div class="speed-heading"><label for="speed">速度倍率</label><output id="speed-value" for="speed">20%</output></div>
+      <input id="speed" type="range" min="5" max="100" step="5" value="20" aria-label="速度倍率">
+      <button type="button" class="stop-button" id="stop"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>停止 Jog</button>
+    </section>
+    <section class="telemetry-card" aria-label="机器人当前状态">
+      <div class="telemetry-heading"><h2>当前状态</h2><span>电脑实时反馈</span></div>
+      <div class="tcp-grid"><div><span>X <small>mm</small></span><output id="tcp-x">—</output></div><div><span>Y <small>mm</small></span><output id="tcp-y">—</output></div><div><span>Z <small>mm</small></span><output id="tcp-z">—</output></div></div>
+      <div class="joint-grid" id="joint-values"><div><span>J1</span><output>—</output></div><div><span>J2</span><output>—</output></div><div><span>J3</span><output>—</output></div><div><span>J4</span><output>—</output></div><div><span>J5</span><output>—</output></div><div><span>J6</span><output>—</output></div></div>
+    </section>
+    <footer>切换模式或离开页面时，Jog 自动停止。</footer>
+  </main>
+  <script type="module" src="./controller.js"></script>
+</body>
+</html>
