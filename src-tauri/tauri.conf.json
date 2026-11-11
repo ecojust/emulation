@@ -29,6 +29,6 @@
       "nsis": { "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] },
       "webviewInstallMode": { "type": "embedBootstrapper", "silent": true }
     },
-    "resources": { "../LICENSE": "LICENSE", "../vendor/work-r-labs/LICENSE": "licenses/work-r-labs/LICENSE", "../vendor/work-r-labs/SOURCE.json": "licenses/work-r-labs/SOURCE.json", "../vendor/work-r-labs/model-notices/": "licenses/work-r-labs/model-notices/" }
+    "resources": { "../LICENSE": "LICENSE", "../vendor/work-r-labs/LICENSE": "licenses/work-r-labs/LICENSE", "../vendor/work-r-labs/SOURCE.json": "licenses/work-r-labs/SOURCE.json", "../vendor/work-r-labs/model-notices/": "licenses/work-r-labs/model-notices/", "../vendor/pendant-dependencies/": "licenses/pendant-dependencies/" }
   }
 }

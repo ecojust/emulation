@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RobotScene, { type RobotSceneHandle } from './scene/RobotScene';
 import Icon from './ui/Icon';
+import ThemeToggle from './theme/ThemeToggle';
+import PairingDialog, { PendantIcon } from './pendant/PairingDialog';
+import { usePendant } from './pendant/usePendant';
+import type { JogContext } from './pendant/motion';
 import './catalog/catalog.css';
 import RobotInspector from './workspace/RobotInspector';
 import TargetInspector from './workspace/TargetInspector';
@@ -228,6 +232,26 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   const collisionById = useMemo(() => new Map(collisionView.items.map(item => [item.id, item])), [collisionView.items]);
   const planningContextKey = JSON.stringify([activeModelId, robotPresent, graph.revision, program.revision, zones, displayJoints, speed, surfaces.map(surface => [surface.id, surface.revision, surface.visible])]);
   const sceneContextRef = useRef(planningContextKey); sceneContextRef.current = planningContextKey;
+  const pendantContext = useMemo<{ context: JogContext | null; error: string | null }>(() => {
+    try {
+      const request = makeGrindingRequest({ targets: [], startJoints: [0, 0, 0, 0, 0, 0], clearanceMm: 0, speedMmPerSecond: 100 });
+      const { robot, basePose, toolPose, toolRadiusMm, zones } = request;
+      return { context: { robot, basePose, toolPose, toolRadiusMm, zones }, error: null };
+    } catch (cause) { return { context: null, error: cause instanceof Error ? cause.message : '当前机器人不能进行示教。' }; }
+  }, [activeModelId, genericChain, genericBodies, graph, zoneConfiguration]);
+  const pendantReason = !robotPresent ? '机器人本体已删除，请先恢复。'
+    : activeView !== 'scene' ? '请在电脑端切换到场景视图。'
+    : homeBusy || closeState !== null ? '正在保存项目，示教已暂停。'
+    : executing || sourceBusy || surfaceBusy || jogDragging || jogStatus.pending ? '电脑端正在执行其他操作。'
+    : removeObject || surfaceImportOpen || surfaceUvPathId || planningPathId || surfacePickingPathId || previewSolution ? '请先结束电脑端的编辑或预览操作。'
+    : poseError || pendantContext.error || (!currentPose ? '当前工具姿态无效。' : null);
+  const pendant = usePendant({
+    state: { robotName: activeName, modelId: activeModelId, joints: displayJoints, tcp: currentPose, available: !pendantReason, reason: pendantReason },
+    context: pendantContext.context, contextKey: JSON.stringify([activeModelId, robotPresent, graph.revision, zones]),
+    onAccept: writeBodyPose,
+    beforeStart: () => { stopJog(); clearPreview(); cancelInspections(); setJogEnabled(false); setObjectMenu(null); setSurfacePickingPathId(null); workspace.selectObject({ kind: 'robot' }); workspace.setActiveView('scene'); },
+  });
+  const remoteControl = pendant.connected && activeView === 'scene';
   const sourceReadOnly = sourceBusy || executing || closeState !== null || !documents.ready || sourceLanguagePending;
   const draftStatusText = documents.draftStatus === 'saved' ? '草稿已保存' : documents.draftStatus === 'saving' ? '正在保存草稿…' : documents.draftStatus === 'pending' ? '草稿等待保存…' : documents.draftStatus === 'loading' ? '正在恢复草稿…' : '草稿保存失败';
   const sourceStatus = [...new Set([languageState.key === languageKey && languageState.error ? '语言版本加载失败：' + languageState.error : sourceLanguagePending ? '正在加载本地语言版本…' : '', sourceMessage, documents.error, draftStatusText, documents.dirty ? '源码已修改' : ''].filter(Boolean))].join(' · ');
@@ -325,6 +349,8 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     if (!nativeDesktop || closeAttempt.current.busy) return;
     surfaceOperation.current?.abort(); setSurfaceImportOpen(false); setSurfacePickingPathId(null); setSurfaceUvPathId(null); setSurfacePreview(null);
     closeAttempt.current.busy = true; stopExecution(false); stopJog(); clearPreview(); cancelInspections(); sourceOperation.current?.controller?.abort(); sourceOperation.current = null; setSourceBusy(false); setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setRemoveObject(null); setCloseState('saving'); setCloseError('');
+    pendant.closeDialog();
+    await pendant.disconnect();
     try {
       if (!discard && (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts())) {
         setCloseError('部分型号的草稿未能保存。正文仍在当前窗口，可重试保存，或继续编辑并导出源文件。'); setCloseState('error'); return;
@@ -407,6 +433,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     setPlanningPathId(null); setPlanningPreview(null); setObjectMenu(null); setZoneDragging(false);
     workspace.setActiveView('scene');
     try {
+      await pendant.disconnect();
       if (!await documentsRef.current.flushAll() || documentsRef.current.hasPendingDrafts()) throw new Error('模块草稿尚未保存，请重试；当前项目仍保持打开。');
       // Let React commit the accepted body pose and remove every transient preview.
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -532,6 +559,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
   }
   function clearPreview() { setEndpointPreview(null); }
   function stopJog() {
+    pendant.pause();
     jogController.current?.dispose(); jogController.current = null;
     setJogStatus({ pending: false, error: null }); setJogDragging(false);
     setJogResetRevision(value => value + 1);
@@ -913,14 +941,15 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
     return collisionById.get(id)?.zones.filter(zone => (uncertain ? zone.uncertainLinks : zone.collidingLinks).length).map(zone => zone.zoneId) ?? [];
   }
   return <div className="app-shell">
-    <header className="topbar" inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null}>
+    <header className="topbar" inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null || pendant.dialogOpen}>
       <a className="brand" href="./" aria-label="Emulation 首页" onClick={event => { if (onReturnHome) { event.preventDefault(); void returnHome(); } }}><span className="brand-symbol"><Icon name="cube" size={25}/></span><span>emulation<span className="brand-caption">机器人运动仿真</span></span></a>
       <div className="header-divider"/><nav className="project-label project-breadcrumbs" aria-label="项目导航">{onReturnHome && <><button type="button" className="breadcrumb-home return-home-button" aria-label="返回主页" title="返回项目主页" disabled={homeBusy || sourceBusy || closeState !== null} onClick={() => void returnHome()}><Icon name="home" size={14}/><span>主页</span></button><Icon name="chevron-right" size={13} className="breadcrumb-separator"/></>}<span className="project-context" title={project?.name} aria-current="page">{project?.name ?? '运动工作台'}</span></nav>
       <div className="workspace-view-switch" aria-label="工作区视图">{(['scene', 'program'] as const).map(item => <button key={item} type="button" aria-pressed={activeView === item} disabled={executing && item === 'program'} className={activeView === item ? 'selected' : ''} onClick={() => changeWorkspaceView(item)}>{item === 'scene' ? '场景' : '程序'}</button>)}</div>
-      <div className="header-right"><span className="project-robot-model" aria-label="项目机器人型号" data-model-id={activeModelId} title={activeName}><Icon name="robot" size={15}/><span>{activeName}</span></span><span className="version">v0.5.0</span></div>
+      <div className="header-right"><button type="button" className="pendant-launch" data-connected={pendant.connected} onClick={pendant.open} aria-label="示教器"><PendantIcon/><span>示教器</span></button><ThemeToggle/><span className="project-robot-model" aria-label="项目机器人型号" data-model-id={activeModelId} title={activeName}><Icon name="robot" size={15}/><span>{activeName}</span></span><span className="version">v0.5.0</span></div>
     </header>
-    <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null}>
-      <aside className="object-panel" aria-label={activeView === 'program' ? '程序模块' : '场景对象'}>
+    {pendant.dialogOpen && <PairingDialog session={pendant.session} busy={pendant.busy} error={pendant.error} onClose={pendant.closeDialog} onStart={() => void pendant.start()} onStop={() => void pendant.disconnect()}/>}
+    <main className="workspace" data-active-view={activeView} data-left-collapsed={leftCollapsed} inert={homeBusy || Boolean(homeError) || closeState !== null || removeObject !== null || pendant.dialogOpen}>
+      <aside className="object-panel" aria-label={activeView === 'program' ? '程序模块' : '场景对象'} inert={remoteControl}>
         <div className="object-panel-header"><h2>{activeView === 'program' ? '模块文件' : '场景对象'}</h2><button type="button" className="icon-button" aria-label={leftCollapsed ? '展开左侧面板' : '折叠左侧面板'} onClick={() => workspace.setLeftCollapsed(value => !value)}><Icon name={leftCollapsed ? 'chevron-right' : 'chevron-left'} size={16}/></button></div>
         <div className="object-panel-content" aria-hidden={leftCollapsed} inert={leftCollapsed}>
           {activeView === 'program' ? <ModuleList files={documents.files} activeFileId={documents.project.activeFileId} disabled={!documents.ready || sourceBusy || executing} onSelectFile={id => documents.selectFile(id)}/> : <SceneObjectTree robotPresent={robotPresent} robotName={activeName} joints={displayJoints} robotParent={graph.robotBase.parent} frames={graph.frames} tools={graph.tools}
@@ -939,16 +968,17 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
             targetPose={selectedSurfacePoint && selectedSurfacePath ? pathPointToWorld(graph, selectedSurfacePath.id, selectedSurfacePoint.pose) : selectedPointWorld} path={surfacePreview?.motion.path ?? planningPreview?.path ?? EMPTY_PATH}
             showFrames={showFrames} view={view} viewRevision={viewRevision}
             sceneSurfaces={surfaces} selectedSurfaceId={selectedSurface?.id} surfacePickingEnabled={Boolean(surfacePickingPathId) && !executing && !homeBusy && activeView === 'scene'} surfacePickSurfaceId={pickingPath?.surface?.surfaceId} surfaceRegion={sceneSurfaceRegion} onSurfacePick={addSurfacePick} onSelectSurface={id => chooseObject({ kind: 'surface', id })}
-            jogEnabled={robotPresent && !homeBusy && selection.kind === 'robot' && activeView === 'scene' && jogEnabled && !executing && !sourceBusy && !poseError}
+            jogEnabled={robotPresent && !remoteControl && !homeBusy && selection.kind === 'robot' && activeView === 'scene' && jogEnabled && !executing && !sourceBusy && !poseError}
             jogMode={jogMode} jogSpace={jogSpace} jogPending={jogStatus.pending} jogResetRevision={jogResetRevision}
             onJogStart={beginJog} onJogMove={pose => jogController.current?.update(pose)} onJogEnd={() => setJogDragging(false)}
             dangerZones={sceneZones} selectedDangerZoneId={selectedZoneId ?? undefined}
-            zoneManipulationEnabled={!homeBusy && selection.kind === 'zone' && activeView === 'scene' && !executing && !sourceBusy}
+            zoneManipulationEnabled={!remoteControl && !homeBusy && selection.kind === 'zone' && activeView === 'scene' && !executing && !sourceBusy}
             onDangerZoneMove={(id, centerMm) => { collisionRun.current?.abort(); workspace.editZone(id, { center: centerMm.map(String) }); }}
             onDangerZoneDrag={setZoneDragging} scenePaths={displayedScenePaths} selectedPointId={selectedSurfacePoint?.id ?? selectedPoint?.id ?? null}
             basePose={basePose} toolPose={toolPose} sceneFrames={sceneFrames} sceneTools={sceneTools} selectedJointIndex={selection.kind === 'joint' ? selection.index : null}/>
+          {pendant.connected && <div className="pendant-scene-status" role="status" aria-label="手机示教状态"><strong>手机示教器已连接</strong><span>{pendant.motionStatus.error || (pendant.motionStatus.moving ? '正在示教' : '拖动手机摇杆开始运动')}</span><button type="button" onClick={() => void pendant.disconnect()}>断开</button></div>}
           <div className="viewport-toolbar"><div className="view-options" aria-label="观察视角">{([['iso', '透视'], ['front', '正视'], ['top', '俯视']] as const).map(([id, label]) => <button key={id} className={view === id ? 'selected' : ''} onClick={() => changeView(id)}>{label}</button>)}</div><button className="icon-button" title="重置视角" aria-label="重置视角" onClick={() => changeView('iso')}><Icon name="reset" size={15}/></button></div>
-          {robotPresent && selection.kind === 'robot' && <div className="object-jog-toolbar"><div className="view-options"><button type="button" aria-pressed={jogEnabled} className={jogEnabled ? 'selected' : ''} disabled={executing || sourceBusy || Boolean(poseError)} onClick={() => { stopJog(); clearPreview(); setJogEnabled(value => !value); }}>拖动法兰</button>{jogEnabled && <>{([['translate', '平移'], ['rotate', '旋转']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogMode === id} className={jogMode === id ? 'selected' : ''} onClick={() => { stopJog(); setJogMode(id); }}>{label}</button>)}{([['world', '世界坐标'], ['local', '工具坐标']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogSpace === id} className={jogSpace === id ? 'selected' : ''} onClick={() => { stopJog(); setJogSpace(id); }}>{label}</button>)}</>}</div></div>}
+          {robotPresent && selection.kind === 'robot' && <div className="object-jog-toolbar" inert={remoteControl}><div className="view-options"><button type="button" aria-pressed={jogEnabled} className={jogEnabled ? 'selected' : ''} disabled={executing || sourceBusy || Boolean(poseError)} onClick={() => { stopJog(); clearPreview(); setJogEnabled(value => !value); }}>拖动法兰</button>{jogEnabled && <>{([['translate', '平移'], ['rotate', '旋转']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogMode === id} className={jogMode === id ? 'selected' : ''} onClick={() => { stopJog(); setJogMode(id); }}>{label}</button>)}{([['world', '世界坐标'], ['local', '工具坐标']] as const).map(([id, label]) => <button key={id} type="button" disabled={executing || sourceBusy} aria-pressed={jogSpace === id} className={jogSpace === id ? 'selected' : ''} onClick={() => { stopJog(); setJogSpace(id); }}>{label}</button>)}</>}</div></div>}
           {robotPresent && jogEnabled && selection.kind === 'robot' && <div className="object-jog-status" role="status" aria-label="拖动状态">{jogStatus.error ? '已保持上一个有效姿态：' + jogStatus.error : configuration?.singular ? '当前姿态接近奇异位置，请调整关节或使用示例姿态。' : jogStatus.pending ? '正在检查拖动路径…' : '拖动控制柄调整当前 TCP；无效目标不会移动机器人。'}</div>}
           {selection.kind === 'zone' && <div className="object-jog-status" role="status">拖动世界坐标箭头移动危险区，或在右侧填写位置与尺寸。</div>}
           <div className="viewport-caption"><Icon name="circle" size={9} className="origin-icon"/>基座世界坐标 <code>[{basePose.position.map(value => numberText(value, 2)).join(', ')}]</code></div>
@@ -960,7 +990,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
         {execution.message && <div className={'execution-status execution-' + execution.phase} role="status" aria-label="程序运行状态" data-run-path-id={execution.pathId ?? ''} data-run-phase={execution.phase} data-run-point-id={execution.pointId ?? ''} data-run-line={execution.line} data-run-cycle={execution.cycle}><span>{execution.message}</span>{executing && <button type="button" className="copy-button" onClick={() => stopExecution()}><Icon name="stop" size={13}/>停止运行</button>}</div>}
       </section>
 
-      <aside className="control-panel" aria-label="对象属性" aria-hidden={activeView !== 'scene'} inert={activeView !== 'scene'}><fieldset disabled={executing || sourceBusy} className="inspector-fieldset">
+      <aside className="control-panel" aria-label="对象属性" aria-hidden={activeView !== 'scene'} inert={activeView !== 'scene'}><fieldset disabled={executing || sourceBusy || remoteControl} className="inspector-fieldset">
         {selectedSurface && <SurfaceInspector surface={selectedSurface} disabled={executing || sourceBusy} onNameChange={name => editSurface(selectedSurface.id, { name })} onVisibleChange={visible => editSurface(selectedSurface.id, { visible })} onPoseChange={pose => editSurface(selectedSurface.id, { pose })} onFocus={() => sceneHandle.current?.focusSurface(selectedSurface.id)} onRemove={() => setRemoveObject({ kind: 'surface', id: selectedSurface.id, modelId: activeModelId })}/>}
         {selection.kind === 'robot' && !robotPresent && <div className="robot-absent"><h2>机器人本体已删除</h2><p>参考坐标系、工具、路径与模块文件仍保留。</p><button type="button" className="copy-button" onClick={restoreProjectRobot}>恢复本项目机器人</button></div>}
         {selection.kind === 'robot' && robotPresent && <><RobotInspector name={activeName} model={genericModel ? null : model} urdf={genericModel?.description} pose={currentPose} joints={displayJoints}

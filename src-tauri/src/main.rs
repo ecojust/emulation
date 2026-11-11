@@ -8,21 +8,104 @@ use emulation_core::{
     generic_planner::{GenericPlanRequest, GenericPlanResult},
     generic_pose_planner::{GenericPosePlanRequest, GenericPosePlanResult},
     grinding::{GrindingRequest, GrindingResult},
-    surface::{SurfaceRequest, SurfaceResult},
     program::ProgramExportRequest,
+    surface::{SurfaceRequest, SurfaceResult},
     types::{IkSolution, PlanRequest, PlanResult},
 };
 use emulation_desktop::{
     engine::{Engine, Reply, Work},
     model_cache,
+    pendant::{Mode as PendantMode, PendantServer, PendantSession, PendantState},
 };
 use std::sync::Arc;
-use tauri::{Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_dialog::DialogExt;
 
 struct UiSmoke {
     enabled: bool,
+}
+
+// Only the local workspace owns the LAN service. The phone endpoint exposes
+// typed simulation inputs, never Tauri commands, file access or robot devices.
+fn pendant_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() == "main" {
+        Ok(())
+    } else {
+        Err("示教器只能从本机工作区启动".into())
+    }
+}
+
+#[tauri::command]
+async fn start_pendant(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    server: State<'_, Arc<PendantServer>>,
+) -> Result<PendantSession, String> {
+    pendant_window(&window)?;
+    server
+        .inner()
+        .start(Arc::new(move |input| {
+            let _ = app.emit_to("main", "pendant-input", input);
+        }))
+        .await
+}
+#[tauri::command]
+async fn stop_pendant(
+    window: tauri::WebviewWindow,
+    server: State<'_, Arc<PendantServer>>,
+) -> Result<(), String> {
+    pendant_window(&window)?;
+    server.stop().await;
+    Ok(())
+}
+#[tauri::command]
+fn pendant_status(
+    window: tauri::WebviewWindow,
+    server: State<'_, Arc<PendantServer>>,
+) -> Result<Option<PendantSession>, String> {
+    pendant_window(&window)?;
+    Ok(server.status())
+}
+#[tauri::command]
+fn publish_pendant_state(
+    window: tauri::WebviewWindow,
+    server: State<'_, Arc<PendantServer>>,
+    session_id: String,
+    state: PendantState,
+) -> Result<(), String> {
+    pendant_window(&window)?;
+    server.publish_state(&session_id, state)
+}
+#[tauri::command]
+async fn pendant_jog(
+    window: tauri::WebviewWindow,
+    engine: State<'_, Arc<Engine>>,
+    request_id: String,
+    request: emulation_core::pendant_jog::JogRequest,
+) -> Result<emulation_core::pendant_jog::JogResult, String> {
+    pendant_window(&window)?;
+    match engine
+        .submit(request_id, Work::Jog(request))?
+        .await
+        .map_err(|_| "示教求解未完成")??
+    {
+        Reply::Jog(result) => Ok(result),
+        _ => Err("原生示教返回类型错误".into()),
+    }
+}
+#[tauri::command]
+async fn smoke_pendant_drive(
+    window: tauri::WebviewWindow,
+    smoke: State<'_, UiSmoke>,
+    server: State<'_, Arc<PendantServer>>,
+    mode: PendantMode,
+) -> Result<(), String> {
+    pendant_window(&window)?;
+    if !smoke.enabled {
+        return Err("UI smoke mode is not enabled".into());
+    }
+    server.smoke_drive(mode).await
 }
 
 #[tauri::command]
@@ -412,8 +495,15 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Arc::new(Engine::new()))
+        .manage(Arc::new(PendantServer::new()))
         .manage(UiSmoke { enabled: ui_smoke })
         .invoke_handler(tauri::generate_handler![
+            start_pendant,
+            stop_pendant,
+            pendant_status,
+            publish_pendant_state,
+            pendant_jog,
+            smoke_pendant_drive,
             solve_motion,
             open_robot_sources,
             save_robot_source,

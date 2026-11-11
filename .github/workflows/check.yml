@@ -42,15 +42,18 @@ jobs:
       - name: Check Rust algorithms without desktop system dependencies
         run: cargo test -p emulation-core --release --locked
       - name: Check native job and export policies
-        run: cargo test -p emulation-desktop --no-default-features --features model-cache --release --locked
+        run: cargo test -p emulation-desktop --no-default-features --features model-cache,pendant --release --locked
       - name: Build the native parity-test command
         run: cargo build -p emulation-core --bin core-cli --locked
+      - name: Build the native pendant socket test harness
+        run: cargo build -p emulation-desktop --example pendant-check --no-default-features --features pendant --locked
       - run: npm run check
       - run: npm test
       - run: npm run build
       - run: npm run test:ui
         env:
           EMULATION_CHROMIUM: /usr/bin/google-chrome
+          EMULATION_PENDANT_SERVER: target/debug/examples/pendant-check
       - name: Verify bundled source editor and inline worker
         run: npm run test:ui -- tests/ui/programming.spec.ts --output=test-results-source
         env:

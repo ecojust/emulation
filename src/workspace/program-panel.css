@@ -1,8 +1,8 @@
-.program-editor { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; background:#fff }
+.program-editor { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden; background:var(--surface) }
 .program-editor-header { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px 12px; padding:13px 16px }
-.program-editor-header h2 { margin:0; color:#435b7a; font-size:14px; font-weight:600 }
-.program-editor-header>span { color:#8596ac; font-size:10px }
+.program-editor-header h2 { margin:0; color:var(--text-secondary); font-size:14px; font-weight:600 }
+.program-editor-header>span { color:var(--muted); font-size:10px }
 .program-code-view { display:flex; flex:1 1 0; flex-direction:column; min-width:0; min-height:0; overflow:hidden }
-.program-editor-empty { display:flex; flex:1 1 0; flex-direction:column; justify-content:center; align-items:center; gap:12px; min-width:0; min-height:0; padding:24px; overflow:auto; color:#8a99ae; font-size:12px; line-height:1.7; text-align:center }
+.program-editor-empty { display:flex; flex:1 1 0; flex-direction:column; justify-content:center; align-items:center; gap:12px; min-width:0; min-height:0; padding:24px; overflow:auto; color:var(--muted); font-size:12px; line-height:1.7; text-align:center }
 .program-editor-empty p { margin:0; overflow-wrap:anywhere }
-.program-editor-empty button { border:1px solid #ccd9e8; border-radius:5px; padding:7px 12px; background:#f4f8fd; color:#57779e; font-size:11px; cursor:pointer }
+.program-editor-empty button { border:1px solid var(--border); border-radius:5px; padding:7px 12px; background:var(--surface-subtle); color:var(--muted); font-size:11px; cursor:pointer }

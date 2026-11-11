@@ -1,3 +1,3 @@
 .ui-icon { display:inline-block; flex-shrink:0; vertical-align:middle; pointer-events:none }
-.summary-icon { margin-left:auto; color:#8b9bad; transition:transform .15s ease }
+.summary-icon { margin-left:auto; color:var(--muted); transition:transform .15s ease }
 details[open]>summary>.summary-icon { transform:rotate(90deg) }

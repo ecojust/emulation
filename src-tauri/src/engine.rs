@@ -20,6 +20,7 @@ use emulation_core::{
         plan_generic_pose_move_l, GenericPosePlanRequest, GenericPosePlanResult,
     },
     grinding::{plan_grinding, GrindingRequest, GrindingResult},
+    pendant_jog::{jog_step, JogRequest, JogResult},
     surface::{plan_surface, SurfaceRequest, SurfaceResult},
     planner::plan_move_l_with_cancel,
     program::{export_program_with_cancel, ProgramExportRequest, ProgramFile},
@@ -49,6 +50,7 @@ pub enum Work {
     },
     Grinding(GrindingRequest),
     Surface(SurfaceRequest),
+    Jog(JogRequest),
     Export(ProgramExportRequest),
     Collision(CollisionRequest),
     InspectEndpoint(EndpointInspectionRequest),
@@ -62,6 +64,7 @@ pub enum Reply {
     GenericCollision(Vec<CollisionResult>),
     Grinding(GrindingResult),
     Surface(SurfaceResult),
+    Jog(JogResult),
     Export(ProgramFile),
     Collision(Vec<CollisionResult>),
     InspectEndpoint(Vec<IkSolution>),
@@ -209,6 +212,7 @@ impl Engine {
                         Work::Surface(request) => {
                             Ok(Reply::Surface(plan_surface(&request, &job.cancelled)))
                         }
+                        Work::Jog(request) => Ok(Reply::Jog(jog_step(&request, &job.cancelled))),
                         Work::Export(request) => {
                             export_program_with_cancel(&request, &job.cancelled)
                                 .map(Reply::Export)
@@ -421,6 +425,47 @@ mod tests {
             speed_mm_per_second: 100.,
             allow_detours: false,
         }
+    }
+
+    fn jog_request() -> JogRequest {
+        serde_json::from_value(serde_json::json!({
+            "robot":{"kind":"abb","modelId":"irb1100-4-0.58"},
+            "basePose":{"position":[0.,0.,0.],"orientation":[1.,0.,0.,0.]},
+            "toolPose":{"position":[0.,0.,0.],"orientation":[1.,0.,0.,0.]},
+            "toolRadiusMm":0.,"zones":[],"startJoints":[0.,20.,-30.,0.,40.,0.],
+            "mode":"joint","space":"world","axes":[1.,0.,0.,0.,0.,0.],
+            "speedScale":1.,"stepSeconds":0.05
+        })).unwrap()
+    }
+
+    #[test]
+    fn pendant_jog_worker_returns_actual_increment_and_recovers_from_invalid_steps() {
+        let engine = Engine::new();
+        let mut invalid = jog_request(); invalid.step_seconds = 1.;
+        let invalid = engine.submit("invalid-jog".into(), Work::Jog(invalid)).unwrap().blocking_recv().unwrap().unwrap();
+        assert!(matches!(invalid, Reply::Jog(JogResult::Failure(_))));
+        let result = engine.submit("valid-jog".into(), Work::Jog(jog_request())).unwrap().blocking_recv().unwrap().unwrap();
+        let Reply::Jog(JogResult::Success(result)) = result else { panic!("expected native pendant increment"); };
+        assert_eq!(result.joints, [1.5,20.,-30.,0.,40.,0.]);
+    }
+
+    #[test]
+    fn pending_pendant_jog_is_bounded_and_cancelled_request_cannot_replace_new_gesture() {
+        let active = Arc::new(AtomicBool::new(false));
+        let engine = Engine { shared: Arc::new(Shared { queue: Mutex::new(Queue {
+            active: Some(("previous-jog".into(), active.clone(), false)), ..Queue::default()
+        }), changed: Condvar::new() }) };
+        engine.cancel("released-jog");
+        assert!(engine.submit("released-jog".into(), Work::Jog(jog_request())).is_err());
+        let old = engine.submit("older-jog".into(), Work::Jog(jog_request())).unwrap();
+        let current = engine.submit("current-jog".into(), Work::Jog(jog_request())).unwrap();
+        assert!(active.load(Ordering::Acquire));
+        assert!(old.blocking_recv().unwrap().is_err());
+        engine.cancel("older-jog");
+        assert_eq!(engine.shared.queue.lock().unwrap().pending.as_ref().unwrap().id, "current-jog");
+        engine.cancel("current-jog");
+        assert!(current.blocking_recv().unwrap().is_err());
+        assert!(engine.shared.queue.lock().unwrap().pending.is_none());
     }
 
     fn surface_request() -> SurfaceRequest {

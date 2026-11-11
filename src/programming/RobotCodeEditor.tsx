@@ -170,12 +170,12 @@ function lexer(language: RobotLanguageDefinition): StreamParser<{ block: boolean
   };
 }
 const highlighting = HighlightStyle.define([
-  { tag: tags.keyword, color: '#8254a0' }, { tag: tags.typeName, color: '#2c877c' },
-  { tag: tags.standard(tags.variableName), color: '#2a6eac' }, { tag: tags.variableName, color: '#465b76' },
-  { tag: tags.string, color: '#9b6c35' }, { tag: tags.number, color: '#b4654d' },
-  { tag: tags.comment, color: '#8b9aab', fontStyle: 'italic' }, { tag: tags.meta, color: '#6481a7' },
-  { tag: tags.operator, color: '#6880a0' }, { tag: tags.punctuation, color: '#8a98a8' },
-  { tag: tags.attributeName, color: '#6c8e5c' },
+  { tag: tags.keyword, color: 'var(--syntax-keyword)' }, { tag: tags.typeName, color: 'var(--syntax-type)' },
+  { tag: tags.standard(tags.variableName), color: 'var(--accent)' }, { tag: tags.variableName, color: 'var(--text-secondary)' },
+  { tag: tags.string, color: 'var(--syntax-string)' }, { tag: tags.number, color: 'var(--syntax-number)' },
+  { tag: tags.comment, color: 'var(--syntax-comment)', fontStyle: 'italic' }, { tag: tags.meta, color: 'var(--accent)' },
+  { tag: tags.operator, color: 'var(--text-secondary)' }, { tag: tags.punctuation, color: 'var(--text-secondary)' },
+  { tag: tags.attributeName, color: 'var(--success)' },
 ]);
 function entryDescription(entry: LanguageEntry): HTMLElement {
   const container = document.createElement('div'); container.className = 'robot-code-tooltip';

@@ -1,5 +1,6 @@
 import { composePose, identityPose, relativePose } from "../workspace/frame-graph";
 import Icon from '../ui/Icon';
+import { getTheme, THEME_CHANGE_EVENT } from '../theme/theme';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -150,6 +151,34 @@ const SCALE = 0.001;
 const PARTS = ["base_link", "link_1", "link_2", "link_3", "link_4", "link_5", "link_6"];
 const AXIS_COLORS = [0xe35454, 0x46a88a, 0x557bd1];
 const MAX_SCENE_COORDINATE_MM = 1e6;
+
+function sceneThemeColor(token: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+}
+
+/** Change only the environment; never rebuild a robot, pose, camera or interaction. */
+function applySceneTheme(state: SceneState): void {
+  const sky = new THREE.Color(sceneThemeColor('--scene-sky'));
+  state.scene.background = sky;
+  if (state.scene.fog instanceof THREE.Fog) state.scene.fog.color.copy(sky);
+  (state.ground.material as THREE.MeshStandardMaterial).color.set(sceneThemeColor('--scene-ground'));
+  const grid = new THREE.GridHelper(2.4, 24, sceneThemeColor('--scene-grid-major'), sceneThemeColor('--scene-grid'));
+  state.grid.geometry.dispose();
+  state.grid.geometry = grid.geometry;
+  for (const material of Array.isArray(grid.material) ? grid.material : [grid.material]) material.dispose();
+  const origin = state.scene.getObjectByName('world-origin-caption') as THREE.Sprite | undefined;
+  const texture = origin?.material.map;
+  const context = (texture?.image as HTMLCanvasElement | undefined)?.getContext('2d');
+  if (context && texture) {
+    context.clearRect(0, 0, 256, 64);
+    context.fillStyle = sceneThemeColor('--muted');
+    context.fillText('世界原点 · 0, 0, 0', 128, 32);
+    texture.needsUpdate = true;
+  }
+  state.renderer.domElement.dataset.theme = getTheme();
+  state.dirty = true;
+}
+
 
 function usableZone(zone: CollisionZone | undefined): zone is CollisionZone {
   return Boolean(zone?.enabled && zone.centerMm.length === 3 && zone.sizeMm.length === 3
@@ -760,7 +789,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     element.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0xf0f3f6, 2.8, 6);
+    scene.fog = new THREE.Fog(sceneThemeColor('--scene-sky'), 2.8, 6);
     const camera = new THREE.PerspectiveCamera(37, 1, 0.01, 12);
     camera.up.set(0, 0, 1);
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -787,7 +816,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     fill.position.set(-0.8, 1.2, 0.9);
     scene.add(fill);
 
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 1 }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.MeshStandardMaterial({ color: sceneThemeColor('--scene-ground'), roughness: 1 }));
     ground.position.z = -0.001;
     ground.receiveShadow = true;
     scene.add(ground);
@@ -796,7 +825,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     grid.position.z = 0.0001;
     const gridMaterial = grid.material as THREE.Material;
     gridMaterial.transparent = true;
-    gridMaterial.opacity = 0.72;
+    gridMaterial.opacity = 0.55;
     scene.add(grid);
 
     const origin = new THREE.Group();
@@ -806,7 +835,8 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       axisLabel.position.setComponent(i, 0.215);
       origin.add(axisLabel);
     });
-    const originLabel = label("世界原点 · 0, 0, 0", "#7a8597", 0.21);
+    const originLabel = label("世界原点 · 0, 0, 0", sceneThemeColor('--muted'), 0.21);
+    originLabel.name = 'world-origin-caption';
     originLabel.position.set(-0.12, -0.15, 0.018);
     origin.add(originLabel);
     scene.add(origin);
@@ -871,6 +901,9 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       zoomTarget: 1, jogObject, zoneObject, manipulationTarget: "none", manipulatedZoneId: null, transform, finishDrag: () => {}, draggingPointer: null, dangerZones: new Map(),
       scenePaths: new Map(), surfaces: new Map(), surfaceRegion, surfaceRegionSource: null, surfacePickingEnabled: false, selectedPoint, selectedPointCaption, selectedPointText: "POINT", selectedPointId: null,
       genericLinks: [], genericFocus: null, genericFocusLocal: null, genericRadius: 1, genericModelId: null, genericJoints: [], robotJoints: [], grid, ground, key };
+    const updateTheme = () => applySceneTheme(local);
+    updateTheme();
+    window.addEventListener(THEME_CHANGE_EVENT, updateTheme);
     const canvas = renderer.domElement;
     const poseFromJog = (): Pose => ({ position: jogObject.position.toArray().map(v => v / SCALE) as Pose["position"], orientation: [jogObject.quaternion.w, jogObject.quaternion.x, jogObject.quaternion.y, jogObject.quaternion.z] });
     // Three's public pointer methods consume normalized x/y/button objects.
@@ -1074,6 +1107,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       disposed = true;
       cancelAnimationFrame(raf);
       observer.disconnect();
+      window.removeEventListener(THEME_CHANGE_EVENT, updateTheme);
       const captured = local.draggingPointer;
       local.draggingPointer = null; // Unmount must not schedule any new robot motion.
       if (captured !== null && canvas.hasPointerCapture(captured)) canvas.releasePointerCapture(captured);
@@ -1158,7 +1192,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       local.controls.maxDistance = Math.max(4.5, extent * 5);
       local.camera.far = Math.max(12, extent * 12);
       local.camera.updateProjectionMatrix();
-      local.scene.fog = new THREE.Fog(0xf0f3f6, extent * 2.8, extent * 6);
+      local.scene.fog = new THREE.Fog(sceneThemeColor('--scene-sky'), extent * 2.8, extent * 6);
       local.key.position.set(0.5 * extent, -0.9 * extent, 2.1 * extent);
       local.key.target.position.copy(local.genericFocus);
       Object.assign(local.key.shadow.camera, { left: -extent * 1.2, right: extent * 1.2, top: extent * 1.2, bottom: -extent * 1.2, far: extent * 5 });
@@ -1179,7 +1213,7 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
     local.ground.scale.setScalar(1); local.ground.position.z = -0.001;
     local.controls.maxDistance = 4.5;
     local.camera.far = 12; local.camera.updateProjectionMatrix();
-    local.scene.fog = new THREE.Fog(0xf0f3f6, 2.8, 6);
+    local.scene.fog = new THREE.Fog(sceneThemeColor('--scene-sky'), 2.8, 6);
     local.key.position.set(0.5, -0.9, 2.1); local.key.target.position.set(0.12, 0, 0.3);
     Object.assign(local.key.shadow.camera, { left: -1.2, right: 1.2, top: 1.2, bottom: -1.2, far: 5 });
     local.key.shadow.camera.updateProjectionMatrix();
@@ -1361,9 +1395,8 @@ const RobotScene = forwardRef<RobotSceneHandle, RobotSceneProps>(function RobotS
       cover.width = Math.min(720, canvas.width); cover.height = Math.max(1, Math.round(canvas.height * cover.width / canvas.width));
       const context = cover.getContext('2d');
       if (!context) throw new Error('无法读取三维画面，请重试。');
-      // WebGL uses transparency over the viewport's pale background; JPEG
-      // otherwise turns that transparent sky into a black strip.
-      context.fillStyle = '#f1f4f7';
+      // Preserve the selected scene environment in the actual rendered cover.
+      context.fillStyle = sceneThemeColor('--scene-sky');
       context.fillRect(0, 0, cover.width, cover.height);
       context.drawImage(canvas, 0, 0, cover.width, cover.height);
       const thumbnail = cover.toDataURL('image/jpeg', .86);

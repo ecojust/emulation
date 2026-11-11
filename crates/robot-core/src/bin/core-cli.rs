@@ -8,6 +8,7 @@ use emulation_core::{
     generic_pose_planner::{plan_generic_pose_move_l, GenericPosePlanRequest},
     grinding::{plan_grinding, GrindingRequest},
     kinematics, model, planner,
+    pendant_jog::{jog_step, JogRequest},
     surface::{plan_surface, SurfaceRequest},
     types::{JointAngles, PlanRequest, Pose},
 };
@@ -49,6 +50,7 @@ enum Command {
     Surface {
         request: SurfaceRequest,
     },
+    PendantJog { request: JogRequest },
     GenericInspect {
         request: GenericEndpointRequest,
     },
@@ -93,6 +95,9 @@ fn execute(command: Command) -> Result<Value, String> {
         Command::Surface { request } => {
             serde_json::to_value(plan_surface(&request, &AtomicBool::new(false)))
                 .map_err(|e| e.to_string())
+        }
+        Command::PendantJog { request } => {
+            serde_json::to_value(jog_step(&request, &AtomicBool::new(false))).map_err(|e| e.to_string())
         }
         Command::Grinding { request } => {
             serde_json::to_value(plan_grinding(&request, &AtomicBool::new(false)))
