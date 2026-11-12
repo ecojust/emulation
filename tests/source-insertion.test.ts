@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { insertCurrentSourcePose } from '../src/programming/source-insertion';
 import { rapidLanguage } from '../src/programming/languages/rapid';
+import { fanucLanguage } from '../src/programming/languages/fanuc';
 import { renderProgramTemplate, type ProgramTemplatePoint } from '../src/workspace/program-templates';
 
 const pose = (abb = true): Omit<ProgramTemplatePoint, 'pointName'> => ({
@@ -69,7 +70,7 @@ describe('current simulation pose source insertion', () => {
   it('places a FANUC L instruction in MN and its actual joint point in POS without renumbering lines', () => {
     const source = '/PROG TEST\r\n/MN\r\n  10:! P[2] is a comment ;\r\n  20:IF (!DI[1]), JMP LBL[1] ;\r\n  30:L P[1] 100mm/sec FINE ;\r\n/POS\r\n/END';
     const output = insert('fanuc-crx10ia-l', source);
-    expect(output).toContain('L P[2] 125mm/sec FINE ;');
+    expect(output).toContain('\r\n: L P[2] 125mm/sec FINE ;\r\n');
     expect(output).toContain('J1=10 deg, J2=20 deg, J3=-30 deg');
     expect(output).toContain('J4=40 deg, J5=-50 deg, J6=60 deg');
     expect(output.indexOf('L P[2]')).toBeLessThan(output.indexOf('/POS'));
@@ -77,6 +78,9 @@ describe('current simulation pose source insertion', () => {
     expect(output).toContain('  30:L P[1]');
     expect(output).toContain('UF : {{UF}}, UT : {{UT}}');
     expect(output.replaceAll('\r\n', '')).not.toContain('\n');
+    expect(fanucLanguage.analyze(output).diagnostics.some(item => item.code === 'fanuc.line-prefix')).toBe(false);
+    expect(fanucLanguage.analyze(output).diagnostics.some(item => item.code === 'fanuc.frame-index' && item.severity === 'error')).toBe(true);
+    expect(output.replace(': L P[2] 125mm/sec FINE ;\r\n', '').replace(/P\[2\]\{[\s\S]*?\};\r\n/, '')).toBe(source);
   });
   it('adds a Yaskawa Cartesian target and increases count by one for sparse existing indexes', () => {
     const source = renderProgramTemplate('yaskawa-gp7', [{ ...pose(false), pointName: 'P005' }]).code;
@@ -88,6 +92,18 @@ describe('current simulation pose source insertion', () => {
     expect(output.indexOf('MOVL C00000')).toBeGreaterThan(output.indexOf('//INST'));
     expect(output).toContain('///RCONF {{RCONF_P001}}');
     expect(output).toContain('MOVL C00004');
+  });
+  it('chooses the final valid INFORM identifier and refuses exhaustion without adding C09998', () => {
+    const header = renderProgramTemplate('yaskawa-gp7', []).code;
+    const references = Array.from({ length: 9997 }, (_, index) => `MOVL C${String(index).padStart(5, '0')} V=125`).join('\n');
+    const source = header.replace('\nEND', `\n${references}\nEND`);
+    const output = insert('yaskawa-gp7', source);
+    expect(output).toContain('///RCONF {{RCONF_P9998}}\nC09997=');
+    expect(output).toContain('MOVL C09997 V=125');
+    expect(output).not.toContain('C09998');
+    expect(() => insert('yaskawa-gp7', output)).toThrow('编号已用完');
+    const sparse = source.replace('MOVL C00003 V=125\n', '').replace('\nEND', '\nMOVL C09997 V=125\nEND');
+    expect(insert('yaskawa-gp7', sparse)).toContain('///RCONF {{RCONF_P004}}\nC00003=');
   });
   it('refuses to write Cartesian coordinates into pulse or user coordinate jobs', () => {
     const source = renderProgramTemplate('yaskawa-gp7', []).code;

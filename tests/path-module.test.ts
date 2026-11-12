@@ -32,6 +32,7 @@ describe('Path source modules', () => {
     expect(result.name).toBe(`PATH1.${extension}`);
     expect(result.text).toContain(header);
     expect(result.text).toContain(abb ? 'Simulation template' : 'SIMULATION TEMPLATE');
+    expect(result.notice).toContain(abb ? 'RAPID 仿真模板' : '不能直接用于控制器');
     if (modelId.startsWith('fanuc')) expect(result.text).toContain('UF : {{UF}}, UT : {{UT}}');
     if (modelId.startsWith('yaskawa')) expect(result.text).toContain('///RCONF {{RCONF_P001}}');
   });

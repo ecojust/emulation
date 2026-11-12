@@ -8,6 +8,7 @@
 .robot-code-tools button:hover:not(:disabled),.robot-code-reference-actions button:hover:not(:disabled) { background:var(--surface-subtle); border-color:var(--accent-border) }
 .robot-code-tools button:disabled,.robot-code-reference-actions button:disabled { opacity:.45; cursor:not-allowed }
 .robot-code-tools>small { margin-left:auto; color:var(--muted); font-size:10px }
+.robot-code-template-status { flex:0 0 auto; padding:8px 12px; border-bottom:1px solid var(--warning-border); background:var(--warning-soft); color:var(--warning); font-size:11px; line-height:1.6 }
 .robot-code-editor-area { display:flex; flex:1 1 0; position:relative; min-width:0; min-height:0; overflow:hidden }
 .robot-code-surface { flex:1 1 0; min-width:0; min-height:0; overflow:hidden }
 .robot-code-no-file { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; overflow:auto; background:var(--surface); color:var(--muted); font-size:12px; line-height:1.7; text-align:center }
@@ -53,7 +54,7 @@
 .robot-code-diagnostics { list-style:none; margin:0; padding:0 }
 .robot-code-diagnostics button { display:flex; align-items:baseline; gap:8px; width:100%; border:0; padding:6px; border-radius:4px; text-align:left; background:transparent; color:var(--text-secondary); font-size:10px; line-height:1.5; cursor:pointer }
 .robot-code-diagnostics button:hover { background:var(--surface-subtle) }
-.robot-code-diagnostics .diagnostic-severity { flex:0 0 24px; font-weight:600 }
+.robot-code-diagnostics .diagnostic-severity { flex:0 0 3em; font-weight:600; white-space:nowrap }
 .robot-code-diagnostics .severity-error { color:var(--danger) }
 .robot-code-diagnostics .severity-warning { color:var(--warning) }
 .robot-code-diagnostics .severity-info { color:var(--muted) }

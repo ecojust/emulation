@@ -4,6 +4,7 @@
 
 | 记录 | 状态 | 用户目标 | 当前结果与下一步 |
 | --- | --- | --- | --- |
+| [2026-11-12-001](2026-11-12-001.md) | completed | 其他型号从Path生成程序后出现大量报错 | [PR #13](https://github.com/ecojust/emulation/pull/13)：修正FANUC／Yaskawa生成格式、区分待配置参数与真实语法错误；1630项TS＋10项生产UI通过，未合并／发布。 |
 | [2026-11-11-002](2026-11-11-002.md) | completed | 发布手机示教器与双主题 | PR #12已合并master／6f47862，v0.6.0公开为latest；172 Rust、1496 TS、64＋8 UI及ARM／Windows实装通过，5项公共资产下载校验一致。 |
 | [2026-11-11-001](2026-11-11-001.md) | completed | 独立扫码手机示教器、线／轴摇杆Jog与高对比度双主题 | [PR #12](https://github.com/ecojust/emulation/pull/12)已合并并随v0.6.0发布；正式同源验证及公共下载证据见002，Intel本次未附包。 |
 | [2026-11-10-012](2026-11-10-012.md) | completed | 发布表面UV路径新版本 | PR #11已合并master／e5bcd2c，v0.5.0公开为latest；149 Rust、1465 TS、56＋8 UI及ARM／Windows实装通过，5个公共资产下载校验一致。 |

@@ -6,6 +6,7 @@ import { informLanguage } from './languages/inform';
 import { krlLanguage } from './languages/krl';
 import { snapshotAnalysisRequest, type AnalysisMessage, type AnalysisReply, type ProjectAnalysis } from './analysis-protocol';
 import type { RobotLanguageDefinition } from './types';
+import { analyzeProgramSource } from './template-analysis';
 const languages: Record<string, RobotLanguageDefinition> = {
   'rapid-rw7': rapidLanguage, 'rapid-rw6': createRapidLanguage('6.16'),
   'fanuc-r30ib': fanucLanguage, 'inform-yrc1000': informLanguage, 'krl-kss8': krlLanguage,
@@ -20,7 +21,7 @@ self.onmessage = (event: MessageEvent<AnalysisMessage>) => {
     if (!language) throw new Error('语法分析请求无效。');
     const byFile: ProjectAnalysis['byFile'] = Object.create(null);
     for (const file of snapshot.files) {
-      byFile[file.id] = language.analyze(file.text, file.name);
+      byFile[file.id] = analyzeProgramSource(language, file.text, file.name);
     }
     reply.result = { byFile };
   } catch (cause) { reply.error = cause instanceof Error ? cause.message : '语法分析未能完成。'; }
