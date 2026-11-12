@@ -55,7 +55,7 @@ jobs:
           EMULATION_CHROMIUM: /usr/bin/google-chrome
           EMULATION_PENDANT_SERVER: target/debug/examples/pendant-check
       - name: Verify bundled source editor and inline worker
-        run: npm run test:ui -- tests/ui/programming.spec.ts --output=test-results-source
+        run: npm run test:ui -- tests/ui/programming.spec.ts tests/ui/generated-programs.spec.ts --output=test-results-source
         env:
           EMULATION_CHROMIUM: /usr/bin/google-chrome
           EMULATION_UI_PREVIEW: "1"

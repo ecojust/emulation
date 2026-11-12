@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Euler, Quaternion } from 'three';
 import catalog from '../src/catalog/catalog.json';
+import { fanucLanguage } from '../src/programming/languages/fanuc';
+import { informLanguage } from '../src/programming/languages/inform';
 import {
   formatProgramPoint, getProgramProfile, PROGRAM_MODEL_IDS, quaternionToControllerEuler, renderProgramTemplate,
-  type ProgramTemplatePoint,
+  type ProgramTemplateContext, type ProgramTemplatePoint,
 } from '../src/workspace/program-templates';
 
 const point = (abb = false): ProgramTemplatePoint => ({
@@ -42,7 +44,7 @@ describe('manufacturer-specific simulation templates', () => {
     expect(target.declaration).not.toContain('CONFIG');
     expect(target.declaration).not.toContain('robconf');
     const template = renderProgramTemplate('fanuc-crx10ia-l', [input]);
-    expect(template.code.indexOf('/MN')).toBeLessThan(template.code.indexOf('1:L P[1]'));
+    expect(template.code.indexOf('/MN')).toBeLessThan(template.code.indexOf('5:L P[1]'));
     expect(template.code.indexOf('/POS')).toBeLessThan(template.code.indexOf('P[1]{'));
     expect(template.code).toContain('UF : {{UF}}, UT : {{UT}}');
     expect(template.unresolvedFields).toContain('控制器关节零位与耦合映射');
@@ -83,6 +85,51 @@ describe('manufacturer-specific simulation templates', () => {
     expect(() => renderProgramTemplate('fanuc-crx10ia-l', [point()], 'X\n/MN')).toThrow('名称');
     expect(() => formatProgramPoint('yaskawa-gp7', { ...point(), pointName: 'P001\nMOVJ' })).toThrow('名称');
     expect(() => formatProgramPoint('yaskawa-gp7', { ...point(), speedMmPerSecond: NaN })).toThrow('速度');
+  });
+
+  it.each(['yaskawa-gp7', 'yaskawa-gp110'])('enforces the %s Cartesian record limit without restricting ABB or FANUC to it', model => {
+    const last = { ...point(), pointName: 'P9998' };
+    expect(formatProgramPoint(model, last).reference).toBe('C09997');
+    expect(renderProgramTemplate(model, [last]).code).toContain('///RCONF {{RCONF_P9998}}\nC09997=');
+    for (const pointName of ['P9999', 'P10000', 'P99999']) {
+      expect(() => formatProgramPoint(model, { ...point(), pointName })).toThrow('P9998');
+      expect(() => renderProgramTemplate(model, [{ ...point(), pointName }])).toThrow('P9998');
+    }
+    expect(formatProgramPoint('fanuc-crx10ia-l', { ...point(), pointName: 'P99999' }).reference).toBe('P[99999]');
+    expect(formatProgramPoint('irb1100-4-0.58', { ...point(true), pointName: 'P99999' }).reference).toBe('P99999');
+  });
+
+  it.each(['fanuc-crx10ia-l', 'fanuc-r2000ib-165f', 'yaskawa-gp7', 'yaskawa-gp110'])('keeps %s comment bodies within 32 ASCII characters and preserves all frame values', model => {
+    const context: ProgramTemplateContext = {
+      referencePose: { position: [98765.12345, -87654.23456, 76543.34567], orientation: [0.9238795325112867, 0, 0.3826834323650898, 0] },
+      toolPose: { position: [12345.123456, -23456.234567, 34567.345678], orientation: [0.5, 0.5, 0.5, 0.5] },
+    };
+    for (const frames of [undefined, context]) {
+      const result = renderProgramTemplate(model, [point()], 'FRAME', frames);
+      const fanuc = model.startsWith('fanuc');
+      const comments = [...result.code.matchAll(fanuc ? /^\s*\d+:!([^;\r\n]*);$/gm : /^'([^\r\n]*)$/gm)].map(match => match[1]);
+      expect(comments.length).toBeGreaterThanOrEqual(4);
+      expect(comments.every(text => text.length <= 32 && /^[\x20-\x7e]+$/.test(text))).toBe(true);
+      expect(comments).toContain('SIMULATION TEMPLATE');
+      expect(comments).toContain('Controller use not validated.');
+      expect(comments).toContain(fanuc ? 'Set UF/UT for the controller.' : 'Set TOOL/RCONF for controller.');
+      if (frames) {
+        const joined = comments.join('').replaceAll(' ', '');
+        expect(joined).toContain('REFERENCE_BASE_XYZ98765.123,-87654.235,76543.346');
+        expect(joined).toContain('REFERENCE_BASE_Q0.923879533,0,0.382683432,0');
+        expect(joined).toContain('TOOL_FLANGE_XYZ12345.123,-23456.235,34567.346');
+        expect(joined).toContain('TOOL_FLANGE_Q0.5,0.5,0.5,0.5');
+      }
+      if (fanuc) {
+        expect(result.code).toContain('COMMENT = "SIM TEMPLATE";');
+        expect(fanucLanguage.analyze(result.code).diagnostics.some(item => item.code === 'fanuc.version')).toBe(false);
+      }
+    }
+  });
+
+  it('keeps ordinary language analysis strict for unresolved generated controller parameters', () => {
+    expect(fanucLanguage.analyze(renderProgramTemplate('fanuc-crx10ia-l', [point()]).code).diagnostics.some(item => item.severity === 'error' && item.code === 'fanuc.frame-index')).toBe(true);
+    expect(informLanguage.analyze(renderProgramTemplate('yaskawa-gp7', [point()]).code).diagnostics.some(item => item.severity === 'error')).toBe(true);
   });
 });
 

@@ -75,7 +75,8 @@ function finiteTuple(value: unknown, size: number): value is number[] {
 function validatePoint(profile: ProgramProfile, point: ProgramTemplatePoint): number {
   const ordinal = /^P([0-9]+)$/.exec(point.pointName)?.[1];
   const number = ordinal ? Number(ordinal) : 0;
-  if (!Number.isSafeInteger(number) || number < 1 || number > 99999) throw new Error('程序点名称必须是 P001 至 P99999 范围内的稳定编号。');
+  const maximum = profile.brand === 'Yaskawa' ? 9998 : 99999;
+  if (!Number.isSafeInteger(number) || number < 1 || number > maximum) throw new Error(`程序点名称必须是 P001 至 P${maximum} 范围内的稳定编号。`);
   if (!finiteTuple(point.pose?.position, 3) || !finiteTuple(point.pose?.orientation, 4) || !finiteTuple(point.joints, 6)
     || !Number.isFinite(point.speedMmPerSecond) || point.speedMmPerSecond < 1 || point.speedMmPerSecond > 2000) throw new Error('程序点需要有效的六轴姿态和速度。');
   normalizeOrientation(point.pose.orientation);
@@ -146,6 +147,18 @@ function checkedContext(context?: ProgramTemplateContext): ProgramTemplateContex
   return identity(value.toolPose) && identity(value.referencePose) ? null : value;
 }
 const poseLiteral = (pose: Pose) => `[[${tuple(pose.position, 6)}],[${tuple(pose.orientation, 9)}]]`;
+/** LS/INFORM comments have 32-character bodies; retain values across continuation comments. */
+function commentLines(text: string): string[] {
+  const lines: string[] = [];
+  while (text.length > 32) {
+    const boundary = Math.max(text.lastIndexOf(' ', 32), text.lastIndexOf(',', 31) + 1);
+    const end = boundary > 0 ? boundary : 32;
+    lines.push(text.slice(0, end).trimEnd());
+    text = text.slice(end).trimStart();
+  }
+  if (text) lines.push(text);
+  return lines;
+}
 /** Preserve simulation transforms without inventing controller frame/tool numbers. */
 function frameContextComments(context: ProgramTemplateContext): string[] {
   return [
@@ -153,7 +166,8 @@ function frameContextComments(context: ProgramTemplateContext): string[] {
     `REFERENCE_BASE_Q ${tuple(context.referencePose.orientation, 9)}`,
     `TOOL_FLANGE_XYZ ${tuple(context.toolPose.position)}`,
     `TOOL_FLANGE_Q ${tuple(context.toolPose.orientation, 9)}`,
-    'XYZ mm; Q w,x,y,z; calibrate controller frames and tool.',
+    'XYZ mm, Q w,x,y,z',
+    'Calibrate frames and tool.',
   ];
 }
 
@@ -186,26 +200,26 @@ export function renderProgramTemplate(modelId: string, points: readonly ProgramT
     }
     unresolvedFields = frames ? ['工具负载与坐标系现场标定'] : [];
   } else if (profile.brand === 'FANUC') {
-    code = `/PROG ${name}\n/ATTR\nOWNER = MNEDITOR;\nCOMMENT = "SIMULATION TEMPLATE";\n/MN\n${motions.map((line, index) => `   ${index + 1}:${line}`).join('\n')}\n/POS\n${declarations}\n/END`;
+    const comments = ['SIMULATION TEMPLATE', 'Set UF/UT for the controller.', 'Verify joint zeros and coupling.', 'Controller use not validated.'];
     if (frames) {
-      const comments = frameContextComments(frames).map(text => `! ${text} ;`);
+      comments.push(...frameContextComments(frames));
       // Include the resolved base TCP as documentation alongside joint records;
       // UF/UT stay unresolved, rather than guessing controller slot numbers.
       for (const point of points) {
         const baseTcp = composePose(frames.referencePose, point.pose);
-        comments.push(`! ${point.pointName} BASE_TCP_XYZ ${tuple(baseTcp.position)} ;`, `! ${point.pointName} BASE_TCP_Q ${tuple(baseTcp.orientation, 9)} ;`);
+        comments.push(`${point.pointName} BASE_TCP_XYZ ${tuple(baseTcp.position)}`, `${point.pointName} BASE_TCP_Q ${tuple(baseTcp.orientation, 9)}`);
       }
-      const body = [...comments, ...motions].map((line, index) => `   ${index + 1}:${line}`).join('\n');
-      code = code.replace(/\/MN\n[\s\S]*?\n\/POS\n/, `/MN\n${body}\n/POS\n`);
     }
+    const body = [...comments.flatMap(commentLines).map(text => `!${text};`), ...motions].map((line, index) => `   ${index + 1}:${line}`).join('\n');
+    code = `/PROG ${name}\n/ATTR\nOWNER = MNEDITOR;\nCOMMENT = "SIM TEMPLATE";\n/MN\n${body}\n/POS\n${declarations}\n/END`;
     unresolvedFields = ['UF', 'UT', '控制器关节零位与耦合映射'];
   } else {
-    code = `/JOB\n//NAME ${name}\n//POS\n///NPOS ${points.length},0,0,0,0,0\n///TOOL {{TOOL}}\n///POSTYPE BASE\n///RECTAN\n${declarations}\n//INST\n///COMM SIMULATION TEMPLATE\n///ATTR SC,RW,RJ\n///GROUP1 RB1\nNOP\n${motions.join('\n')}\nEND`;
+    const comments = ['SIMULATION TEMPLATE', 'Set TOOL/RCONF for controller.', 'Verify frames and tool offsets.', 'Controller use not validated.'];
     if (frames) {
-      const comments = frameContextComments(frames).map(text => `'${text}`);
-      comments.push("'Positions below use robot BASE TCP coordinates.");
-      code = code.replace('NOP\n', comments.join('\n') + '\nNOP\n');
+      comments.push(...frameContextComments(frames), 'Positions use robot BASE TCP.');
     }
+    const body = comments.flatMap(commentLines).map(text => `'${text}`).join('\n');
+    code = `/JOB\n//NAME ${name}\n//POS\n///NPOS ${points.length},0,0,0,0,0\n///TOOL {{TOOL}}\n///POSTYPE BASE\n///RECTAN\n${declarations}\n//INST\n///COMM SIMULATION TEMPLATE\n///ATTR SC,RW,RJ\n///GROUP1 RB1\n${body}\nNOP\n${motions.join('\n')}\nEND`;
     unresolvedFields = ['TOOL', ...points.map(point => `RCONF_${point.pointName}`), '控制器相对作业支持与坐标标定'];
   }
   return {

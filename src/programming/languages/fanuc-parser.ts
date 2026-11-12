@@ -1,4 +1,5 @@
 import type { LanguageAnalysis, SourceDiagnostic } from '../types';
+import { templateParameterReporter } from '../template-parameter-diagnostics';
 import { parseFanucApplications, type FanucApplication } from './fanuc-application';
 import { parseFanucOptionalStatement, parseFanucOptionalMotionOption, parseFanucOptionalMotionSpeed } from './fanuc-optional';
 import { validateFanucAttribute } from './fanuc-attributes';
@@ -6,9 +7,10 @@ import { validateFanucAttribute } from './fanuc-attributes';
 /** Independent, recovering LS structural parser. Source text is never rewritten or discarded. */
 export interface FanucToken { text: string; upper: string; from: number; to: number; line: number; kind: 'word' | 'number' | 'string' | 'punctuation' | 'section' | 'comment' }
 export interface FanucStatement { from: number; to: number; kind: string; tokens: readonly FanucToken[] }
-export interface FanucGroup { number: number; from: number; to: number; representation: 'cartesian' | 'joint' | 'unknown'; axes: Readonly<Record<string, { value: number | null; unit: string }>> }
+export interface FanucGroup { number: number; from: number; to: number; representation: 'cartesian' | 'joint' | 'unknown'; axes: Readonly<Record<string, { value: number | null; unit: string }>>; unresolvedFrames?: readonly ('UF' | 'UT')[] }
 export interface FanucPosition { index: number; from: number; to: number; groups: FanucGroup[] }
 export interface FanucDocument extends LanguageAnalysis { source: string; statements: FanucStatement[]; positions: FanucPosition[]; applications: FanucApplication[] }
+export interface FanucParseOptions { /** Recognize only generated /POS UF/UT placeholders, never controller-ready values. */ templateParameters?: boolean }
 const MAX_SOURCE_BYTES = 1_048_576, MAX_TOKENS = 100_000, MAX_DIAGNOSTICS = 500;
 const REGISTERS = new Set(['R', 'PR', 'SR', 'AR', 'P', 'LBL', 'DI', 'DO', 'RI', 'RO', 'GI', 'GO', 'AI', 'AO', 'UI', 'UO', 'SI', 'SO', 'WI', 'WO', 'WSI', 'WSO', 'F', 'M', 'TIMER', 'TIMER_OVERFLOW', 'TCP_SPD', 'RSR', 'PL', 'JOINT_MAX_SPEED', 'UFRAME', 'UTOOL', 'PAYLOAD', 'UALM']);
 const FUNCTIONS = new Set(['SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'ATAN2', 'SQRT', 'ABS', 'TRUNC', 'ROUND', 'LN', 'EXP']);
@@ -250,14 +252,19 @@ function splitStatements(tokens: readonly FanucToken[], diagnostic: (token: Fanu
 }
 
 /** Parse all recognized syntax, recover per statement, and preserve unknown instructions. */
-export function parseFanucLs(source: string): FanucDocument {
+export function parseFanucLs(source: string, options: FanucParseOptions = {}): FanucDocument {
   const document: FanucDocument = { source, diagnostics: [], symbols: [], folds: [], statements: [], positions: [], applications: [] };
+  const reportTemplateParameter = templateParameterReporter(document.diagnostics);
+  let diagnosticCount = 0, lastNormalIndex = -1;
   const diagnostic = (token: FanucToken | undefined, message: string, code = 'fanuc.syntax', severity: SourceDiagnostic['severity'] = 'error') => {
-    if (document.diagnostics.length >= MAX_DIAGNOSTICS) {
-      document.diagnostics[MAX_DIAGNOSTICS - 1] = { from: 0, to: 0, severity: 'error', code: 'fanuc.limit', message: '诊断达到 500 条上限，后续问题未全部列出' };
+    const from = Math.min(source.length, token?.from ?? 0), to = Math.min(source.length, Math.max(from, token?.to ?? from));
+    if (code === 'template-parameter') { reportTemplateParameter({ from, to, severity, message, code }); return; }
+    if (diagnosticCount >= MAX_DIAGNOSTICS) {
+      document.diagnostics[lastNormalIndex] = { from: 0, to: 0, severity: 'error', code: 'fanuc.limit', message: '诊断达到 500 条上限，后续问题未全部列出' };
       return;
     }
-    const from = Math.min(source.length, token?.from ?? 0), to = Math.min(source.length, Math.max(from, token?.to ?? from));
+    diagnosticCount++;
+    lastNormalIndex = document.diagnostics.length;
     document.diagnostics.push({ from, to, severity, message, code });
   };
   if (source.length > MAX_SOURCE_BYTES || new TextEncoder().encode(source).byteLength > MAX_SOURCE_BYTES) { diagnostic(undefined, 'LS 文件超过 1 MiB，未执行完整检查', 'fanuc.limit'); return document; }
@@ -677,14 +684,24 @@ export function parseFanucLs(source: string): FanucDocument {
     if (ref.index !== null && !labels.has(ref.index)) diagnostic({ ...tokens[0], ...ref, text: '', upper: '' }, `未找到 LBL[${ref.index}] 定义`, 'fanuc.missing-label');
   }
   const positions = sections.find(section => section.name === '/POS');
-  if (positions) parsePositions(positions.tokens, document, diagnostic);
+  if (positions) parsePositions(positions.tokens, document, diagnostic, options);
   const positionIds = new Set(document.positions.map(position => position.index));
   for (const ref of positionUses) if (ref.index !== null && !positionIds.has(ref.index)) diagnostic({ ...tokens[0], ...ref, text: '', upper: '' }, `未定义 P[${ref.index}]；位置可能尚未示教`, 'fanuc.missing-position', 'warning');
   return document;
 }
 
-/** Shared ordinary/pallet position payload; units and separators have identical LS syntax. */
-export function parseFanucPositionGroups(cursor: Cursor, diagnostic: (token: FanucToken | undefined, message: string, code?: string, severity?: SourceDiagnostic['severity']) => void): FanucGroup[] {
+/** Match a complete literal without joining whitespace-separated or partly edited tokens. */
+function takeFrameTemplateParameter(cursor: Cursor, frame: 'UF' | 'UT'): FanucToken | undefined {
+  const expected = ['{', '{', frame, '}', '}'];
+  const tokens = cursor.tokens.slice(cursor.index, cursor.index + expected.length);
+  if (tokens.length !== expected.length || tokens.some((token, index) => token.text !== expected[index] || index > 0 && tokens[index - 1].to !== token.from)) return undefined;
+  cursor.index += tokens.length;
+  const text = `{{${frame}}}`;
+  return { ...tokens[0], to: tokens.at(-1)!.to, text, upper: text };
+}
+
+/** Shared ordinary/pallet position payload; template options are passed only by /POS parsing. */
+export function parseFanucPositionGroups(cursor: Cursor, diagnostic: (token: FanucToken | undefined, message: string, code?: string, severity?: SourceDiagnostic['severity']) => void, options: FanucParseOptions = {}): FanucGroup[] {
   const groups: FanucGroup[] = [], tokens = cursor.tokens;
       while (!cursor.done && !cursor.is('}')) {
         const groupToken = cursor.take(), match = /^GP(\d+)$/.exec(groupToken.upper);
@@ -692,17 +709,25 @@ export function parseFanucPositionGroups(cursor: Cursor, diagnostic: (token: Fan
         cursor.expect(':');
         if (groups.some(group => group.number === Number(match[1]))) diagnostic(groupToken, '位置重复定义同一运动组', 'fanuc.duplicate-group');
         const axes: Record<string, { value: number | null; unit: string }> = {};
-        let config = false; const fields = new Set<string>();
+        let config = false; const fields = new Set<string>(), unresolvedFrames: ('UF' | 'UT')[] = [];
         while (!cursor.done && !cursor.is('}') && !/^GP\d+$/.test(cursor.token.upper)) {
           const field = cursor.take();
           if (fields.has(field.upper)) diagnostic(field, `重复位置字段 ${field.text}`, 'fanuc.duplicate-coordinate'); fields.add(field.upper);
           if (['UF', 'UT', 'CONFIG'].includes(field.upper)) {
-            cursor.expect(':'); const value = cursor.take();
-            if (field.upper === 'CONFIG') {
-              config = true;
-              if (value.kind === 'string' && /^["'][NF]\s+[LR]\s+[UD]\s+[TB]\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+["']$/i.test(value.text)) diagnostic(value, '额外左右构型位的 CONFIG ASCII 序列化尚无已核定样例；原文保留，不能从抽象构型图推断控制器格式', 'fanuc.unverified-configuration', 'warning');
-              else if (value.kind !== 'string' || !/^["'][NF]\s+[UD]\s+[TB]\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+["']$/i.test(value.text)) diagnostic(value, 'CONFIG 需要 N/F、U/D、T/B 和三个整数转数', 'fanuc.configuration');
-            } else if (value.upper !== 'F' && (value.kind !== 'number' || !Number.isSafeInteger(Number(value.text)) || Number(value.text) < 0)) diagnostic(value, 'UF/UT 需要非负整数或浮动标记 F', 'fanuc.frame-index');
+            cursor.expect(':');
+            const frame = field.upper === 'UF' || field.upper === 'UT' ? field.upper : undefined;
+            const templateParameter = options.templateParameters === true && frame ? takeFrameTemplateParameter(cursor, frame) : undefined;
+            if (templateParameter && frame) {
+              unresolvedFrames.push(frame);
+              diagnostic(templateParameter, `${frame} 模板参数尚未配置，需替换为目标控制器的实际坐标系编号，不能直接用于控制器`, 'template-parameter', 'warning');
+            } else {
+              const value = cursor.take();
+              if (field.upper === 'CONFIG') {
+                config = true;
+                if (value.kind === 'string' && /^["'][NF]\s+[LR]\s+[UD]\s+[TB]\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+["']$/i.test(value.text)) diagnostic(value, '额外左右构型位的 CONFIG ASCII 序列化尚无已核定样例；原文保留，不能从抽象构型图推断控制器格式', 'fanuc.unverified-configuration', 'warning');
+                else if (value.kind !== 'string' || !/^["'][NF]\s+[UD]\s+[TB]\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+\s*,\s*[+-]?\d+["']$/i.test(value.text)) diagnostic(value, 'CONFIG 需要 N/F、U/D、T/B 和三个整数转数', 'fanuc.configuration');
+              } else if (value.upper !== 'F' && (value.kind !== 'number' || !Number.isSafeInteger(Number(value.text)) || Number(value.text) < 0)) diagnostic(value, 'UF/UT 需要非负整数或浮动标记 F', 'fanuc.frame-index');
+            }
           } else if (/^(?:[XYZWPR]|J[1-9]|E[1-9])$/.test(field.upper)) {
             cursor.expect('='); const sign = cursor.eat('-') ? -1 : (cursor.eat('+'), 1);
             let value: number | null;
@@ -720,12 +745,12 @@ export function parseFanucPositionGroups(cursor: Cursor, diagnostic: (token: Fan
         if (cartesian.length && (cartesian.length !== 6 || joint.length || !config)) diagnostic(groupToken, '笛卡尔组必须包含 X/Y/Z/W/P/R 和 CONFIG，且不能混入 J 轴', 'fanuc.position-components');
         if (!cartesian.length && !joint.length) diagnostic(groupToken, '运动组没有有效笛卡尔或关节坐标', 'fanuc.position-components');
         if (joint.length && config) diagnostic(groupToken, '关节形式位置不使用笛卡尔 CONFIG 字段', 'fanuc.position-components');
-        groups.push({ number: Number(match[1]), from: groupToken.from, to: tokens[cursor.index - 1]?.to ?? groupToken.to, representation: cartesian.length ? 'cartesian' : joint.length ? 'joint' : 'unknown', axes });
+        groups.push({ number: Number(match[1]), from: groupToken.from, to: tokens[cursor.index - 1]?.to ?? groupToken.to, representation: cartesian.length ? 'cartesian' : joint.length ? 'joint' : 'unknown', axes, ...(unresolvedFrames.length ? { unresolvedFrames } : {}) });
       }
   return groups;
 }
 
-function parsePositions(tokens: readonly FanucToken[], document: FanucDocument, diagnostic: (token: FanucToken | undefined, message: string, code?: string, severity?: SourceDiagnostic['severity']) => void) {
+function parsePositions(tokens: readonly FanucToken[], document: FanucDocument, diagnostic: (token: FanucToken | undefined, message: string, code?: string, severity?: SourceDiagnostic['severity']) => void, options: FanucParseOptions) {
   const cursor = new Cursor(tokens), ids = new Set<number>();
   while (!cursor.done) {
     const startIndex = cursor.index, first = cursor.token;
@@ -734,7 +759,7 @@ function parsePositions(tokens: readonly FanucToken[], document: FanucDocument, 
       if (ids.has(ref.index)) diagnostic(first, `P[${ref.index}] 重复定义`, 'fanuc.duplicate-position'); ids.add(ref.index);
       cursor.expect('{');
       const position: FanucPosition = { index: ref.index, from: ref.from, to: ref.to, groups: [] };
-      position.groups = parseFanucPositionGroups(cursor, diagnostic);
+      position.groups = parseFanucPositionGroups(cursor, diagnostic, options);
       if (!position.groups.length) throw new SyntaxFault(cursor.token, 'P 位置缺少运动组');
       const close = cursor.token; cursor.expect('}'); cursor.expect(';'); position.to = close!.to; document.positions.push(position);
       document.symbols.push({ name: `P[${position.index}]`, kind: 'variable', from: position.from, to: position.to, description: `${position.groups.length} 个运动组` });

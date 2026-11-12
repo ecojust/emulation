@@ -71,6 +71,8 @@ export interface RobotLanguageDefinition {
   coverage: readonly string[];
   limitations: readonly string[];
   analyze(source: string, fileName?: string): LanguageAnalysis;
+  /** Explicit editing of generated templates; unresolved fields remain warnings, never calibrated values. */
+  analyzeTemplate?(source: string, fileName?: string): LanguageAnalysis;
 }
 export interface ProgramSourceFile { id: string; name: string; text: string }
 export interface FileDiagnostic extends SourceDiagnostic { fileId: string }

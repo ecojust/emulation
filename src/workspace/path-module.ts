@@ -5,6 +5,7 @@ import { renderProgramTemplate, type ProgramTemplateContext } from './program-te
 export interface PathModule {
   readonly name: string;
   readonly text: string;
+  readonly notice: string;
 }
 
 function moduleBaseName(pathName: string): string {
@@ -49,5 +50,7 @@ export function createPathModule(
   if (!pathPoints.length) throw new Error('Path 为空，请先添加当前点再转换为程序。');
   const moduleName = uniqueModuleName(moduleBaseName(path.name), existingNames);
   const template = renderProgramTemplate(modelId, pathPoints, moduleName, context);
-  return Object.freeze({ name: `${moduleName}.${dialect.extensions[0]}`, text: template.code });
+  const notice = template.profile.brand === 'ABB' ? template.notice
+    : `${template.profile.language} 仿真模板；控制器参数待配置，不能直接用于控制器。`;
+  return Object.freeze({ name: `${moduleName}.${dialect.extensions[0]}`, text: template.code, notice });
 }

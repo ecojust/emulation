@@ -25,4 +25,5 @@ export const fanucLanguage: RobotLanguageDefinition = {
     '保存 LS 源码不等于生成二进制 TP；实际编译／加载仍需匹配的 FANUC 工具链或 ASCII Upload。',
   ],
   analyze(source) { const { diagnostics, symbols, folds } = parseFanucLs(source); return { diagnostics, symbols, folds }; },
+  analyzeTemplate(source) { const { diagnostics, symbols, folds } = parseFanucLs(source, { templateParameters: true }); return { diagnostics, symbols, folds }; },
 };

@@ -330,7 +330,7 @@ function Workspace({ project, sourceRepository, onReturnHome, onSaveScene, initi
         { toolPose, referencePose: relativePose(basePose, pathWorldPose(graph, pathId)) });
       const file = owner.addFile(generated.name, generated.text);
       if (!file) { setMessage('模块创建失败，路径和已有文件已保留。'); return; }
-      setSourceMessage('已从 ' + path.name + ' 创建模块 ' + file.name + '。'); setMessage(''); changeWorkspaceView('program');
+      setSourceMessage('已从 ' + path.name + ' 创建模块 ' + file.name + '。' + generated.notice); setMessage(''); changeWorkspaceView('program');
     } catch (error) { if (currentSourceOperation(operation)) setMessage(error instanceof Error ? error.message : '路径转换失败'); }
     finally { finishSourceOperation(operation); }
   }

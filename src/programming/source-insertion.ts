@@ -28,7 +28,8 @@ function structure(source: string, brand: string): string {
 function ordinal(mask: string, brand: string): number {
   const expression = brand === 'FANUC' ? /\bP\s*\[\s*(\d+)/gi : brand === 'Yaskawa' ? /\bC(\d{5})\b/gi : /\bP(\d+)\b/gi;
   const used = new Set([...mask.matchAll(expression)].map(match => Number(match[1]) + Number(brand === 'Yaskawa')));
-  for (let number = 1; number < 100000; number++) if (!used.has(number)) return number;
+  const maximum = brand === 'Yaskawa' ? 9998 : 99999;
+  for (let number = 1; number <= maximum; number++) if (!used.has(number)) return number;
   throw new Error('当前源码的目标点编号已用完。');
 }
 function afterLine(source: string, start: number): number {
@@ -130,7 +131,7 @@ export function insertCurrentSourcePose(modelId: string, source: string, from: n
     const begin = afterLine(source, mn.index);
     const position = statementPosition(source, mask, from, to, begin, pos.index);
     // Unnumbered LS instruction lines are valid; preserve all existing row numbers.
-    const statement = { ...position, insert: formatted.instruction + separator };
+    const statement = { ...position, insert: ': ' + formatted.instruction + separator };
     const declaration = { from: end.index, to: end.index, insert: formatted.declaration.replace(/\n/g, separator) + separator };
     return finish([statement, declaration], statement, formatted.reference);
   }

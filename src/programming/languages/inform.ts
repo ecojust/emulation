@@ -32,4 +32,5 @@ export const informLanguage: RobotLanguageDefinition = {
     '当前分析 expanded 外部 JBI；不混用示教器 IF(...)THEN 等显示语法。UTF-8 源文件与控制器编码/字节长度兼容是独立验证事项。',
   ],
   analyze: analyzeInform,
+  analyzeTemplate: (source, fileName) => analyzeInform(source, fileName, { templateParameters: true }),
 };

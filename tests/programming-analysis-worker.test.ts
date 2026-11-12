@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnalysisMessage, AnalysisReply } from '../src/programming/analysis-protocol';
+import { renderProgramTemplate } from '../src/workspace/program-templates';
 
 const port = { onmessage: null as null | ((event: MessageEvent) => void), replies: [] as AnalysisReply[], postMessage(reply: AnalysisReply) { this.replies.push(structuredClone(reply)); } };
 beforeAll(async () => {
@@ -12,6 +13,30 @@ const request = (): AnalysisMessage => ({ requestId: 'request-one', modelId: 'ir
 function send(data: unknown): AnalysisReply { port.onmessage!({ data } as MessageEvent); expect(port.replies).toHaveLength(1); return port.replies[0]; }
 
 describe('source analysis worker protocol', () => {
+  it.each([
+    ['fanuc-crx10ia-l', 'fanuc-r30ib', 'main.ls'],
+    ['yaskawa-gp7', 'inform-yrc1000', 'main.jbi'],
+  ] as const)('uses template diagnostics for generated %s source and strict diagnostics for ordinary source', (modelId, dialectId, name) => {
+    const generated = renderProgramTemplate(modelId, [{ pointName: 'P001', pose: { position: [100, 200, 300], orientation: [1, 0, 0, 0] }, joints: [1, 2, 3, 4, 5, 6], configuration: null, speedMmPerSecond: 100 }]).code;
+    const source = '\uFEFF' + generated.replace(/\n/g, '\r\n');
+    const input: AnalysisMessage = { ...request(), modelId, dialectId, files: [{ id: 'template', name, text: source }, { id: 'ordinary', name: 'other.' + name.split('.').at(-1), text: source.replace(/SIM(?:ULATION)? TEMPLATE/g, 'Ordinary') }] };
+    const before = structuredClone(input);
+    const reply = send(input);
+    expect(reply.error).toBeUndefined();
+    const template = reply.result!.byFile.template.diagnostics;
+    expect(template.filter(d => d.severity === 'error')).toEqual([]);
+    const pending = template.filter(d => d.code === 'template-parameter');
+    expect(pending.length).toBeGreaterThan(0);
+    for (const d of pending) {
+      expect(d.severity).toBe('warning');
+      expect(source.slice(d.from, d.to)).toMatch(/^\{\{(?:UF|UT|TOOL|RCONF_P001)\}\}$/);
+    }
+    const ordinary = reply.result!.byFile.ordinary.diagnostics;
+    expect(ordinary.some(d => d.severity === 'error')).toBe(true);
+    expect(ordinary.some(d => d.code === 'template-parameter')).toBe(false);
+    expect(input).toEqual(before);
+  });
+
   it('echoes context and analyzes the actual grammar rather than returning a synthetic clean result', () => {
     const input = request(); input.files = [{ ...input.files[0], text: 'MODULE Demo\nPROC main()\nvalue:=2E52786;\nENDPROC\nENDMODULE' }];
     const reply = send(input);

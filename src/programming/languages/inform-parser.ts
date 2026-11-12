@@ -1,4 +1,5 @@
 import type { LanguageAnalysis, SourceDiagnostic } from '../types';
+import { templateParameterReporter } from '../template-parameter-diagnostics';
 import { informInstructionEntries } from './inform-catalog';
 import { informSensorCommands, parseInformSearchOption, parseInformSensorCommand } from './inform-options';
 
@@ -366,12 +367,22 @@ function additionalSchema(opcode: string, tokens: Token[]): boolean {
   return true;
 }
 
-export function analyzeInform(source: string, _fileName?: string): LanguageAnalysis {
+export interface InformAnalysisOptions {
+  /** Explicit simulation-template analysis; normal external JBI analysis stays strict. */
+  readonly templateParameters?: boolean;
+}
+
+export function analyzeInform(source: string, _fileName?: string, options: InformAnalysisOptions = {}): LanguageAnalysis {
   const result: LanguageAnalysis = { diagnostics: [], symbols: [], folds: [] };
+  const reportTemplateParameter = templateParameterReporter(result.diagnostics);
+  let diagnosticCount = 0;
   const add = (from: number, to: number, message: string, severity: SourceDiagnostic['severity'] = 'error', code = 'inform-syntax') => {
-    if (result.diagnostics.length >= 300) return;
-    if (result.diagnostics.length === 299) { result.diagnostics.push({ from: 0, to: Math.min(1, source.length), severity: 'error', message: '诊断已达到 300 项上限；后续内容未完整分析。', code: 'analysis-limit' }); return; }
-    result.diagnostics.push({ from: Math.max(0, Math.min(source.length, from)), to: Math.max(0, Math.min(source.length, Math.max(from, to))), severity, message, code });
+    const diagnostic = { from: Math.max(0, Math.min(source.length, from)), to: Math.max(0, Math.min(source.length, Math.max(from, to))), severity, message, code };
+    if (code === 'template-parameter') { reportTemplateParameter(diagnostic); return; }
+    if (diagnosticCount >= 300) return;
+    diagnosticCount++;
+    if (diagnosticCount === 300) { result.diagnostics.push({ from: 0, to: Math.min(1, source.length), severity: 'error', message: '诊断已达到 300 项上限；后续内容未完整分析。', code: 'analysis-limit' }); return; }
+    result.diagnostics.push(diagnostic);
   };
   if (source.length > 1_048_576) { add(0, 1, '源码超过 1 MB 分析上限。'); return result; }
   const lines: Line[] = [];
@@ -396,6 +407,10 @@ export function analyzeInform(source: string, _fileName?: string): LanguageAnaly
     if (!top || top.kind !== expected) { add(line.from, line.to, `结束标记没有匹配的 ${expected} 块。`); return; }
     if (expected === 'FOR' && variableName && top.variable !== variableName) add(line.from, line.to, 'NEXT 的循环变量与 FOR 不一致。');
     blocks.pop(); if (line.from > top.body) result.folds.push({ from: top.body, to: line.from });
+  };
+  const pendingParameter = (line: Line, value: string, name: string) => {
+    const from = line.from + line.text.indexOf(value);
+    add(from, from + value.length, `模板参数 ${name} 待配置；当前模板不能直接用于控制器。`, 'warning', 'template-parameter');
   };
   for (const line of lines) {
     const text = line.text.trim();
@@ -438,10 +453,18 @@ export function analyzeInform(source: string, _fileName?: string): LanguageAnaly
       if (key === 'NPOS') { if (section !== 'position' || counts) add(line.from, line.to, 'NPOS 必须在位置区出现一次。'); counts = numericList(6); }
       else if (key === 'LVARS') numericList(8);
       else if (key === 'RCONF') {
-        const values = rest.split(',');
-        if (![6, 24].includes(values.length) || values.some(value => !/^[+-]?\d+$/.test(value.trim()))) add(line.from, line.to, 'RCONF 需要整数配置列表（YRC1000 文档为 24 项）。');
-        else if (values.length === 6) add(line.from, line.to, '六项 RCONF 为旧格式；当前 YRC1000 配置兼容性尚未核验。', 'warning', 'inform-dialect');
-      } else if (key === 'TOOL' || key === 'USER') { if (!/^\d+$/.test(rest) || Number(rest) > 63 || (key === 'USER' && Number(rest) < 1)) add(line.from, line.to, `${key} 编号不在 ${key === 'USER' ? '1' : '0'}–63 范围内。`); }
+        const parameter = options.templateParameters && section === 'position' ? /^\{\{RCONF_P(\d{3,4})\}\}$/.exec(rest) : null;
+        const ordinal = parameter ? Number(parameter[1]) : 0;
+        if (parameter && ordinal >= 1 && ordinal <= 9998 && String(ordinal).padStart(3, '0') === parameter[1]) pendingParameter(line, rest, `RCONF_P${parameter[1]}`);
+        else {
+          const values = rest.split(',');
+          if (![6, 24].includes(values.length) || values.some(value => !/^[+-]?\d+$/.test(value.trim()))) add(line.from, line.to, 'RCONF 需要整数配置列表（YRC1000 文档为 24 项）。');
+          else if (values.length === 6) add(line.from, line.to, '六项 RCONF 为旧格式；当前 YRC1000 配置兼容性尚未核验。', 'warning', 'inform-dialect');
+        }
+      } else if (key === 'TOOL' || key === 'USER') {
+        if (options.templateParameters && section === 'position' && key === 'TOOL' && rest === '{{TOOL}}') pendingParameter(line, rest, 'TOOL');
+        else if (!/^\d+$/.test(rest) || Number(rest) > 63 || (key === 'USER' && Number(rest) < 1)) add(line.from, line.to, `${key} 编号不在 ${key === 'USER' ? '1' : '0'}–63 范围内。`);
+      }
       else if (key === 'POSTYPE') { if (!/^(PULSE|BASE|ROBOT|TOOL|USER|MTOOL)$/i.test(rest)) add(line.from, line.to, 'POSTYPE 需要有效的位置类型。'); }
       else if (key === 'PULSE' || key === 'RECTAN') { cartesianRecords = key === 'RECTAN'; if (rest) add(line.from, line.to, `${key} 字段不接受额外参数。`); }
       else if (/^GROUP[1-4]$/.test(key)) {

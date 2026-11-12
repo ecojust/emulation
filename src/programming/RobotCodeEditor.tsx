@@ -238,6 +238,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
   const activeFile = props.files.find(file => file.id === props.activeFileId) ?? null;
   const pending = Boolean(activeFile && props.pendingFileIds?.includes(activeFile.id));
   const diagnostics = props.files.flatMap(file => (props.pendingFileIds?.includes(file.id) ? [] : props.analysisByFile?.[file.id]?.diagnostics ?? []).map(item => ({ ...item, file })));
+  const templateParameters = diagnostics.filter(item => item.file.id === activeFile?.id && item.code === 'template-parameter').length;
   const entries = props.language.entries.filter(entry => !query.trim() || [entry.name, entry.signature, entry.description, entry.category].join(' ').toLowerCase().includes(query.trim().toLowerCase()));
   const referenceEntry = entries.find(entry => entry.name === reference) ?? entries[0];
   const readOnly = Boolean(props.readOnly || !activeFile);
@@ -470,6 +471,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
       <button type="button" disabled={readOnly} onClick={() => command(startCompletion)}>补全</button>
       {props.toolbar}<small>{props.language.dialect}</small>
     </div>
+    {templateParameters > 0 && <div className="robot-code-template-status" role="status" aria-label="模板参数状态">此模板仍有参数待配置，不能直接用于控制器。点击下方“待配置”项可定位。</div>}
     <div className="robot-code-editor-area">
       <div className="robot-code-surface" ref={host} onContextMenu={event => { if (!activeFile || !props.onInsertCurrent) return; event.preventDefault(); setMenu({ x: Math.max(8, Math.min(event.clientX, window.innerWidth - 210)), y: Math.max(8, Math.min(event.clientY, window.innerHeight - 55)) }); }}/>
       {!activeFile && <div className="robot-code-no-file"><strong>{props.files.length ? '从左侧选择一个模块' : '还没有模块文件'}</strong><p>在场景中将 Path 转换成程序，或使用上方按钮新建、导入模块。</p></div>}
@@ -477,7 +479,7 @@ export default function RobotCodeEditor(props: RobotCodeEditorProps) {
     <section className={'robot-code-bottom' + (collapsed ? ' is-collapsed' : '')} aria-label="源码辅助面板">
       <div className="robot-code-panel-tabs" role="tablist" aria-label="源码辅助视图"><button type="button" role="tab" aria-selected={panel === 'diagnostics'} onClick={() => { setPanel('diagnostics'); setCollapsed(false); }}>问题 {diagnostics.length}</button><button type="button" role="tab" aria-selected={panel === 'reference'} onClick={() => { setPanel('reference'); setCollapsed(false); }}>指令参考</button><button className="robot-code-panel-collapse" type="button" aria-label={collapsed ? '展开源码辅助面板' : '折叠源码辅助面板'} onClick={() => setCollapsed(value => !value)}>{collapsed ? '展开' : '收起'}</button></div>
       {!collapsed && <div className="robot-code-panel-body">{panel === 'diagnostics' ? <>
-        <ul className="robot-code-diagnostics">{diagnostics.map((item, index) => { const prefix = item.file.text.slice(0, item.from), line = prefix.split(/\r\n|\r|\n/).length, column = prefix.length - Math.max(prefix.lastIndexOf('\n'), prefix.lastIndexOf('\r')); return <li key={item.file.id + ':' + index}><button type="button" onClick={() => locate(item.file, item.from, item.to)}><span className={'diagnostic-severity severity-' + item.severity}>{item.severity === 'error' ? '错误' : item.severity === 'warning' ? '警告' : '信息'}</span><span className="diagnostic-location">{item.file.name}:{line}:{column}</span><span>{item.message}</span></button></li>; })}</ul>
+        <ul className="robot-code-diagnostics">{diagnostics.map((item, index) => { const prefix = item.file.text.slice(0, item.from), line = prefix.split(/\r\n|\r|\n/).length, column = prefix.length - Math.max(prefix.lastIndexOf('\n'), prefix.lastIndexOf('\r')); return <li key={item.file.id + ':' + index}><button type="button" onClick={() => locate(item.file, item.from, item.to)}><span className={'diagnostic-severity severity-' + item.severity}>{item.code === 'template-parameter' ? '待配置' : item.severity === 'error' ? '错误' : item.severity === 'warning' ? '警告' : '信息'}</span><span className="diagnostic-location">{item.file.name}:{line}:{column}</span><span>{item.message}</span></button></li>; })}</ul>
         {!diagnostics.length && <p className="robot-code-empty" role={props.analysisError ? 'alert' : undefined}>{props.analysisError ? '源码检查失败：' + props.analysisError : pending ? '正在检查源码…' : '当前检查未报告问题。控制器选项和现场配置仍需在对应控制器确认。'}</p>}
         {props.analysisError && props.onRetryAnalysis && <button type="button" className="text-button" onClick={props.onRetryAnalysis}>重试源码检查</button>}
         <button type="button" className="text-button" disabled={!diagnostics.length} onClick={() => command(nextDiagnostic)}>定位下一个问题</button>
